@@ -15,15 +15,23 @@
 </header>
 <main class="doc">
 <h1>Privacy policy</h1>
-<p class="small">Effective 30 October 2026</p>
+<p class="small">Effective 31 October 2026</p>
 
-<p>Scribble is a desktop app. It has no server of its own and it does not collect, sell or share your data. This page explains what Scribble stores, where, and what it sends to the services you choose to connect.</p>
+<p>Scribble is an app for Windows and Android. It has no server of its own and it does not collect, sell or share your data. This page explains what Scribble stores, where, and what it sends to the services you choose to connect.</p>
 
-<h2>What stays on your computer</h2>
+<h2>What stays on your device</h2>
 <ul>
   <li><b>Your notebook:</b> notes, tasks and projects are ordinary Markdown files in a folder you choose (by default <i>Documents/Scribble Notebook</i>).</li>
   <li><b>App data:</b> your settings, the look of your buddy, chat history and simple usage counts (number of requests and tokens) are kept in Scribble's own folder on your computer.</li>
-  <li><b>API keys:</b> the Gemini or Claude key you add is stored encrypted using your operating system's secure storage.</li>
+  <li><b>API keys:</b> the Gemini or Claude key you add is stored encrypted using your operating system's secure storage on Windows. On Android it is kept in Scribble's private app storage, which other apps can't read.</li>
+  <li><b>On Android</b>, the notebook, chats and settings live in Scribble's private app storage (and in your Google Drive, see below).</li>
+</ul>
+
+<h2>Android permissions</h2>
+<ul>
+  <li><b>Display over other apps:</b> only if you turn on the floating buddy, so it can be drawn over other apps.</li>
+  <li><b>Notifications:</b> for reminders (morning brief, due tasks, recap) and the small notice Android requires while the buddy is floating.</li>
+  <li><b>Your Google account:</b> Android's own account picker is used to sign in; Scribble never sees your password.</li>
 </ul>
 
 <h2>What is sent to your AI provider</h2>
@@ -32,16 +40,19 @@
   <li><b>Google Gemini</b> (Google LLC), under <a href="https://ai.google.dev/gemini-api/terms">Google's Gemini API terms</a>. On Google's free tier, Google may use prompts and responses to improve its products, and they may be read by human reviewers. Don't send passwords or confidential information while using the free tier.</li>
   <li><b>Claude</b> (Anthropic PBC), under <a href="https://www.anthropic.com/legal/commercial-terms">Anthropic's commercial terms</a> and <a href="https://www.anthropic.com/legal/privacy">privacy policy</a>.</li>
 </ul>
-<p>The request goes directly from your computer to that provider, using your own key. Scribble's developer never receives it.</p>
+<p>The request goes directly from your device to that provider, using your own key. Scribble's developer never receives it.</p>
 
 <h2>Signing in with Google</h2>
 <p>If you choose to sign in with Google, Scribble asks for your basic profile (name, email address and picture) and access to a hidden app-data folder in <b>your own</b> Google Drive (<code>drive.appdata</code>). Scribble uses this only to:</p>
 <ul>
   <li>show which account you're signed in with, and</li>
-  <li>keep a copy of your Scribble data (notebook, tasks, chats and settings) in that hidden folder, so it follows you to your other computers.</li>
+  <li>keep a copy of your Scribble data (notebook, tasks, chats and settings) in that hidden folder, so it follows you to your other computers and your phone or tablet.</li>
 </ul>
-<p>Scribble cannot see or change any other files in your Drive. Your data goes directly between your computer and Google; it is not sent to Scribble's developer or anyone else.</p>
+<p>Scribble cannot see or change any other files in your Drive. Your data goes directly between your device and Google; it is not sent to Scribble's developer or anyone else.</p>
 <p>Scribble's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+<h2>Update checks</h2>
+<p>Scribble asks GitHub, where its releases are published, whether a newer version exists, and downloads updates from there. Like any website, GitHub sees your IP address when this happens; no other information is sent.</p>
 
 <h2>What Scribble does not do</h2>
 <ul>
@@ -52,7 +63,7 @@
 
 <h2>Deleting your data</h2>
 <ul>
-  <li>Delete your notebook folder, and uninstall Scribble to remove its app data from your computer.</li>
+  <li>Delete your notebook folder, and uninstall Scribble to remove its app data from your computer. On Android, uninstalling Scribble removes everything it stored on the device.</li>
   <li>To remove the copy in Google Drive: in Google Drive, open <b>Settings → Manage apps → Scribble → Options → Delete hidden app data</b>.</li>
   <li>To stop Scribble's access to your Google account, go to <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> and remove Scribble.</li>
 </ul>
