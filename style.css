@@ -19,7 +19,7 @@ h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.15; margin: 18px 0 10px; 
 .small { font-size: 13.5px; color: var(--ink2); }
 .friends { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 34px 0 8px; }
 .friends .bd { width: 64px; height: 64px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 34px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; margin: 34px 0; }
 .card { background: var(--bg2); border-radius: 14px; padding: 16px 18px; }
 .card b { display: block; margin-bottom: 4px; }
 .card p { margin: 0; color: var(--ink2); font-size: 15px; }
@@ -34,6 +34,16 @@ footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 20px 0 30
 .steps { padding-left: 22px; }
 .steps li { margin: 8px 0; }
 
-.demo { text-align: center; margin: 10px 0 0; }
-.demo video { width: min(340px, 100%); aspect-ratio: 9 / 16; border-radius: 22px; background: var(--bg2); box-shadow: 0 18px 44px rgba(30, 26, 60, .2); }
+.demo { text-align: center; margin: 10px 0 0; max-width: 100%; overflow: hidden; padding: 6px 0 26px; }
+.demo video { display: block; margin: 0 auto; width: 340px; max-width: 100%; height: auto; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 22px; background: var(--bg2); box-shadow: 0 18px 44px rgba(30, 26, 60, .2); }
 .demo .small { margin-top: 10px; }
+
+.guide h2 { text-align: center; }
+.tabs { display: flex; gap: 6px; background: var(--bg2); padding: 5px; border-radius: 14px; margin: 14px 0 0; }
+.tabs [role=tab] { flex: 1; border: 0; background: transparent; color: var(--ink2); font: inherit; font-weight: 700; font-size: 15px; padding: 10px 8px; border-radius: 10px; cursor: pointer; }
+.tabs [role=tab][aria-selected=true] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 4px rgba(30, 26, 60, .12); }
+.tabs [role=tab]:focus-visible { outline: 2px solid var(--accent); }
+.panel { background: var(--bg2); border-radius: 14px; padding: 6px 20px 14px; margin-top: 10px; }
+.panel .btn { margin-top: 4px; }
+html, body { overflow-x: hidden; }
+@media (max-width: 520px) { .tabs [role=tab] { font-size: 13.5px; padding: 9px 4px; line-height: 1.25; } }

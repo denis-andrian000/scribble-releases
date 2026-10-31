@@ -41,11 +41,19 @@
   <div class="card"><b>Yours, in your own Google Drive</b><p>Sign in with Google and your notes follow you between computer and phone, kept in your own Drive. No Scribble server, no tracking.</p></div>
 </section>
 
-<h2>Getting started on Windows</h2>
+<section class="guide" id="guide">
+<h2>Getting started</h2>
+<div class="tabs" role="tablist" aria-label="Your device">
+  <button role="tab" id="tab-windows" aria-controls="p-windows" data-p="windows">🪟 Windows</button>
+  <button role="tab" id="tab-android" aria-controls="p-android" data-p="android">🤖 Android</button>
+  <button role="tab" id="tab-web" aria-controls="p-web" data-p="web">🍎 iPhone &amp; browser</button>
+</div>
+<div class="panel" role="tabpanel" id="p-windows" aria-labelledby="tab-windows">
 <p>Install Scribble, sign in with Google, then pick an AI. A short guide shows you how to get a free Google Gemini key, or a Claude key, in about a minute.</p>
+<p><a class="btn" href="https://github.com/denis-andrian000/scribble-releases/releases/latest">Download for Windows</a></p>
 <p class="small">Windows may say "Windows protected your PC" because the installer isn't signed yet. Click <b>More info → Run anyway</b>.</p>
-
-<h2 id="android">Scribble for Android</h2>
+</div>
+<div class="panel" role="tabpanel" id="p-android" aria-labelledby="tab-android" hidden>
 <p>Scribble isn't in the Play Store. You install it straight from this page:</p>
 <ol class="steps">
   <li>Open this page <b>on your phone or tablet</b> and tap <b>Download for Android</b>.</li>
@@ -56,14 +64,33 @@
 </ol>
 <p class="small">Updates: Scribble tells you when a new version is ready (or check in <b>Settings → App → Updates</b>). Download it and tap Install; your notes stay as they are.</p>
 <p class="small">If the buddy disappears after a while, your phone may be closing Scribble to save battery. In Android settings, open <b>Apps → Scribble → Battery</b> and choose <b>Unrestricted</b> (the name varies by phone).</p>
-
-<h2 id="web">Scribble in your browser (iPhone, iPad, Mac, Linux)</h2>
+</div>
+<div class="panel" role="tabpanel" id="p-web" aria-labelledby="tab-web" hidden>
 <p>Open <a href="app/"><b>Scribble in your browser</b></a>, pick your language and tap <b>Continue with Google</b>. Use the same Google account as on your other devices and everything is there. It opens on <b>Today</b>: your tasks for the day, a quick-note box and shortcuts. Tap the buddy in the corner to chat.</p>
 <ol class="steps">
   <li><b>iPhone or iPad:</b> open the link in <b>Safari</b>, tap <b>Share</b> (the square with an arrow) → <b>Add to Home Screen</b> → <b>Add</b>. Scribble then opens full screen from its own icon.</li>
   <li><b>Chrome or Edge on a computer:</b> click the install icon in the address bar (or menu → <b>Install Scribble</b>) to give it its own window.</li>
 </ol>
 <p class="small">Browsers can't let the buddy float over other apps, so it stays inside the page. Google keeps a browser signed in for about an hour at a time; when that runs out, Scribble shows <b>Continue as …</b> and one tap carries on syncing. Updates arrive on their own.</p>
+</div>
+</section>
+<script>
+(function () {
+  var tabs = [].slice.call(document.querySelectorAll('.tabs [role=tab]'));
+  function show(id, focus) {
+    tabs.forEach(function (t) { var on = t.dataset.p === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; document.getElementById('p-' + t.dataset.p).hidden = !on; if (on && focus) t.focus(); });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { show(t.dataset.p); history.replaceState(null, '', '#' + t.dataset.p); });
+    t.addEventListener('keydown', function (e) { var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (d) show(tabs[(i + d + tabs.length) % tabs.length].dataset.p, true); });
+  });
+  // open on the visitor's own device (or a #windows / #android / #web link)
+  var h = location.hash.slice(1), ua = navigator.userAgent;
+  var guess = /android/i.test(ua) ? 'android' : /iphone|ipad|macintosh|linux|cros/i.test(ua) && !/windows/i.test(ua) ? 'web' : 'windows';
+  show(['windows', 'android', 'web'].indexOf(h) >= 0 ? h : guess);
+  if (h && ['windows', 'android', 'web'].indexOf(h) >= 0) document.getElementById('guide').scrollIntoView();
+})();
+</script>
 </main>
 <footer>
   <span>© 2026 Scribble</span>
