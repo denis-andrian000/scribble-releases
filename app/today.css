@@ -1,0 +1,65 @@
+/* Scribble on the web: the Today page, the buddy in the corner and the chat next to it */
+body.web nav button[data-tab="chat"] { display: none; }
+#view-today { overflow-y: auto; }
+.today { padding: 22px clamp(14px, 3vw, 34px) 150px; display: flex; flex-direction: column; gap: 18px; max-width: 1240px; width: 100%; box-sizing: border-box; margin: 0 auto; }
+.td-hello { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 0 4px; }
+.td-hello h1 { margin: 0; font-size: clamp(22px, 3vw, 28px); letter-spacing: -.01em; }
+.td-hello p { margin: 4px 0 0; color: var(--ink-2); font-size: 15px; }
+.td-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.td-chip { background: var(--bg-2); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
+.td-chip.red { color: var(--red); } .td-chip.y { color: #B07A00; }
+.td-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; align-items: start; }
+.td-col { display: flex; flex-direction: column; gap: 18px; }
+.td-card { background: var(--bg-2); border-radius: 18px; padding: 18px 20px; }
+.td-card h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.td-card small { color: var(--ink-2); }
+.td-grp { font-size: 12px; font-weight: 700; color: var(--ink-2); margin: 12px 0 4px; }
+.td-grp:first-child { margin-top: 0; }
+.td-grp.red { color: var(--red); }
+.td-task { display: flex; align-items: center; gap: 12px; background: var(--bg); border-radius: 12px; padding: 10px 12px; margin-top: 6px; }
+.td-cb { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--line); background: transparent; flex: none; padding: 0; cursor: pointer; }
+.td-cb:hover { border-color: var(--green); }
+.td-task.done .td-cb { background: var(--green); border-color: var(--green); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E"); background-size: 70%; background-position: center; background-repeat: no-repeat; }
+.td-t { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.td-task.done .td-t { text-decoration: line-through; color: var(--ink-2); font-weight: 500; }
+.td-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.td-pill.high { background: #FDE3E1; color: var(--red); } .td-pill.medium { background: #FFF1CC; color: #9A6B00; } .td-pill.low { background: #E3EEFF; color: var(--blue); }
+.td-empty { color: var(--ink-2); margin: 4px 0; }
+.td-cap { display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1.5px solid var(--accent); border-radius: 14px; padding: 6px 6px 6px 12px; margin-bottom: 6px; }
+.td-cap input { flex: 1; border: 0; background: transparent; font: inherit; color: var(--ink); outline: none; min-width: 0; padding: 4px 0; }
+.td-cap .btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 9px; padding: 4px 12px; font-weight: 700; cursor: pointer; }
+.td-sc { display: grid; gap: 8px; }
+.td-sc button, .td-pg { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--ink); border: 0; border-radius: 12px; padding: 10px 12px; font: inherit; font-weight: 600; cursor: pointer; }
+.td-sc button:hover, .td-pg:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.td-sc small { display: block; font-weight: 400; }
+.td-pg { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.td-pg span { color: var(--ink-2); font-size: 12px; font-weight: 400; flex: none; }
+
+/* the buddy */
+.page-buddy { position: fixed; right: 18px; bottom: calc(12px + env(safe-area-inset-bottom)); width: 130px; height: 130px; border: 0; background: transparent; z-index: 40; color-scheme: normal; }
+.page-say { position: fixed; right: 150px; bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 41; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 16px 16px 4px 16px; padding: 10px 14px; font: inherit; font-weight: 600; text-align: left; box-shadow: 0 8px 24px rgba(30, 26, 60, .15); max-width: 260px; cursor: pointer; animation: say-in .35s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes say-in { from { opacity: 0; transform: translateY(8px) scale(.9); } }
+body.chat-pop .page-say { display: none; }
+
+/* the chat, next to the buddy */
+#view-chat .pop-bar { display: none; }
+body.chat-pop #view-chat { display: flex; position: fixed; z-index: 45; right: 24px; bottom: 156px; width: min(400px, calc(100vw - 48px)); height: min(560px, calc(100vh - 230px)); background: var(--bg); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 18px 50px rgba(30, 26, 60, .28); overflow: hidden; animation: pop-in .22s cubic-bezier(.3, 1.3, .5, 1); transform-origin: bottom right; }
+@keyframes pop-in { from { opacity: 0; transform: scale(.92) translateY(10px); } }
+body.chat-pop #view-chat .pop-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); font-weight: 700; }
+.pop-bar .pop-name { flex: 1; }
+.pop-bar .icon { background: none; border: 0; color: var(--ink-2); font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; }
+.pop-bar .icon:hover { background: var(--bg-2); color: var(--ink); }
+.pop-dim { display: none; }
+body.chat-full .page-buddy, body.chat-full .page-say { display: none; }
+
+@media (max-width: 760px) {
+  .td-grid { grid-template-columns: 1fr; gap: 14px; }
+  .td-col { gap: 14px; }
+  .today { padding-top: 16px; padding-bottom: 130px; gap: 14px; }
+  .page-buddy { width: 96px; height: 96px; right: 8px; }
+  .page-say { right: 100px; bottom: calc(80px + env(safe-area-inset-bottom)); max-width: 200px; font-size: 13px; }
+  body.chat-pop .pop-dim { display: block; position: fixed; inset: 0; z-index: 44; background: rgba(30, 26, 60, .25); }
+  body.chat-pop #view-chat { left: 0; right: 0; bottom: 0; width: auto; height: 72vh; height: 72dvh; border-radius: 22px 22px 0 0; border-bottom: 0; transform-origin: bottom center; animation: sheet-in .25s ease-out; padding-bottom: env(safe-area-inset-bottom); }
+  body.chat-pop .page-buddy { opacity: 0; pointer-events: none; }
+  @keyframes sheet-in { from { transform: translateY(40%); opacity: .4; } }
+}

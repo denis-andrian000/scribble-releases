@@ -1,0 +1,369 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFBF2">
+<meta name="description" content="Scribble: your note buddy. Notes, tasks and chat, synced with your Google Drive.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scribble">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; frame-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' blob: data: https://*.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.github.com">
+<title>Scribble</title>
+<link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="mobile.css">
+<link rel="stylesheet" href="today.css">
+<script src="pwa.js" defer></script>
+</head>
+<body class="android web">
+<div id="card">
+  <header>
+    <div class="brand"><span class="logo"></span><span class="bname">Scribble</span></div>
+    <nav>
+      <button data-tab="chat" class="on">Chat</button>
+      <button data-tab="notebook">Notebook</button>
+      <button data-tab="tasks">Tasks</button>
+    </nav>
+    <div class="hdr-actions">
+      <button class="icon" id="btn-theme" title="Switch light / dark">
+        <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      </button>
+      <button class="icon" id="btn-wide" title="Expand to full screen (F11)">
+        <svg class="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+      </button>
+      <button class="icon" id="btn-settings" title="Settings">
+        <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+      </button>
+      <button class="icon" id="btn-close" title="Hide (Esc)">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- CHAT -->
+  <section id="view-chat" class="view on">
+    <div class="chat-bar">
+      <span id="chat-date"></span>
+      <span class="spacer"></span>
+      <button class="link" id="btn-undo" title="Undo the last save" hidden>↶ Undo</button>
+      <button class="link" id="btn-history" title="Past chats">History</button>
+      <button class="link" id="btn-newchat">New chat</button>
+    </div>
+    <div id="old-banner" class="old-banner" hidden>
+      <span id="old-label"></span>
+      <button class="link" id="btn-today">Back to today →</button>
+    </div>
+    <div id="messages"></div>
+    <div id="empty" class="empty">
+      <p class="hello">Hi! Tell me anything worth remembering. I'll file it.</p>
+      <div class="chips">
+        <button>What's on my plate today?</button>
+        <button>Summarize my day</button>
+        <button>Write my stand-up for today</button>
+        <button>Show my projects and where they stand</button>
+        <button data-brief="1">☀️ Today's brief</button>
+        <button data-kind="weekly">📝 Weekly report</button>
+      </div>
+    </div>
+    <div id="history" class="history" hidden>
+      <div class="list-head"><span>Past chats</span><span class="spacer"></span><button class="link" id="history-close">Close</button></div>
+      <div id="history-list"></div>
+    </div>
+    <div class="drop-hint">Drop to attach</div>
+    <div id="attach-row" class="att-row" hidden></div>
+    <form id="composer">
+      <button id="btn-attach" type="button" class="icon" title="Attach a screenshot, PDF or text file (you can also paste or drop them here)">
+        <svg viewBox="0 0 24 24"><path d="M20.5 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>
+      </button>
+      <input type="file" id="file-pick" multiple hidden accept="image/*,.pdf,.txt,.md,.csv,.log,.json,.xml,.yml,.yaml,.ini,.conf,.cfg,.sql,.js,.ts,.py,.sh,.ps1,.html,.css,.toml">
+      <textarea id="input" rows="1" placeholder="Note it, ask it, plan it…"></textarea>
+      <button id="send" type="submit" title="Send (Enter)">
+        <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- NOTEBOOK -->
+  <section id="view-notebook" class="view">
+    <div id="nb-list">
+      <div class="list-head">
+        <span>Your notebook</span>
+        <span class="spacer"></span>
+        <button class="link" id="btn-newpage" title="New page at the top level">+ Page</button>
+        <button class="link" id="btn-newfolder" title="New folder at the top level">+ Folder</button>
+        <button class="link" id="btn-openfolder">Open folder</button>
+      </div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input id="nb-search" type="search" placeholder="Search pages and tasks (Ctrl+F)" autocomplete="off">
+        <button class="link" id="nb-clear" hidden>Clear</button>
+      </div>
+      <div id="nb-results" hidden></div>
+      <div id="nb-tree"></div>
+    </div>
+    <div id="nb-page" hidden>
+      <div class="page-bar">
+        <button class="link" id="nb-back">← All pages</button>
+        <span id="nb-path"></span>
+        <span class="spacer"></span>
+        <button class="link" id="nb-edit">Edit</button>
+        <button class="link" id="nb-external" title="Open in your editor">↗</button>
+      </div>
+      <article id="nb-content" class="md"></article>
+      <div id="nb-editor" hidden>
+        <div id="nb-changed" class="old-banner" hidden><span>This page changed outside Scribble.</span><button class="link" id="nb-reload">Load the new version</button></div>
+        <textarea id="nb-text" spellcheck="false"></textarea>
+        <article id="nb-preview" class="md preview"></article>
+        <div class="editor-actions">
+          <button class="link" id="nb-toggle-preview">Hide preview</button>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="nb-cancel">Cancel</button>
+          <button class="btn" id="nb-save">Save</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TASKS -->
+  <section id="view-tasks" class="view">
+    <div class="task-toolbar">
+      <div class="seg">
+        <button data-filter="open" class="on">Open</button>
+        <button data-filter="done">Done</button>
+      </div>
+      <div class="seg view-seg" id="task-view-seg">
+        <button data-view="tree" title="Grouped by area, category and project">Tree</button>
+        <button data-view="table" title="Sortable table">Table</button>
+      </div>
+      <div class="tbl-filters" id="tbl-filters">
+        <input type="search" id="tf-q" placeholder="Filter tasks…">
+        <select id="tf-status"><option value="">All statuses</option><option value="todo">To do</option><option value="doing">In progress</option><option value="hold">On hold</option></select>
+        <select id="tf-pri"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="none">Not set</option></select>
+        <select id="tf-cat"><option value="">All categories</option></select>
+        <label class="tf-check"><input type="checkbox" id="tf-need"> ⚠ Needs details</label>
+        <span class="tf-count" id="tf-count"></span>
+      </div>
+    </div>
+    <div id="task-list"></div>
+    <div id="task-table" hidden></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="view-settings" class="view">
+    <div class="set-tabs seg" id="set-tabs">
+      <button type="button" data-st="app" class="on">App</button>
+      <button type="button" data-st="buddy">Buddy</button>
+    </div>
+    <div class="settings" id="set-buddy" hidden>
+      <div id="avatar-editor"></div>
+      <input type="file" id="av-file" accept="image/*" hidden>
+    </div>
+    <div class="settings" id="set-app">
+      <div class="field">
+        <span>Account</span>
+        <div class="acct" id="acct">
+          <img id="acct-pic" alt="" referrerpolicy="no-referrer">
+          <div class="acct-txt"><b id="acct-name"></b><small id="acct-email"></small><small id="acct-sync" class="acct-sync"></small><div class="upd-bar" id="acct-bar" hidden><i></i></div></div>
+          <div class="acct-acts"><button type="button" class="link" id="acct-sync-now">Sync now</button><button type="button" class="link danger" id="acct-out">Sign out</button></div>
+        </div>
+        <small>Your notebook, tasks, chats, settings and AI keys are kept in a hidden Scribble folder in your own Google Drive.</small>
+      </div>
+      <div class="field">
+        <span>Updates</span>
+        <div class="upd" id="upd">
+          <div class="upd-txt"><b id="upd-ver"></b><small id="upd-msg"></small><div class="upd-bar" id="upd-bar" hidden><i></i></div></div>
+          <button type="button" class="btn ghost" id="upd-check">Check for updates</button>
+          <button type="button" class="btn" id="upd-install" hidden>Restart to update</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>AI connections</span>
+        <div id="ai-list" class="ai-list"></div>
+        <details class="ai-add" id="ai-add">
+          <summary>+ Add an API key</summary>
+          <div class="ai-form">
+            <textarea id="ai-key" rows="2" spellcheck="false" placeholder="Paste a Gemini key (AIza…) or a Claude key (sk-ant-…)"></textarea>
+            <div class="ai-row">
+              <select id="ai-provider"><option value="auto">Detect automatically</option></select>
+              <input id="ai-label" type="text" placeholder="Name (optional)">
+            </div>
+            <div class="ai-row" id="ai-url-row" hidden><input id="ai-url" type="text" placeholder="Server URL, e.g. http://localhost:11434/v1"></div>
+            <div class="ai-row" id="ai-gcp-row" hidden><input id="ai-project" type="text" placeholder="Project ID (from the JSON if empty)"><input id="ai-region" type="text" placeholder="Region (global)"></div>
+            <div class="ai-result" id="ai-result" hidden></div>
+            <div class="row end"><button class="btn ghost" id="ai-test" type="button">Test connection</button><button class="btn" id="ai-save" type="button" disabled>Add</button></div>
+            <small>Keys are stored encrypted on this computer. <span id="ai-keylink"></span> Never made a key? <button type="button" class="link inline" id="ai-howto">Show me how</button></small>
+          </div>
+        </details>
+      </div>
+      <label class="field">
+        <span>Model</span>
+        <select id="s-model"></select>
+        <small id="s-model-hint">The model your buddy chats with. Models from every connection are listed here.</small>
+      </label>
+      <label class="toggle"><input type="checkbox" id="s-fallback"><span>If the model is rate-limited or out of credit, switch to a free model automatically</span>
+      </label>
+      <div class="field">
+        <span>Usage</span>
+        <div class="usage" id="usage"></div>
+        <small>Token counts on this computer. For costs, check your provider's billing page.</small>
+      </div>
+      <div class="field">
+        <span>Notebook folder</span>
+        <div class="folder"><code id="s-folder"></code></div>
+        <div class="row"><button class="btn ghost" id="s-pick">Change…</button><button class="btn ghost" id="s-open">Open</button></div>
+      </div>
+      <div class="field">
+        <span>Sync &amp; backup</span>
+        <div class="sync-box">
+          <div>Sync: <span class="sync-state" id="sync-state"></span></div>
+          <div id="sync-drive"></div>
+          <div class="row"><button class="btn ghost" id="sync-pick" type="button">Use another synced folder…</button></div>
+          <div>Local backup: <span id="backup-last"></span>. One copy a day, the last 20 are kept.</div>
+          <div class="row"><button class="btn ghost" id="backup-now" type="button">Back up now</button><button class="btn ghost" id="backup-open" type="button">Open backups</button></div>
+        </div>
+      </div>
+      <div class="field">
+        <span>Import</span>
+        <div class="sync-box">
+          <small>Bring in tasks and projects from a Scribble import file (for example your converted Excel tracker). Safe to run twice.</small>
+          <div class="row"><button class="btn ghost" id="import-btn" type="button">Import tasks from file…</button></div>
+          <div id="import-result" class="import-result" hidden></div>
+        </div>
+      </div>
+      <div class="field"><span>Language</span>
+        <div class="seg small lang-seg" id="s-lang" data-no-i18n>
+          <button type="button" data-lang="en">English</button>
+          <button type="button" data-lang="id">Bahasa Indonesia</button>
+        </div>
+      </div>
+      <div class="field"><span>Appearance</span>
+        <div class="seg small" id="s-theme">
+          <button type="button" data-theme="system">System</button>
+          <button type="button" data-theme="light">Light</button>
+          <button type="button" data-theme="dark">Dark</button>
+        </div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="s-confirm"><span>Ask me before saving anything (polished preview + where it goes)</span></label>
+      <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
+      <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
+      <div class="field"><span>Routine</span>
+        <div class="sync-box routine">
+          <label class="toggle"><input type="checkbox" id="r-brief"><span>Morning brief when I start the day <button class="link" id="r-brief-now" type="button">show now</button></span></label>
+          <label class="toggle"><input type="checkbox" id="r-nudges"><span>Nudge me about due and overdue tasks</span></label>
+          <label class="toggle"><input type="checkbox" id="r-recap"><span>End-of-day recap at <input type="time" id="r-time" class="mini"> on
+            <select id="r-days" class="mini"><option value="mon-fri">Mon–Fri</option><option value="mon-sat">Mon–Sat</option><option value="every">every day</option></select></span></label>
+          <label class="toggle"><input type="checkbox" id="r-weekly"><span>Weekly report on
+            <select id="r-wday" class="mini"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select>
+            for <input type="text" id="r-to" class="mini" placeholder="your manager" style="width: 100px"></span></label>
+          <small>Briefs and nudges are built on this computer, so they're free. The recap and the report use your AI model, and only run when you click "Write it".</small>
+        </div>
+      </div>
+      <div class="field"><span>Shortcuts</span>
+        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-panel"></button><small>Open / close this panel</small></div>
+        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-capture"></button><small>Save what you copied to Inbox</small></div>
+        <label class="toggle"><input type="checkbox" id="s-capture"><span>Clipboard capture hotkey on</span></label>
+        <small>Click a shortcut, then press the new keys. <span id="k-msg" class="kbd-bad"></span></small>
+      </div>
+      <div class="row end"><span id="s-saved"></span><button class="btn" id="s-save">Save</button></div>
+    </div>
+  </section>
+
+  <!-- FIRST-RUN SETUP: connect an AI (Gemini free, or Claude) -->
+  <div id="onboard" hidden>
+    <div class="ob-sync" id="ob-sync" hidden><span id="ob-sync-txt"></span><div class="upd-bar"><i></i></div></div>
+    <div class="ob-page" data-ob="signin">
+      <div class="lang-pick" data-no-i18n role="group" aria-label="Language / Bahasa">
+        <span aria-hidden="true">🌐</span>
+        <button type="button" data-lang="en">English</button>
+        <button type="button" data-lang="id">Bahasa Indonesia</button>
+      </div>
+      <div class="ob-buddy" id="ob-buddy0"></div>
+      <div class="ob-steps-dots"><span class="on"></span><span></span><span></span><span></span></div>
+      <h2>Welcome to Scribble</h2>
+      <p class="ob-lead">Sign in with Google to start. Your notes, tasks and settings are kept in your own Google Drive, so they're safe and follow you to any computer.</p>
+      <button type="button" class="gsi" id="ob-google">
+        <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        <span>Continue with Google</span>
+      </button>
+      <div class="ob-status" id="ob-sign-status" hidden></div>
+      <div class="ob-help" id="ob-sign-help" hidden>
+        <span id="ob-help-txt">Browser didn't open?</span>
+        <div class="ob-help-row">
+          <button type="button" class="btn ghost" id="ob-open-again">Open again</button>
+          <button type="button" class="btn ghost" id="ob-copy-link">Copy link</button>
+          <button type="button" class="link" id="ob-cancel">Cancel</button>
+        </div>
+        <small>"Copy link", then paste it into Chrome or Edge and sign in there. Scribble continues by itself once you're done.</small>
+      </div>
+      <p class="ob-foot">Scribble only sees its own hidden folder in your Drive, never your other files. <a href="#" data-ext="https://denis-andrian000.github.io/scribble-releases/privacy.html">Privacy policy</a></p>
+    </div>
+
+    <div class="ob-page" data-ob="choose" hidden>
+      <div class="ob-buddy" id="ob-buddy"></div>
+      <div class="ob-steps-dots"><span class="on"></span><span class="on"></span><span></span><span></span></div>
+      <h2>Hi! Let's give me a brain.</h2>
+      <p class="ob-lead">I need an AI key to think, write notes and track your tasks. Pick one — it takes about a minute.</p>
+      <button type="button" class="ob-choice" data-pick="gemini">
+        <span class="ob-logo gem">✦</span>
+        <span class="ob-txt"><b>Google Gemini <em class="ob-tag free">Free</em></b>
+          <small>Free with any Google account. No credit card. Daily limits that are fine for personal use.</small></span>
+        <span class="ob-go">›</span>
+      </button>
+      <button type="button" class="ob-choice" data-pick="anthropic">
+        <span class="ob-logo cla">✳</span>
+        <span class="ob-txt"><b>Claude <em class="ob-tag paid">Paid</em></b>
+          <small>The smartest at notes and tasks. Pay as you go: a few dollars of credit lasts a long time.</small></span>
+        <span class="ob-go">›</span>
+      </button>
+      <p class="ob-foot">Not sure? Start with Gemini. You can add the other one later in Settings → App.</p>
+      <button type="button" class="link ob-skip" id="ob-skip">Skip for now</button>
+      <p class="ob-foot ob-who" id="ob-who"></p>
+    </div>
+
+    <div class="ob-page" data-ob="guide" hidden>
+      <button type="button" class="link ob-back" id="ob-back">‹ Back</button>
+      <h2 id="ob-title"></h2>
+      <ol class="ob-steps" id="ob-steps"></ol>
+      <button type="button" class="btn ob-open" id="ob-open"></button>
+      <label class="ob-paste">
+        <span>Paste your key here</span>
+        <input id="ob-key" type="password" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="ob-status" id="ob-status" hidden></div>
+      <button type="button" class="btn ob-connect" id="ob-connect" disabled>Connect</button>
+      <p class="ob-foot" id="ob-note"></p>
+    </div>
+
+    <div class="ob-page" data-ob="buddy" hidden>
+      <div class="ob-steps-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div>
+      <h2>Make it yours</h2>
+      <div class="ob-bd-top">
+        <div class="ob-bd-preview av-live" id="ob-bd-preview"></div>
+        <label class="ob-paste ob-bd-name"><span>Name your buddy</span><input id="ob-bd-name" type="text" maxlength="24" placeholder="Scribble"></label>
+      </div>
+      <div class="ob-sub">Pick a look</div>
+      <div class="ob-tpl" id="ob-tpl"></div>
+      <div class="ob-sub">Personality</div>
+      <div class="ob-temper" id="ob-temper"></div>
+      <p class="ob-foot">You can change the shape, colours and accessories any time in Settings → Buddy.</p>
+      <button type="button" class="btn ob-connect" id="ob-bd-next">Continue</button>
+    </div>
+
+    <div class="ob-page" data-ob="done" hidden>
+      <div class="ob-buddy happy" id="ob-buddy2"></div>
+      <div class="ob-steps-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div>
+      <h2 id="ob-done-title">All set!</h2>
+      <p class="ob-lead" id="ob-done-msg"></p>
+      <button type="button" class="btn ob-connect" id="ob-start">Start chatting</button>
+    </div>
+  </div>
+</div>
+<script src="engine.js"></script>
+</body>
+</html>
