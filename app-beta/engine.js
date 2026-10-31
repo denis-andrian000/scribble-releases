@@ -36977,7 +36977,27 @@ Content-Type: application/octet-stream\r
         "A new version of Scribble is ready.": "Versi baru Scribble sudah siap.",
         Reload: "Muat ulang",
         "Your browser blocked the Google window. Allow pop-ups for this page and try again.": "Browser memblokir jendela Google. Izinkan pop-up untuk halaman ini lalu coba lagi.",
-        'Tap "Continue" to keep syncing with Google Drive.': 'Ketuk "Lanjutkan" agar tetap sinkron dengan Google Drive.'
+        'Tap "Continue" to keep syncing with Google Drive.': 'Ketuk "Lanjutkan" agar tetap sinkron dengan Google Drive.',
+        "Today's tasks": "Tugas hari ini",
+        "Quick note": "Catatan cepat",
+        "Tell me anything worth remembering\u2026": "Ceritakan apa saja yang perlu diingat\u2026",
+        "Your buddy tidies it up and asks where to save it.": "Buddy-mu merapikannya dan bertanya mau disimpan di mana.",
+        "Plan my day": "Rencanakan hariku",
+        "Order and time blocks for today": "Urutan dan blok waktu untuk hari ini",
+        "For today's daily page": "Untuk halaman harian hari ini",
+        "Weekly report": "Laporan mingguan",
+        "Ready to paste into WhatsApp or email": "Siap ditempel ke WhatsApp atau email",
+        "Recent pages": "Halaman terbaru",
+        "Good night": "Selamat malam",
+        Overdue: "Terlambat",
+        "Due today": "Jatuh tempo hari ini",
+        "Done today": "Selesai hari ini",
+        "since {0}": "sejak {0}",
+        "Nothing due today. Enjoy it, or tell me what you're working on.": "Tidak ada tenggat hari ini. Nikmati, atau ceritakan apa yang sedang kamu kerjakan.",
+        "No pages yet.": "Belum ada halaman.",
+        "\u201C{0}\u201D is overdue. Want to plan it in?": "\u201C{0}\u201D sudah terlambat. Mau dijadwalkan?",
+        "{#0} due today. You've got this \u2600\uFE0F": "{0} jatuh tempo hari ini. Kamu pasti bisa \u2600\uFE0F",
+        "Open the full chat": "Buka obrolan penuh"
       };
     }
   });
@@ -39187,7 +39207,7 @@ ${e && (e.stack || e.message) || e}`;
       await electron.app.whenReady();
       await new Promise((r) => setTimeout(r, 0));
       window.scribble.lang = electron.ipcRenderer.sendSync("lang:get");
-      const api = window.scribble, wideNow = () => window.innerWidth >= 900, wideFns = [];
+      const api = window.scribble, wideNow = () => !WEB && window.innerWidth >= 900, wideFns = [];
       api.getWide = async () => wideNow();
       api.setWide = async () => wideNow();
       api.onWide = (fn) => {
@@ -39203,7 +39223,7 @@ ${e && (e.stack || e.message) || e}`;
           wideFns.forEach((f) => f(w));
         }
       });
-      for (const s of ["i18n-id.js", "i18n.js", "avatar.js", "markdown.js", "panel.js", "keyboard.js", "theme.js", ...WEB ? ["reconnect.js"] : ["floating.js", "update.js"]]) await loadScript(s);
+      for (const s of ["i18n-id.js", "i18n.js", "avatar.js", "markdown.js", "panel.js", "keyboard.js", "theme.js", ...WEB ? ["reconnect.js", "today.js"] : ["floating.js", "update.js"]]) await loadScript(s);
       electron.__markPanelReady();
     } catch (e) {
       fatal(e);

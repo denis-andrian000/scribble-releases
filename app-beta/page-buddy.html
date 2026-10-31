@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: data:">
+<title>Scribble</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #stage { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; box-sizing: border-box; }
+  #holder { width: 68vw; height: 68vw; cursor: grab; touch-action: none; }
+  /* all motion of #buddy comes from buddy.js (60fps springs) */
+  #buddy { width: 100%; height: 100%; overflow: visible; will-change: transform; filter: drop-shadow(0 4px 6px rgba(20, 18, 40, .35)); }
+  body.held #holder { cursor: grabbing; }
+  body.open #buddy { filter: drop-shadow(0 4px 6px rgba(20, 18, 40, .35)) brightness(1.06); }
+  .corner { transform-box: fill-box; transform-origin: 0 0; animation: flutter 3.2s ease-in-out infinite; }
+  @keyframes flutter { 0%,100% { transform: rotate(0) } 50% { transform: rotate(-6deg) } }
+
+  .bubble { position: absolute; display: none; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+  #dots { top: 4px; right: 10px; background: #fff; padding: 5px 8px; }
+  #dots span { display: inline-block; width: 5px; height: 5px; margin: 0 1.5px; border-radius: 50%; background: #2B2A4C; animation: dot 1s infinite; }
+  #dots span:nth-child(2) { animation-delay: .15s } #dots span:nth-child(3) { animation-delay: .3s }
+  @keyframes dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0) } 30% { opacity: 1; transform: translateY(-3px) } }
+  body.thinking #dots { display: block; animation: pop .25s cubic-bezier(.3,1.6,.5,1); }
+  #ask { top: 2px; right: 12px; background: #FFCE47; color: #2B2A4C; font: 800 15px/1 sans-serif; padding: 5px 9px; animation: ask 1.2s ease-in-out infinite; }
+  @keyframes ask { 0%,100% { transform: translateY(0) rotate(-6deg) } 50% { transform: translateY(-3px) rotate(6deg) } }
+  body.asking #ask { display: block; }
+  @keyframes pop { from { transform: scale(.3); opacity: 0 } }
+
+  #zzz { position: absolute; top: 6px; right: 14px; display: none; font: 800 13px/1 sans-serif; color: #8E8BB0; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  #zzz span { position: absolute; opacity: 0; animation: zz 3s infinite; }
+  #zzz span:nth-child(2) { animation-delay: 1s; font-size: 11px } #zzz span:nth-child(3) { animation-delay: 2s; font-size: 9px }
+  @keyframes zz { 0% { opacity: 0; transform: translate(0, 14px) } 20% { opacity: 1 } 100% { opacity: 0; transform: translate(10px, -12px) } }
+  body.zzz #zzz { display: block; }
+  #clip { top: 4px; right: 8px; background: #fff; color: #2B2A4C; font: 700 12px/1 sans-serif; padding: 5px 8px; }
+  body.clip #clip { display: block; animation: pop .3s cubic-bezier(.3,1.6,.5,1), fade 1.4s ease-in forwards; }
+  @keyframes fade { 70% { opacity: 1 } 100% { opacity: 0 } }
+  #bang { top: 2px; right: 12px; background: #FF6B6B; color: #fff; font: 900 15px/1 sans-serif; padding: 5px 10px; animation: ask .6s ease-in-out infinite; }
+  body.alert #bang { display: block; }
+
+  .spark { position: absolute; font: 700 14px sans-serif; color: #FFB703; opacity: 0; pointer-events: none; }
+  body.happy .spark { animation: spark 1s ease-out; }
+  .spark.s1 { left: 14px; top: 22px } .spark.s2 { right: 14px; top: 14px; animation-delay: .1s !important } .spark.s3 { right: 26px; top: 40px; animation-delay: .2s !important }
+  @keyframes spark { 0% { opacity: 0; transform: scale(.4) } 30% { opacity: 1; transform: scale(1.2) } 100% { opacity: 0; transform: translateY(-12px) scale(.8) } }
+
+  /* speech bubble for babbling */
+  #say { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); background: #fff; color: #2B2A4C; font: 800 11px/1.1 'Segoe UI', sans-serif; padding: 4px 8px; border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.25); opacity: 0; pointer-events: none; }
+  #say::after { content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: #fff; }
+  #say.on { animation: sayIn .25s cubic-bezier(.3,1.6,.5,1) forwards; }
+  @keyframes sayIn { from { opacity: 0; transform: translateX(-50%) scale(.4) } to { opacity: 1; transform: translateX(-50%) scale(1) } }
+  body.thinking #say, body.asking #say, body.alert #say { display: none; }
+
+  /* particles: hearts, notes, stars, bubbles, dust */
+  .pt { position: absolute; pointer-events: none; font: 800 13px/1 sans-serif; transform: translate(-50%, -50%); animation: ptRise 1.5s ease-out forwards; }
+  .pt.heart { color: #FF6B8A; } .pt.note { color: #8A7BFF; } .pt.star { color: #FFB703; } .pt.q, .pt.bang { color: #5E5B7A; font-size: 14px; }
+  .pt.sweat { font-size: calc(11px * var(--s, 1)); animation: ptDrop .9s ease-out forwards; }
+  .pt.bubble { width: calc(9px * var(--s, 1)); height: calc(9px * var(--s, 1)); border-radius: 50%; border: 1.6px solid #4F95E6; background: radial-gradient(circle at 35% 35%, #fff 0 22%, rgba(190,225,255,.55) 34%); animation: ptBubble 1.8s ease-out forwards; }
+  .pt.puff { width: 9px; height: 9px; border-radius: 50%; background: rgba(200, 196, 220, .85); animation: ptPuff .6s ease-out forwards; }
+  @keyframes ptRise { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.3) } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1.15) } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.85) } }
+  @keyframes ptBubble { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.3) } 15% { opacity: 1 } 50% { transform: translate(calc(-50% + var(--dx) * .5 + 4px), calc(-50% + var(--dy) * .5)) } 90% { opacity: 1 } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.2) } }
+  @keyframes ptPuff { 0% { opacity: .9; transform: translate(-50%, -50%) scale(.3) } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.6) } }
+  @keyframes ptDrop { 0% { opacity: 1; transform: translate(-50%, -50%) } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 22px)) } }
+
+  /* hatching and growing up */
+  body.glowing #buddy { filter: drop-shadow(0 0 6px #fff7c2) drop-shadow(0 0 12px #ffd86b) brightness(1.15); }
+  #flash { position: absolute; left: 50%; top: 58%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: radial-gradient(circle, #fff 0 30%, rgba(255, 230, 140, .7) 55%, transparent 70%); opacity: 0; pointer-events: none; }
+  body.flash #flash { animation: flash .8s ease-out; }
+  @keyframes flash { 0% { opacity: 1; transform: scale(1) } 100% { opacity: 0; transform: scale(14) } }
+
+  /* ---- arms, feet and tail (drawn by avatar.js; pivots in the 100x100 drawing) ---- */
+  #buddy .arm, #buddy .foot, #buddy #tail, #buddy #rig { transform-box: view-box; transition: transform .45s cubic-bezier(.3,1.5,.5,1); }
+  #armL { transform-origin: 17px 58px; animation: swayL 3.4s ease-in-out infinite; }
+  #armR { transform-origin: 83px 58px; animation: swayR 3.4s ease-in-out infinite; }
+  #footL { transform-origin: 35px 88px; } #footR { transform-origin: 65px 88px; }
+  #tail { transform-origin: 21px 82px; animation: wag 2.4s ease-in-out infinite; }
+  #rig { transform-origin: 50px 60px; }
+  @keyframes swayL { 50% { transform: rotate(7deg); } }
+  @keyframes swayR { 50% { transform: rotate(-7deg); } }
+  @keyframes wag { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(16deg); } }
+  body.mood-happy #tail { animation-duration: .45s; }
+  body.zzz #tail, body.zzz .arm { animation-duration: 7s; }
+  /* tap: a wave */
+  body.wave #armR { animation: wave .32s ease-in-out 5 alternate; }
+  @keyframes wave { from { transform: rotate(-115deg); } to { transform: rotate(-160deg); } }
+  /* happy: both arms up */
+  body.mood-happy #armL { animation: none; transform: rotate(140deg); }
+  body.mood-happy #armR { animation: none; transform: rotate(-140deg); }
+  /* sleepy: a big stretch-and-yawn */
+  body.mood-yawn #armL { animation: none; transform: rotate(155deg); }
+  body.mood-yawn #armR { animation: none; transform: rotate(-155deg); }
+  /* picked up: arms flail, feet dangle */
+  body.held #armL { animation: flailL .22s ease-in-out infinite alternate; }
+  body.held #armR { animation: flailR .22s ease-in-out infinite alternate; }
+  body.held .foot { animation: dangle .3s ease-in-out infinite alternate; }
+  body.held #footR { animation-delay: -.15s; }
+  @keyframes flailL { from { transform: rotate(110deg); } to { transform: rotate(160deg); } }
+  @keyframes flailR { from { transform: rotate(-110deg); } to { transform: rotate(-160deg); } }
+  @keyframes dangle { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+  body.mood-thinking #armR { animation: none; transform: rotate(-95deg) translate(-2px, 2px); }
+
+  /* hanging on the side of the screen like a tree (Android, docked; shapes that cling) */
+  body.cling-right #buddy[data-cling] #rig { transform: translate(6px, 0) rotate(-9deg); }
+  body.cling-left #buddy[data-cling] #rig { transform: scale(-1, 1) translate(6px, 0) rotate(-9deg); }
+  body.cling-right #buddy[data-cling] #armR, body.cling-left #buddy[data-cling] #armR { animation: none; transform: translate(4px, -14px) rotate(-62deg); }
+  body.cling-right #buddy[data-cling] #armL, body.cling-left #buddy[data-cling] #armL { animation: none; transform: translate(70px, -4px) rotate(-118deg); }
+  body.cling-right #buddy[data-cling] #footR, body.cling-left #buddy[data-cling] #footR { transform: translate(24px, -10px) rotate(-70deg); }
+  body.cling-right #buddy[data-cling] #footL, body.cling-left #buddy[data-cling] #footL { transform: translate(40px, -4px) rotate(-70deg); }
+  body.cling-right #buddy[data-cling] #tail, body.cling-left #buddy[data-cling] #tail { animation: hangwag 3s ease-in-out infinite; }
+  @keyframes hangwag { 0%, 100% { transform: rotate(-30deg); } 50% { transform: rotate(-12deg); } }
+  body.cling-right.wave #buddy[data-cling] #armL, body.cling-left.wave #buddy[data-cling] #armL { animation: clingwave .32s ease-in-out 5 alternate; }
+  @keyframes clingwave { from { transform: translate(0, 0) rotate(120deg); } to { transform: translate(0, 0) rotate(165deg); } }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="holder"></div>
+  </div>
+  <div id="ask" class="bubble">?</div>
+  <div id="clip" class="bubble">📋 ✓</div>
+  <div id="bang" class="bubble">!</div>
+  <div id="zzz"><span>z</span><span>z</span><span>z</span></div>
+  <div id="dots" class="bubble"><span></span><span></span><span></span></div>
+  <div id="flash"></div>
+  <div id="say"></div>
+  <div class="spark s1">✦</div><div class="spark s2">✦</div><div class="spark s3">✧</div>
+<script src="buddy-bridge.js"></script>
+<script src="avatar.js"></script>
+<script src="buddy.js"></script>
+<script src="buddy-life.js"></script>
+</body>
+</html>
