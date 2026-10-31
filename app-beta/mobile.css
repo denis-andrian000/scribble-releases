@@ -1,0 +1,41 @@
+/* Scribble for Android: full-screen app instead of the desktop's small floating panel */
+body.android { background: var(--bg); }
+body.android #card { inset: 0; border-radius: 0; border: 0; box-shadow: none;
+  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+body.android header { -webkit-app-region: no-drag; }
+body.android #btn-wide, body.android #btn-close { display: none; }
+body.android #onboard { border-radius: 0; }
+body.android .ob-page { padding-top: calc(22px + env(safe-area-inset-top)); }
+/* bigger touch targets, without squashing round things (color swatches, the color picker) */
+body.android .btn, body.android .link, body.android nav button, body.android .seg button, body.android .icon { min-height: 36px; }
+body.android .sw { width: 30px; height: 30px; min-width: 30px; min-height: 30px; max-height: 30px; flex: 0 0 30px; aspect-ratio: 1 / 1; padding: 0; }
+body.android input.sw.custom { block-size: 30px; inline-size: 30px; }
+body.android .lang-pick button { padding: 7px 14px; }
+
+/* desktop-only controls: folders on disk, hotkeys, start at login, the desktop buddy, desktop updates */
+body.android #btn-openfolder, body.android #nb-external, body.android #s-open, body.android #s-pick,
+body.android .field:has(#s-folder), body.android .field:has(#sync-state), body.android .field:has(#import-btn),
+body.android .field:has(#k-panel), body.android .toggle:has(#s-login), body.android .toggle:has(#s-gravity),
+body.android .field:has(#upd), body.android #btn-wide { display: none !important; }
+
+/* floating buddy: permission explainer */
+.float-ask { position: fixed; inset: 0; z-index: 60; background: rgba(20, 18, 40, .35); display: grid; place-items: center; padding: 24px; }
+.float-card { background: var(--bg); color: var(--ink); border-radius: 16px; padding: 18px 18px 14px; max-width: 360px; box-shadow: 0 12px 40px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 8px; }
+.float-card b { font-size: 16px; }
+.float-card p { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.5; }
+#btn-float svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* ---- the floating chat (mini.html): just the chat, compact ---- */
+body.mini nav, body.mini #btn-settings, body.mini #btn-theme, body.mini #btn-float, body.mini #btn-wide { display: none !important; }
+body.android.mini #btn-close, body.mini #btn-full { display: grid; }
+body.mini header { padding-top: 8px; }
+body.mini #card { border-radius: 0; }
+
+/* update available (Android) */
+.upd-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 78px); white-space: nowrap; z-index: 50; display: flex; align-items: center; gap: 10px; background: var(--bg); color: var(--ink); border: 1px solid var(--line, rgba(0,0,0,.1)); border-radius: 14px; padding: 8px 10px 8px 14px; box-shadow: 0 8px 28px rgba(20,18,40,.18); max-width: calc(100vw - 24px); font-size: 14px; }
+.upd-banner .btn { margin: 0; }
+.upd-banner span { overflow: hidden; text-overflow: ellipsis; }
+
+/* web version: "Continue as …" when Google's access needs renewing */
+.reconnect { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 64px); z-index: 55; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; background: var(--bg); color: var(--ink); border: 1px solid var(--line, rgba(0,0,0,.1)); border-radius: 14px; padding: 8px 10px 8px 14px; box-shadow: 0 8px 28px rgba(20,18,40,.18); max-width: calc(100vw - 24px); font-size: 14px; }
+.reconnect .btn { margin: 0; }
