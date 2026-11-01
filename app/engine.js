@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.3.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.4.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37026,7 +37026,15 @@ Content-Type: application/octet-stream\r
         "No pages yet.": "Belum ada halaman.",
         "\u201C{0}\u201D is overdue. Want to plan it in?": "\u201C{0}\u201D sudah terlambat. Mau dijadwalkan?",
         "{#0} due today. You've got this \u2600\uFE0F": "{0} jatuh tempo hari ini. Kamu pasti bisa \u2600\uFE0F",
-        "Open the full chat": "Buka obrolan penuh"
+        "Open the full chat": "Buka obrolan penuh",
+        "Write by hand (pen or finger): your buddy reads it": "Tulis tangan (pena atau jari): buddy-mu yang membacanya",
+        Pen: "Pena",
+        Eraser: "Penghapus",
+        "Clear the page": "Kosongkan halaman",
+        "Read it": "Baca",
+        "Write here with your pen or finger": "Tulis di sini dengan pena atau jarimu",
+        "Write something first.": "Tulis sesuatu dulu.",
+        "Handwritten note": "Catatan tulisan tangan"
       };
     }
   });

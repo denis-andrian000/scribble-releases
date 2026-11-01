@@ -247,6 +247,145 @@ async function send(text, label) {
   $('#input').focus();
 }
 
+// ---- handwriting: a writing pad for a stylus (or finger / mouse); the page goes to the AI as a picture ----
+// The AI reads it and, as always, asks before saving anything. Only what it read is saved, not the drawing.
+const Pad = (() => {
+  const T = (s) => (window.I18n ? I18n.t(s) : s);
+  const COLORS = ['#2B2A4C', '#3F6FD8', '#D6453D'];
+  let root, cv, ctx, strokes = [], cur = null, tool = 'pen', color = COLORS[0], penSeen = false, dpr = 1;
+  const PROMPT = 'This is my handwriting. Write out exactly what it says (keep my words and language). If it has tasks, reminders or notes, offer to save them the usual way. If a word is hard to read, give your best guess and mark it with (?).';
+
+  function build() {
+    root = el('div', 'pad');
+    root.id = 'pad';
+    root.hidden = true;
+    root.innerHTML = `
+      <div class="pad-bar">
+        <button type="button" class="pad-t pad-x" data-a="cancel" title="Cancel">✕</button>
+        <button type="button" class="pad-t on" data-tool="pen" title="Pen">✏️</button>
+        <button type="button" class="pad-t" data-tool="eraser" title="Eraser">🧽</button>
+        <span class="pad-sep"></span>
+        ${COLORS.map((c, i) => `<button type="button" class="pad-c${i ? '' : ' on'}" data-color="${c}" style="--c:${c}" title="Colour"></button>`).join('')}
+        <span class="pad-sep"></span>
+        <button type="button" class="pad-t" data-a="undo" title="Undo">↶</button>
+        <button type="button" class="pad-t" data-a="clear" title="Clear the page">🗑</button>
+        <span class="pad-grow"></span>
+        <button type="button" class="btn" data-a="done">Read it</button>
+      </div>
+      <div class="pad-paper"><canvas></canvas><p class="pad-hint">Write here with your pen or finger</p></div>`;
+    document.body.append(root);
+    cv = root.querySelector('canvas');
+    ctx = cv.getContext('2d');
+    root.querySelector('.pad-bar').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.tool) { tool = b.dataset.tool; root.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x === b)); }
+      if (b.dataset.color) { color = b.dataset.color; tool = 'pen'; root.querySelectorAll('.pad-c').forEach((x) => x.classList.toggle('on', x === b)); root.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x.dataset.tool === 'pen')); }
+      if (b.dataset.a === 'undo') { strokes.pop(); redraw(); }
+      if (b.dataset.a === 'clear') { strokes = []; redraw(); }
+      if (b.dataset.a === 'cancel') close();
+      if (b.dataset.a === 'done') done();
+    });
+    cv.addEventListener('pointerdown', down);
+    cv.addEventListener('pointermove', move);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => cv.addEventListener(ev, up));
+    window.addEventListener('resize', () => { if (!root.hidden) fit(); });
+    document.addEventListener('keydown', (e) => {
+      if (root.hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); strokes.pop(); redraw(); }
+    });
+  }
+  function fit() {
+    const r = cv.parentElement.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
+    redraw();
+  }
+  // a pen in use: ignore the hand resting on the screen (touches) until the page is closed
+  function accept(e) { if (e.pointerType === 'pen') penSeen = true; return !(penSeen && e.pointerType === 'touch'); }
+  function pt(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5]; }
+  function down(e) {
+    if (!accept(e) || (e.button && e.button !== 0)) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    cur = { id: e.pointerId, tool, color, w: tool === 'eraser' ? 26 : 3.2, pts: [pt(e)] };
+    strokes.push(cur);
+    root.classList.add('inked');
+    redraw();
+  }
+  function move(e) {
+    if (!cur || e.pointerId !== cur.id) return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const x of (evs.length ? evs : [e])) cur.pts.push(pt(x));
+    drawStroke(ctx, cur, dpr, cur.pts.length - evs.length - 1);
+  }
+  function up(e) { if (cur && e.pointerId === cur.id) cur = null; }
+  function drawStroke(c, s, k, from = 0) {
+    c.save();
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.globalCompositeOperation = s.tool === 'eraser' ? 'destination-out' : 'source-over';
+    c.strokeStyle = s.color; c.fillStyle = s.color;
+    const P = s.pts;
+    if (P.length === 1) { c.beginPath(); c.arc(P[0][0] * k, P[0][1] * k, s.w * k * (0.6 + P[0][2] * 0.8) / 2, 0, 7); c.fill(); }
+    for (let i = Math.max(1, from); i < P.length; i++) {
+      const [x0, y0, p0] = P[i - 1], [x1, y1, p1] = P[i];
+      c.lineWidth = s.w * k * (s.tool === 'eraser' ? 1 : 0.6 + ((p0 + p1) / 2) * 0.8);
+      c.beginPath(); c.moveTo(x0 * k, y0 * k); c.lineTo(x1 * k, y1 * k); c.stroke();
+    }
+    c.restore();
+  }
+  function redraw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    strokes.forEach((s) => drawStroke(ctx, s, dpr));
+    root.classList.toggle('inked', strokes.some((s) => s.tool === 'pen'));
+  }
+  function open() {
+    if (!root) build();
+    strokes = []; cur = null; penSeen = false; tool = 'pen';
+    root.hidden = false;
+    document.body.classList.add('pad-open');
+    requestAnimationFrame(fit);
+  }
+  function close() { root.hidden = true; document.body.classList.remove('pad-open'); strokes = []; }
+  // the written part of the page, dark ink on white, at most 1568 px (what the AI models read best)
+  function snapshot() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const s of strokes) if (s.tool === 'pen') for (const [x, y] of s.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    if (!isFinite(x0)) return null;
+    const m = 24; x0 -= m; y0 -= m; x1 += m; y1 += m;
+    const w = x1 - x0, h = y1 - y0;
+    const k = Math.min(2, 1568 / Math.max(w, h));
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(w * k)); out.height = Math.max(1, Math.round(h * k));
+    const layer = document.createElement('canvas');           // strokes (with the eraser) on their own layer, then onto white
+    layer.width = out.width; layer.height = out.height;
+    const lc = layer.getContext('2d');
+    lc.translate(-x0 * k, -y0 * k);
+    strokes.forEach((s) => drawStroke(lc, s, k));
+    const oc = out.getContext('2d');
+    oc.fillStyle = '#fff'; oc.fillRect(0, 0, out.width, out.height);
+    oc.drawImage(layer, 0, 0);
+    const thumb = document.createElement('canvas');
+    const tk = 160 / Math.max(out.width, out.height);
+    thumb.width = Math.max(1, Math.round(out.width * tk)); thumb.height = Math.max(1, Math.round(out.height * tk));
+    thumb.getContext('2d').drawImage(out, 0, 0, thumb.width, thumb.height);
+    return { data: out.toDataURL('image/jpeg', 0.9).split(',')[1], thumb: thumb.toDataURL('image/jpeg', 0.8) };
+  }
+  function done() {
+    const shot = snapshot();
+    if (!shot) { toast(T('Write something first.')); return; }
+    close();
+    attachments.push({ name: 'handwriting.jpg', kind: 'image', mediaType: 'image/jpeg', data: shot.data, thumb: shot.thumb });
+    renderAttachRow();
+    const extra = $('#input').value.trim();
+    send(extra ? `${PROMPT}\n\n${extra}` : PROMPT, extra || '✏️ ' + T('Handwritten note'));
+  }
+  return { open, close, snapshot, get strokes() { return strokes; } };
+})();
+window.__scribblePad = Pad;
+
 // ---- attachments: paste, drop or pick screenshots, PDFs and text files ----
 let attachments = [];
 const TEXT_EXT = new Set(['txt', 'md', 'csv', 'log', 'json', 'xml', 'yml', 'yaml', 'ini', 'conf', 'cfg', 'sql', 'js', 'ts', 'py', 'sh', 'ps1', 'html', 'css', 'env', 'toml']);
@@ -352,6 +491,7 @@ function renderAttachRow() {
 }
 
 $('#btn-attach').addEventListener('click', () => $('#file-pick').click());
+$('#btn-pen').addEventListener('click', () => Pad.open());
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#input').addEventListener('paste', (e) => {
   const files = [...(e.clipboardData?.files || [])];
