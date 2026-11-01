@@ -22,3 +22,13 @@
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
 })();
+
+// Anonymous visit count (GoatCounter: no cookies, nothing personal; one hit per app open, only on the real website)
+(function () {
+  if (location.hostname !== 'denis-andrian000.github.io') return;
+  try {
+    const q = new URLSearchParams({ p: location.pathname, t: 'Scribble app', r: document.referrer || '', s: `${screen.width},${screen.height},${devicePixelRatio || 1}`, rnd: Math.random().toString(36).slice(2) });
+    if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) q.set('e', 'false'), q.set('p', location.pathname + '#installed');
+    new Image().src = 'https://denis-andrian000.goatcounter.com/count?' + q;
+  } catch {}
+})();
