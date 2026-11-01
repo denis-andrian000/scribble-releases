@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.3.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.3.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -34919,7 +34919,22 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
           return { type: "function", function: { name: t.name, description: t.description, ...empty ? {} : { parameters: t.input_schema } } };
         });
       }
-      function toOpenAIMessages(system, messages, { vision = true, flat = false, gemini = false } = {}) {
+      var pdfTexts = /* @__PURE__ */ new Map();
+      function rememberPdfText(data, text) {
+        if (!data || !text) return;
+        pdfTexts.set(data, text);
+        while (pdfTexts.size > 20) pdfTexts.delete(pdfTexts.keys().next().value);
+      }
+      var hasPdf = (messages) => (messages || []).some((m) => Array.isArray(m.content) && m.content.some((b) => b.type === "document" && b.source?.type === "base64"));
+      function pdfAsText(b) {
+        const name = b.title || "file";
+        const t = pdfTexts.get(b.source.data);
+        if (t) return `PDF "${name}" (its text, read by Scribble; pictures and layout are not included):
+
+${t}`;
+        return `[A PDF "${name}" was attached, but this model can't read PDFs and it has no text Scribble could read (it's probably scanned). Ask the user to send screenshots of the pages instead (you can read images), or to switch to a Claude model.]`;
+      }
+      function toOpenAIMessages(system, messages, { vision = true, flat = false, gemini = false, pdf = "text" } = {}) {
         const out = [{ role: "system", content: system.map ? system.map((b) => b.text || "").join("\n\n") : String(system) }];
         for (const m of messages) {
           if (typeof m.content === "string") {
@@ -34958,7 +34973,8 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
               if (b.source?.type === "text") parts.push({ type: "text", text: `File "${b.title || "file"}":
 
 ${b.source.data}` });
-              else parts.push({ type: "text", text: `[A PDF "${b.title || "file"}" was attached, but only Claude can read PDFs here. Ask the user to paste the text or switch to a Claude model.]` });
+              else if (pdf === "file") parts.push({ type: "file", file: { filename: b.title || "file.pdf", file_data: `data:application/pdf;base64,${b.source.data}` } });
+              else parts.push({ type: "text", text: pdfAsText(b) });
             }
           }
           if (parts.length) {
@@ -34992,13 +35008,26 @@ ${b.source.data}` });
       async function chatOpenAI(conn, opts) {
         const useTools = supportsTools(conn, opts.model);
         try {
-          return await chatOnce(conn, { ...opts, useTools });
+          return await chatPdf(conn, { ...opts, useTools });
         } catch (e) {
           log("chat error", conn.provider, opts.model, e.status, String(e.message).slice(0, 300));
           if (!useTools || !(e.status === 400 || e.status === 404 || e.status === 422) || !TOOL_ERR.test(e.message)) throw e;
           noToolModels.add(noToolsKey(conn, opts.model));
           log("model has no tools, chatting without them", opts.model);
-          return chatOnce(conn, { ...opts, useTools: false });
+          return chatPdf(conn, { ...opts, useTools: false });
+        }
+      }
+      var noPdfModels = /* @__PURE__ */ new Set();
+      async function chatPdf(conn, opts) {
+        const key = noToolsKey(conn, opts.model);
+        if (!hasPdf(opts.messages) || noPdfModels.has(key)) return chatOnce(conn, { ...opts, pdf: "text" });
+        try {
+          return await chatOnce(conn, { ...opts, pdf: "file" });
+        } catch (e) {
+          if (!(e.status === 400 || e.status === 415 || e.status === 422) || TOOL_ERR.test(e.message || "")) throw e;
+          noPdfModels.add(key);
+          log("model refused the PDF file, sending its text instead", conn.provider, opts.model, String(e.message).slice(0, 200));
+          return chatOnce(conn, { ...opts, pdf: "text" });
         }
       }
       function thoughtFilter() {
@@ -35044,7 +35073,7 @@ ${b.source.data}` });
         };
       }
       async function chatOnce(conn, { model, system, tools, messages, max_tokens = 4096, onText = () => {
-      }, useTools = true }) {
+      }, useTools = true, pdf = "text" }) {
         const { base, headers } = await endpoint(conn);
         const vision = !/deepseek|mistral-small-2[45]|llama-3\.[01]|qwen(?!.*vl)|allam/i.test(model) || /vl|vision/i.test(model);
         const sys = useTools ? system : `${system}
@@ -35054,7 +35083,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           model,
           stream: true,
           max_tokens,
-          messages: toOpenAIMessages(sys, messages, { vision, flat: !useTools, gemini: conn.provider === "gemini" || conn.provider === "vertex" })
+          messages: toOpenAIMessages(sys, messages, { vision, flat: !useTools, gemini: conn.provider === "gemini" || conn.provider === "vertex", pdf })
         };
         if (useTools) body.tools = toOpenAITools(tools);
         if (PROVIDERS[conn.provider]?.usage) body.stream_options = { include_usage: true };
@@ -35165,7 +35194,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           usage: usage ? { input_tokens: Math.max(0, (usage.prompt_tokens || 0) - cached), output_tokens: usage.completion_tokens || 0, cache_read_input_tokens: cached } : {}
         };
       }
-      module.exports = { setLogger, toOpenAITools, cleanGemini, preferredModel, thoughtFilter, isFree, retryAfterOf, supportsTools, checkTools, isToolError, PROVIDERS, detect, listModels, guessProviders, chatOpenAI, endpoint, ProviderError, toOpenAIMessages };
+      module.exports = { rememberPdfText, setLogger, toOpenAITools, cleanGemini, preferredModel, thoughtFilter, isFree, retryAfterOf, supportsTools, checkTools, isToolError, PROVIDERS, detect, listModels, guessProviders, chatOpenAI, endpoint, ProviderError, toOpenAIMessages };
     }
   });
 
@@ -38115,7 +38144,10 @@ Content-Type: application/octet-stream\r
       function attachmentBlock(a) {
         if (!a || !a.data) return null;
         if (a.kind === "image") return { type: "image", source: { type: "base64", media_type: a.mediaType, data: a.data } };
-        if (a.kind === "pdf") return { type: "document", title: a.name, source: { type: "base64", media_type: "application/pdf", data: a.data } };
+        if (a.kind === "pdf") {
+          if (a.text) AI.rememberPdfText(a.data, a.text);
+          return { type: "document", title: a.name, source: { type: "base64", media_type: "application/pdf", data: a.data } };
+        }
         if (a.kind === "text") return { type: "document", title: a.name, source: { type: "text", media_type: "text/plain", data: a.data } };
         return null;
       }

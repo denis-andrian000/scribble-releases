@@ -269,6 +269,41 @@ async function canvasFrom(bitmap, max, type, quality) {
   return c.toDataURL(type, quality);
 }
 
+// The PDF's text, read here with PDF.js (Mozilla's PDF reader): sent instead of the PDF when a model can't read PDFs.
+// Empty for scanned PDFs (pictures of pages). Loaded only the first time a PDF is attached.
+let pdfjsReady = null;
+function loadPdfjs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return (pdfjsReady ||= new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/pdf.min.js';
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js'; res(window.pdfjsLib); };
+    s.onerror = () => { pdfjsReady = null; rej(new Error('PDF reader did not load')); };
+    document.head.appendChild(s);
+  }));
+}
+async function pdfText(file, maxPages = 80, maxChars = 200000) {
+  try {
+    const lib = await loadPdfjs();
+    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true, useSystemFonts: false, verbosity: 0 }).promise;
+    let out = '';
+    const n = Math.min(doc.numPages, maxPages);
+    for (let i = 1; i <= n && out.length < maxChars; i++) {
+      const page = await doc.getPage(i);
+      const tc = await page.getTextContent();
+      let line = '';
+      for (const it of tc.items) { line += it.str; if (it.hasEOL) line += '\n'; else if (it.str && !/\s$/.test(it.str)) line += ' '; }
+      out += `\n--- Page ${i} ---\n` + line.replace(/[ \t]+\n/g, '\n').trim() + '\n';
+    }
+    if (doc.numPages > n) out += `\n[Only the first ${n} of ${doc.numPages} pages were read.]`;
+    doc.destroy();
+    return out.replace(/--- Page \d+ ---\n\n/g, '').trim().length > 20 ? out.slice(0, maxChars).trim() : '';
+  } catch (e) {
+    console.warn('[scribble] could not read PDF text', e && e.message);
+    return '';
+  }
+}
+
 async function addFiles(fileList) {
   for (const file of [...fileList]) {
     if (attachments.length >= 10) { toast('Up to 10 files per message.'); break; }
@@ -288,7 +323,7 @@ async function addFiles(fileList) {
         attachments.push({ name, kind: 'image', mediaType, data, thumb });
       } else if (file.type === 'application/pdf' || ext === 'pdf') {
         if (file.size > 20e6) { toast(`${name} is over 20 MB.`); continue; }
-        attachments.push({ name, kind: 'pdf', mediaType: 'application/pdf', data: (await readAs(file)).split(',')[1] });
+        attachments.push({ name, kind: 'pdf', mediaType: 'application/pdf', data: (await readAs(file)).split(',')[1], text: await pdfText(file) });
       } else if (file.type.startsWith('text/') || TEXT_EXT.has(ext)) {
         if (file.size > 400e3) { toast(`${name} is too long. Keep text files under 400 KB.`); continue; }
         attachments.push({ name, kind: 'text', mediaType: 'text/plain', data: await readAs(file, 'text') });
