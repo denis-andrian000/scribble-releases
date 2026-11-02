@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.4.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.4.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37034,7 +37034,10 @@ Content-Type: application/octet-stream\r
         "Read it": "Baca",
         "Write here with your pen or finger": "Tulis di sini dengan pena atau jarimu",
         "Write something first.": "Tulis sesuatu dulu.",
-        "Handwritten note": "Catatan tulisan tangan"
+        "Handwritten note": "Catatan tulisan tangan",
+        "A product of": "Sebuah produk dari",
+        Website: "Situs web",
+        "Help & feedback": "Bantuan & masukan"
       };
     }
   });
@@ -39264,6 +39267,13 @@ ${e && (e.stack || e.message) || e}`;
         }
       });
       for (const s of ["i18n-id.js", "i18n.js", "avatar.js", "markdown.js", "panel.js", "keyboard.js", "theme.js", ...WEB ? ["reconnect.js", "today.js"] : ["floating.js", "update.js"]]) await loadScript(s);
+      {
+        const sp = document.getElementById("boot-splash");
+        if (sp) {
+          sp.classList.add("gone");
+          setTimeout(() => sp.remove(), 400);
+        }
+      }
       electron.__markPanelReady();
     } catch (e) {
       fatal(e);

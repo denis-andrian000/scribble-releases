@@ -652,3 +652,10 @@ body.pad-open { overscroll-behavior: none; }
   .pad-sep { margin: 0 2px; }
   .pad-bar .btn { padding: 8px 12px; white-space: nowrap; }
 }
+
+/* Settings → About: who makes Scribble */
+.about { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 22px 0 6px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 12.5px; text-align: center; }
+.about-by { display: inline-flex; align-items: center; gap: 8px; }
+.about-by img { height: 15px; width: auto; }
+.about .brand-d { display: none; }
+@media (prefers-color-scheme: dark) { .about .brand-l { display: none; } .about .brand-d { display: inline; } }
