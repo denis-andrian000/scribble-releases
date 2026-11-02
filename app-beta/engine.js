@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.6.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.7.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37757,6 +37757,15 @@ Content-Type: application/octet-stream\r
         buddyWin.on("closed", () => {
           buddyWin = null;
         });
+        buddyWin.webContents.on("render-process-gone", (_e, d) => {
+          logLine("buddy page gone", d && d.reason);
+          setTimeout(() => {
+            if (buddyWin && !buddyWin.isDestroyed()) {
+              buddyWin.reload();
+              buddyWin.showInactive();
+            }
+          }, 500);
+        });
       }
       function createPanel() {
         panelWin = new BrowserWindow({
@@ -37840,7 +37849,12 @@ Content-Type: application/octet-stream\r
         y = Math.min(Math.max(y, wa.y), wa.y + wa.height - ph);
         moveWin(panelWin, Math.round(x), Math.round(y));
       }
+      var buddyHiddenByYou = false;
       function showPanel(tab, sub) {
+        if (buddyWin && !buddyWin.isDestroyed() && (!buddyWin.isVisible() || buddyWin.isMinimized()) && !buddyHiddenByYou) {
+          buddyWin.restore();
+          buddyWin.showInactive();
+        }
         if (config.panelWide && !wide) setWide(true, { save: false });
         placePanel();
         panelWin.show();
@@ -37949,7 +37963,10 @@ Content-Type: application/octet-stream\r
             sendPanel("import:start");
           } },
           { type: "separator" },
-          { label: t("Show / hide buddy"), click: () => buddyWin.isVisible() ? buddyWin.hide() : buddyWin.showInactive() },
+          { label: t("Show / hide buddy"), click: () => {
+            buddyHiddenByYou = buddyWin.isVisible();
+            buddyHiddenByYou ? buddyWin.hide() : buddyWin.showInactive();
+          } },
           { label: t("Reset buddy position"), click: () => {
             delete config.buddyPos;
             const wa = screen.getPrimaryDisplay().workArea;
@@ -38657,8 +38674,10 @@ Content-Type: application/octet-stream\r
         for (const k of OLD_KEYS) delete a[k];
         return a;
       }
-      var CLAY_CHARS = ["fox", "cat", "dog", "chicken"];
+      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon"];
       function clayFor(shape) {
+        if (/bunny|rabbit|mouse|hamster/.test(shape || "")) return "bunny";
+        if (/dragon|dino|lizard|frog|axolotl|chameleon|turtle/.test(shape || "")) return "dragon";
         if (/cat|kitty/.test(shape || "")) return "cat";
         if (/dog|puppy|bear|panda|koala|tanuki/.test(shape || "")) return "dog";
         if (/bird|chick|duck|penguin|owl|egg/.test(shape || "")) return "chicken";
@@ -39132,6 +39151,9 @@ ${lines.join("\n")}
         Promise.race([sync.run(), new Promise((r) => setTimeout(r, 6e3))]).finally(() => app.quit());
       });
       app.on("will-quit", () => globalShortcut.unregisterAll());
+      app.on("child-process-gone", (_e, d) => {
+        if (d && d.type === "GPU") logLine("graphics process restarted", d.reason);
+      });
       app.on("window-all-closed", (e) => e.preventDefault?.());
       var appLang = () => config.lang || (String(app.getLocale() || "").toLowerCase().startsWith("id") ? "id" : "en");
       ipcMain.on("lang:get", (e) => {
