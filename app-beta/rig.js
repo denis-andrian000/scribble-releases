@@ -53,16 +53,17 @@
     }
     return x.getImageData(0, 0, w, h).data;
   }
-  function skinLayer(img, rig, look, layerName) {
-    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  // k: how much smaller than the stored picture this copy is (small buddies and previews don't need 768px)
+  function skinLayer(img, rig, look, layerName, k) {
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
     const recolor = look.hsv, pat = look.pattern && look.pattern !== 'none';
     if (!recolor && !pat) return c;
     let d;
     try { d = x.getImageData(0, 0, c.width, c.height); } catch { return c; }
     const p = d.data, fh = rig.furHue, fs = rig.furSat || 0.6, fv = rig.furVal || 0.9;
     // where this layer sits in the rig box (patterns are laid out in rig units)
-    const q = rig.q || 1;
+    const q = (rig.q || 1) * k;
     let pd = null;
     if (pat) {
       const part = rig.parts[layerName];
@@ -91,15 +92,18 @@
     return c;
   }
   const skins = {};
-  function skin(ch, cfg) {
+  // pictures are drawn into a 512-unit box; px is how many real pixels that box gets on screen
+  const bucket = (px) => (px <= 220 ? 256 : px <= 440 ? 512 : 768);
+  function skin(ch, cfg, px = 768) {
     const rig = ch.rig;
     const col = cfg.color && String(cfg.color).toUpperCase() !== String(rig.fur).toUpperCase() ? cfg.color : null;
     const pattern = ['dots', 'stripes', 'hearts'].includes(cfg.pattern) ? cfg.pattern : 'none';
-    const key = [ch.name, col, pattern, pattern !== 'none' ? cfg.patColor : ''].join('|');
+    const k = Math.min(1, bucket(px) / (512 * (rig.q || 1)));
+    const key = [ch.name, col, pattern, pattern !== 'none' ? cfg.patColor : '', k].join('|');
     if (skins[key]) return skins[key];
     const look = { hsv: col ? hexHsv(col) : null, pattern, patColor: cfg.patColor };
     const L = {};
-    for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n);
+    for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n, k);
     const keys = Object.keys(skins); if (keys.length > 24) delete skins[keys[0]];
     skins[key] = L;
     return L;
@@ -126,7 +130,8 @@
     g.save();
     g.translate(J.at[0], J.at[1]);
     g.rotate(Math.atan2(J.dir[1], J.dir[0]) - Math.PI / 2 + rot);
-    if (Math.abs(curl) < 0.025) { g.drawImage(img, -rx, -ry, W, H); g.restore(); return; }
+    if (Math.abs(curl) < 0.12) {           // only bend when it's really swinging (bending costs ~30 small draws)
+      g.drawImage(img, -rx, -ry, W, H); g.restore(); return; }
     const COLS = 2, ROWS = 8, rowY = (i) => (H * i) / ROWS, center = [], ang = [];
     let cx = 0, cy = 0, prev = ry;
     for (let i = 0; i <= ROWS; i++) {
@@ -271,27 +276,36 @@
 
   const NEUTRAL = { look: [0, 0], open: [1, 1], eyeScale: 1, blush: 0.55, mouth: { o: 0, c: 0.55, w: 1 }, arms: [0, 0], tail: 0 };
   // a still picture (settings, onboarding, header)
+  // previews are painted one at a time with a breather in between, so a page full of them never freezes the app
+  let queue = Promise.resolve();
+  const breathe = () => new Promise((r) => setTimeout(r, 0));
   function paint(canvas, cfg, pose) {
     const name = DATA()[cfg.clay] ? cfg.clay : Object.keys(DATA())[0];
     if (!name) return Promise.resolve();
-    return load(name).then((ch) => {
+    return (queue = queue.then(breathe).then(() => load(name)).then((ch) => {
+      if (!canvas.isConnected) return;
       fit(canvas, 256);
       const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
-      drawRig(canvas, ch, skin(ch, cfg), s);
+      drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
       canvas.dataset.painted = '1';
-    }).catch(() => {});
+    }).catch(() => {}));
   }
   // the live buddy: buddy.js calls update(state) every frame
   function player(canvas, cfg) {
     const name = DATA()[cfg.clay] ? cfg.clay : Object.keys(DATA())[0];
-    let ch = null, L = null, n = 0;
-    const ready = load(name).then((c) => { ch = c; L = skin(c, cfg); }).catch(() => {});
+    let ch = null, L = null, n = 0, last = 0;
+    const ready = load(name).then((c) => { ch = c; fit(canvas, 160); L = skin(c, cfg, canvas.width); }).catch(() => {});
     return {
       ready, name,
       get rig() { return ch && ch.rig; },
       update(s) {
         if (!ch) return;
-        if ((n++ & 31) === 0) fit(canvas, 160);
+        // 30 redraws a second is plenty for the limbs and face (the body's squash and bounce run at 60 elsewhere),
+        // and keeps phones cool: the floating buddy shares the app's browser engine
+        const t = performance.now();
+        if (t - last < 30) return;
+        last = t;
+        if ((n++ & 15) === 0) { const w = canvas.width; fit(canvas, 160); if (canvas.width !== w || !L) L = skin(ch, cfg, canvas.width); }
         drawRig(canvas, ch, L, { blushColor: cfg.blushColor, ...s, blush: cfg.cheeks === false ? 0 : s.blush });
       },
     };
