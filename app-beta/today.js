@@ -106,6 +106,7 @@
       const done = row.classList.contains('done');
       row.classList.toggle('done', !done);
       await S.updateTask(Number(row.dataset.id), { status: done ? 'todo' : 'done' });
+      if (!done) window.ScribbleSound?.play('taskDone');
       if (!done) buddyEvent('buddy:state', 'happy');
       render();
       return;

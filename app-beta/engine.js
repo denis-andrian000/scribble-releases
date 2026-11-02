@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.4.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.5.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37037,7 +37037,13 @@ Content-Type: application/octet-stream\r
         "Handwritten note": "Catatan tulisan tangan",
         "A product of": "Sebuah produk dari",
         Website: "Situs web",
-        "Help & feedback": "Bantuan & masukan"
+        "Help & feedback": "Bantuan & masukan",
+        Sounds: "Suara",
+        "Sounds when I use it (tap, drag, replies, saving)": "Suara saat aku memakainya (ketuk, seret, balasan, menyimpan)",
+        "Also when it does things on its own (hops, sneezes, naps\u2026)": "Juga saat ia beraksi sendiri (melompat, bersin, tidur siang\u2026)",
+        Volume: "Volume",
+        "Play a sound": "Putar suara",
+        "Each buddy has its own voice. Quiet when your phone is on silent.": "Tiap buddy punya suaranya sendiri. Diam saat ponselmu dalam mode senyap."
       };
     }
   });
@@ -37722,7 +37728,7 @@ Content-Type: application/octet-stream\r
           alwaysOnTop: true,
           backgroundColor: "#00000000",
           title: "Scribble",
-          webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }
+          webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" }
         });
         buddyWin.setAlwaysOnTop(true, "screen-saver");
         buddyWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -37746,7 +37752,7 @@ Content-Type: application/octet-stream\r
           hasShadow: true,
           backgroundColor: "#00000000",
           title: "Scribble",
-          webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
+          webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, autoplayPolicy: "no-user-gesture-required" }
         });
         panelWin.setAlwaysOnTop(true, "floating");
         panelWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -38573,6 +38579,7 @@ Content-Type: application/octet-stream\r
         image: null,
         name: "Scribble",
         tone: "friendly",
+        sound: { on: true, idle: false, vol: 0.6 },
         imageW: 0,
         imageH: 0,
         imageCrop: { zoom: 1, x: 0, y: 0 },

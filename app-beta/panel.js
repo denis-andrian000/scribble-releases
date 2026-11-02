@@ -18,6 +18,12 @@ $$('[data-lang]').forEach((b) => {
 
 let currentTab = 'chat';
 let busy = false;
+// ticking a task off makes the little "done" sound (Settings → Buddy → Sounds)
+async function updTask(id, fields) {
+  const r = await S.updateTask(id, fields);
+  if (fields && fields.status === 'done' && !(r && r.ok === false)) window.ScribbleSound?.play('taskDone');
+  return r;
+}
 
 // ---------------- tabs ----------------
 let wideMode = false;
@@ -1103,7 +1109,7 @@ $('#nb-content').addEventListener('change', async (e) => {
   const line = Number(cb.dataset.line);
   if (openPath === 'Tasks.md') {
     const id = (openSource.split('\n')[line] || '').match(/`#(\d+)`/);
-    if (id) { await S.updateTask(Number(id[1]), { status: cb.checked ? 'done' : 'todo' }); return openPage('Tasks.md'); }
+    if (id) { await updTask(Number(id[1]), { status: cb.checked ? 'done' : 'todo' }); return openPage('Tasks.md'); }
     return;
   }
   const next = toggleCheckbox(openSource, line, cb.checked);
@@ -1463,7 +1469,7 @@ function cellDate(value, onChange, cls = '') {
 }
 
 async function patchTask(t, patch, input) {
-  const r = await S.updateTask(t.id, patch);
+  const r = await updTask(t.id, patch);
   if (r && r.ok === false) { toast(r.error); renderTaskTable(); return; }
   Object.assign(t, r && r.task ? r.task : patch);
   t._cat = t._cat || '';
@@ -1588,7 +1594,7 @@ function taskRow(t, depth) {
   cb.checked = isClosedT(t);
   cb.title = 'Mark done';
   cb.addEventListener('click', (e) => e.stopPropagation());
-  cb.addEventListener('change', async () => { await S.updateTask(t.id, { status: cb.checked ? 'done' : 'todo' }); loadTasks(); });
+  cb.addEventListener('change', async () => { await updTask(t.id, { status: cb.checked ? 'done' : 'todo' }); loadTasks(); });
   const main = el('div', 't-main');
   const title = el('span', 't-title'); title.textContent = t.title;
   const meta = el('div', 'meta');
@@ -1618,7 +1624,7 @@ function taskRow(t, depth) {
     const p = el('span', `pill ${t.status}`);
     p.textContent = { doing: 'in progress', hold: 'on hold', todo: 'start' }[t.status] || 'start';
     p.title = { doing: 'Move back to to-do', hold: 'Resume (back to to-do)', todo: 'Mark in progress' }[t.status] || '';
-    p.addEventListener('click', async (e) => { e.stopPropagation(); await S.updateTask(t.id, { status: t.status === 'todo' ? 'doing' : 'todo' }); loadTasks(); });
+    p.addEventListener('click', async (e) => { e.stopPropagation(); await updTask(t.id, { status: t.status === 'todo' ? 'doing' : 'todo' }); loadTasks(); });
     meta.append(p);
   } else {
     const p = el('span', `pill ${t.status === 'cancelled' ? 'cancelled' : 'closed'}`);
@@ -1674,7 +1680,7 @@ function taskRow(t, depth) {
       if (!check()) return;
       const patch = { title: f('title').value.trim(), status: f('status').value };
       for (const k of ['start', 'due', 'priority']) if (f(k).value) patch[k] = f(k).value;   // empty = leave as it is
-      const r = await S.updateTask(t.id, patch);
+      const r = await updTask(t.id, patch);
       if (r && r.ok === false) { prob.textContent = r.error; prob.hidden = false; return; }
       openTaskEditors.delete(t.id);
       toast('Task updated');
@@ -1916,6 +1922,7 @@ let avLocalUntil = 0;
 // light: only refresh the previews (used while dragging sliders / panning, so the controls don't get rebuilt mid-drag)
 function setAvatar(patch, { debounce = false, light = false } = {}) {
   av = { ...av, ...patch };
+  window.ScribbleSound?.configure(av);
   avLocalUntil = Date.now() + 700;
   if (light) $$('.av-live').forEach((n) => { n.innerHTML = Avatar.build(av); });
   else renderCustomizer();
@@ -2123,6 +2130,32 @@ function renderCustomizer() {
   }
   box.append(section('Personality', tp));
 
+  // sounds: little tones for what the buddy does (sounds.js)
+  {
+    const snd = { on: true, idle: false, vol: 0.6, ...(av.sound || {}) };
+    const sec = el('div', 'av-sec snd-sec');
+    const h = el('span', 'av-h'); h.textContent = 'Sounds';
+    const set = (p) => setAvatar({ sound: { ...snd, ...p } }, { light: true });
+    const tog = (label, on, key) => {
+      const l = el('label', 'toggle'); const i = el('input'); i.type = 'checkbox'; i.checked = on; i.id = 'snd-' + key;
+      i.addEventListener('change', () => { snd[key] = i.checked; set({ [key]: i.checked }); if (key === 'on') vol.disabled = idle.querySelector('input').disabled = !i.checked; });
+      const t = el('span'); t.textContent = label; l.append(i, t); return l;
+    };
+    const main = tog('Sounds when I use it (tap, drag, replies, saving)', snd.on, 'on');
+    const idle = tog('Also when it does things on its own (hops, sneezes, naps…)', snd.idle, 'idle');
+    const row = el('div', 'snd-row');
+    const vl = el('span'); vl.textContent = 'Volume';
+    const vol = el('input'); vol.type = 'range'; vol.min = '0'; vol.max = '1'; vol.step = '0.05'; vol.value = String(snd.vol); vol.id = 'snd-vol';
+    vol.addEventListener('change', () => { snd.vol = Number(vol.value); set({ vol: snd.vol }); setTimeout(() => window.ScribbleSound?.play('tap'), 60); });
+    const test = el('button', 'btn ghost'); test.type = 'button'; test.textContent = 'Play a sound';
+    test.addEventListener('click', () => { const n = ['tap', 'saved', 'taskDone', 'reply', 'surprised']; window.ScribbleSound?.play(n[(Math.random() * n.length) | 0]); });
+    vol.disabled = !snd.on; idle.querySelector('input').disabled = !snd.on;
+    row.append(vl, vol, test);
+    const note = el('small'); note.textContent = 'Each buddy has its own voice. Quiet when your phone is on silent.';
+    sec.append(h, main, idle, row, note);
+    box.append(sec);
+  }
+
   const extra = el('div', 'av-sec');
   const sizeSeg = el('div', 'seg small');
   for (const [k, l] of [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]) {
@@ -2206,10 +2239,11 @@ $('#av-file').addEventListener('change', async (e) => {
 });
 
 S.onAvatar((a) => {
+  window.ScribbleSound?.configure(a);
   if (Date.now() < avLocalUntil) return;          // our own change echoing back
   av = a; applyAvatarToHeader(a); renderCustomizer();
 });
-S.getAvatar().then((a) => { av = a; applyAvatarToHeader(a); renderCustomizer(); });
+S.getAvatar().then((a) => { window.ScribbleSound?.configure(a); av = a; applyAvatarToHeader(a); renderCustomizer(); });
 
 // ---------------- light / dark ----------------
 function showTheme(t) {

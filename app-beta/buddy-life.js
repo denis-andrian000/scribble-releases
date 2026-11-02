@@ -695,6 +695,7 @@
     act = { name, def, t0: t, dur: def.dur, fired: {} };
     act.once = (k, fn) => { if (act.fired[k]) return; if (fn() !== false) act.fired[k] = true; };
     def.start?.(act);
+    try { window.ScribbleSound?.play(name); } catch {}
     history.push(name); if (history.length > 3) history.shift();
   }
   function endAction() {

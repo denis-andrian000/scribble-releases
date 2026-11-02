@@ -133,20 +133,22 @@ const st = {
   yawnUntil: 0, nextYawn: 0,
   alertUntil: 0, nextAlertHop: 0,
 };
+const snd = (name, arg) => { try { window.ScribbleSound?.play(name, arg); } catch {} };
 const activity = () => {
   Life()?.onActivity();
-  if (st.asleep) { st.asleep = false; st.surpriseUntil = now() + 650; B.ty.kick(-140); B.sy.kick(2.2); }
+  if (st.asleep) { snd('wake'); st.asleep = false; st.surpriseUntil = now() + 650; B.ty.kick(-140); B.sy.kick(2.2); }
   st.lastActivity = now();
 };
 
 S.onState((s) => {
   const t = now();
-  if (s === 'falling') { st.falling = true; return; }
+  if (s === 'falling') { if (!st.falling) snd('falling'); st.falling = true; return; }
   if (s === 'landed') { st.falling = false; st.vy = 0; return; }
   if (s === 'land') return;                       // impacts come through onLand with their speed
   st.falling = false;
   Life()?.interrupt();
   if (s === 'clipped') {
+    snd('clipped');
     B.ty.kick(-200); B.sy.kick(2); st.giggleUntil = t + 900;
     body.classList.remove('clip'); void body.offsetWidth; body.classList.add('clip');
     setTimeout(() => body.classList.remove('clip'), 1400);
@@ -154,6 +156,7 @@ S.onState((s) => {
     return;
   }
   if (s === 'alert') {
+    snd('alert');
     st.alertUntil = t + 120000;            // keeps waving until you click it (max 2 minutes)
     B.ty.kick(-260); B.sy.kick(2.6);
     body.classList.add('alert');
@@ -161,10 +164,11 @@ S.onState((s) => {
     activity();
     return;
   }
-  if (s === 'happy') { st.ext = 'happy'; st.extUntil = t + 1400; B.ty.kick(-260); B.sy.kick(2.5); B.sx.kick(-1.5); sparkle(); }
-  else if (s === 'sad') { st.ext = 'sad'; st.extUntil = t + 2600; }
-  else if (s === 'thinking' || s === 'asking') { st.ext = s; st.extUntil = Infinity; if (s === 'asking') { B.rot.kick(-60); B.ty.kick(-120); } }
-  else { if (st.ext === 'thinking' || st.ext === 'asking') st.ext = 'idle'; }
+  const wasWorking = st.ext === 'thinking';
+  if (s === 'happy') { snd('saved'); st.ext = 'happy'; st.extUntil = t + 1400; B.ty.kick(-260); B.sy.kick(2.5); B.sx.kick(-1.5); sparkle(); }
+  else if (s === 'sad') { snd('sad'); st.ext = 'sad'; st.extUntil = t + 2600; }
+  else if (s === 'thinking' || s === 'asking') { if (st.ext !== s) snd(s); st.ext = s; st.extUntil = Infinity; if (s === 'asking') { B.rot.kick(-60); B.ty.kick(-120); } }
+  else { if (wasWorking) snd('reply'); if (st.ext === 'thinking' || st.ext === 'asking') st.ext = 'idle'; }
   body.classList.toggle('thinking', st.ext === 'thinking');
   body.classList.toggle('asking', st.ext === 'asking');
   activity();
@@ -179,6 +183,8 @@ S.onMotion((m) => {
 });
 S.onLand((impact) => {
   const k = Math.min(1, impact / 1400);
+  snd('land', k);
+  if (k > 0.35) setTimeout(() => snd('phew'), 450);
   B.sy.kick(-4.2 * k); B.sx.kick(3.4 * k); B.ty.kick(40 * k);
   if (k > 0.35) st.phewUntil = now() + 900;
 });
@@ -200,14 +206,17 @@ S.onPanel((open) => {
 if (S.onEdge) S.onEdge((side) => {
   body.classList.toggle('cling-left', side === 'left');
   body.classList.toggle('cling-right', side === 'right');
+  if (side && document.querySelector('#buddy[data-cling]')) snd('cling');
 });
-S.onAvatar((a) => { render(a); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar(); });
+S.onAvatar((a) => { window.ScribbleSound?.configure(a); render(a); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar(); });
 
 // pointer: press, drag, click, hover
 // (the gesture steps are also exposed on window.__buddy.input, so the Android floating buddy can drive them from native touch)
-function pressStart() { dragging = false; st.pressed = true; activity(); }
+let squishTimer = 0;
+function pressStart() { dragging = false; st.pressed = true; activity(); clearTimeout(squishTimer); squishTimer = setTimeout(() => { if (st.pressed && !dragging) snd('squish'); }, 380); }
 function dragBegin() {
   dragging = true;
+  clearTimeout(squishTimer); snd('pickup');
   st.held = true; st.pressed = false; st.shake = 0; st.lastDir = 0;
   Life()?.interrupt();
   body.classList.add('held');
@@ -215,10 +224,11 @@ function dragBegin() {
 function dragFinish() {
   body.classList.remove('held');
   st.held = false; st.pressed = false;
-  if (st.shake >= 6) { st.dizzyUntil = now() + 2200; B.rot.kick(160); }
+  if (st.shake >= 6) { st.dizzyUntil = now() + 2200; B.rot.kick(160); snd('dizzy'); }
 }
 function tapped() {
   // a click: boing, then a happy blink
+  clearTimeout(squishTimer); snd('tap');
   B.sy.kick(-3.4); B.sx.kick(2.8); B.ty.kick(30);
   st.giggleUntil = now() + 700;
   st.alertUntil = 0; body.classList.remove('alert');
@@ -253,7 +263,7 @@ holder.addEventListener('pointerup', (e) => {
   st.pressed = false;
   start = null; dragging = false;
 });
-holder.addEventListener('pointerenter', () => { st.hover = true; activity(); B.sy.kick(1.2); });
+holder.addEventListener('pointerenter', () => { snd('hover'); st.hover = true; activity(); B.sy.kick(1.2); });
 holder.addEventListener('pointerleave', () => { st.hover = false; });
 holder.addEventListener('contextmenu', (e) => { e.preventDefault(); S.menu(); });
 
@@ -304,10 +314,10 @@ function pickMood(t) {
   if (st.hover) return 'curious';
   if (t < st.typingUntil || st.cursor.panelOpen) return 'attentive';
   const idle = t - st.lastActivity;
-  if (idle > 150000) { st.asleep = true; return 'asleep'; }
+  if (idle > 150000) { if (!st.asleep) snd('asleep'); st.asleep = true; return 'asleep'; }
   if (idle > 60000) {
     // now and then a big stretch-and-yawn
-    if (t > st.nextYawn) { st.yawnUntil = t + 2600; st.nextYawn = t + 30000; }
+    if (t > st.nextYawn) { st.yawnUntil = t + 2600; st.nextYawn = t + 30000; snd('yawn'); }
     return t < st.yawnUntil ? 'yawn' : 'sleepy';
   }
   if (st.cursor.dist < 170) return 'curious';
@@ -557,4 +567,4 @@ function frame(t) {
 // handy for debugging from devtools
 window.__buddy = { st, B, F, input: { press: pressStart, dragStart: dragBegin, dragEnd: () => { dragFinish(); dragging = false; }, click: () => { tapped(); dragging = false; }, cancel: () => { st.pressed = false; dragging = false; } } };
 
-S.getAvatar().then((a) => { render(a); requestAnimationFrame(frame); });
+S.getAvatar().then((a) => { window.ScribbleSound?.configure(a); render(a); requestAnimationFrame(frame); });
