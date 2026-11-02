@@ -492,6 +492,7 @@ function renderAttachRow() {
 
 $('#btn-attach').addEventListener('click', () => $('#file-pick').click());
 $('#btn-pen').addEventListener('click', () => Pad.open());
+document.querySelectorAll('.about [data-url]').forEach((b) => b.addEventListener('click', () => S.openExternal(b.dataset.url)));
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#input').addEventListener('paste', (e) => {
   const files = [...(e.clipboardData?.files || [])];

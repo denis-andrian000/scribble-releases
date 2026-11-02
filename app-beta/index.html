@@ -20,6 +20,13 @@
 <script src="pwa.js" defer></script>
 </head>
 <body class="android web">
+<div id="boot-splash" aria-hidden="true"><style>
+#boot-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#FFFBF2;color:#2B2A4C;font:700 30px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;transition:opacity .35s}
+#boot-splash.gone{opacity:0;pointer-events:none}#boot-splash{animation:bsAuto .4s 10s forwards}@keyframes bsAuto{to{opacity:0;visibility:hidden}}#boot-splash>img{width:120px;height:120px;margin-bottom:14px}
+#boot-splash .bs-by{position:absolute;bottom:calc(36px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:6px;font:500 12px/1 system-ui,sans-serif;letter-spacing:.1em;color:#8E8BA8}
+#boot-splash .bs-by img{height:18px}#boot-splash .d{display:none}
+@media (prefers-color-scheme:dark){#boot-splash{background:#1F1E2E;color:#ECE9F5}#boot-splash .l{display:none}#boot-splash .d{display:block}}
+</style><img src="icon-192.png" alt=""><span>Scribble</span><div class="bs-by"><span>FROM</span><img class="l" src="brand/omniz.png" alt="Omniz"><img class="d" src="brand/omniz-dark.png" alt="Omniz"></div></div>
 <div id="card">
   <header>
     <div class="brand"><span class="logo"></span><span class="bname">Scribble</span></div>
@@ -274,6 +281,10 @@
         <small>Click a shortcut, then press the new keys. <span id="k-msg" class="kbd-bad"></span></small>
       </div>
       <div class="row end"><span id="s-saved"></span><button class="btn" id="s-save">Save</button></div>
+      <div class="about">
+        <span class="about-by">A product of <img src="brand/omniz.png" class="brand-l" alt="Omniz"><img src="brand/omniz-dark.png" class="brand-d" alt="Omniz"></span>
+        <small><button type="button" class="link" data-url="https://denis-andrian000.github.io/scribble-releases/">Website</button> · <button type="button" class="link" data-url="https://denis-andrian000.github.io/scribble-releases/privacy.html">Privacy policy</button> · <button type="button" class="link" data-url="https://github.com/denis-andrian000/scribble-releases/issues">Help &amp; feedback</button></small>
+      </div>
     </div>
   </section>
 
