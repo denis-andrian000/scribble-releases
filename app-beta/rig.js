@@ -265,7 +265,7 @@
   function fit(canvas, fallback) {
     const r = canvas.getBoundingClientRect();
     const px = Math.round(Math.max(r.width, r.height) * (window.devicePixelRatio || 1)) || fallback;
-    const n = clamp(px, 48, 640);
+    const n = clamp(px, 48, 1024);
     if (canvas.width !== n) { canvas.width = n; canvas.height = n; }
   }
 
