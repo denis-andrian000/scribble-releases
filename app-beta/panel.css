@@ -669,3 +669,6 @@ body.pad-open { overscroll-behavior: none; }
 .av-grid.clay-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .av-grid.clay-grid .av-opt svg { width: 100%; height: auto; aspect-ratio: 1; }
 .av-grid.pat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.size-row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+.size-row .size-val { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }

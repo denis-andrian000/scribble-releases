@@ -57,6 +57,7 @@
   function skinLayer(img, rig, look, layerName, k) {
     const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
     const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
+    if (k < 0.9) sharpen(x, c.width, c.height, k < 0.45 ? 0.5 : 0.3);   // shrunk copies get their fine clay texture back
     const recolor = look.hsv, pat = look.pattern && look.pattern !== 'none';
     if (!recolor && !pat) return c;
     let d;
@@ -90,6 +91,21 @@
     }
     x.putImageData(d, 0, 0);
     return c;
+  }
+  // light unsharp mask (3×3) on the colour, not the edges' transparency
+  function sharpen(x, w, h, amt) {
+    let d;
+    try { d = x.getImageData(0, 0, w, h); } catch { return; }
+    const p = d.data, o = new Uint8ClampedArray(p);
+    for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+      const i = (y * w + xx) * 4;
+      if (o[i + 3] < 250) continue;
+      for (let c = 0; c < 3; c++) {
+        const blur = (o[i + c - 4] + o[i + c + 4] + o[i + c - w * 4] + o[i + c + w * 4]) / 4;
+        p[i + c] = o[i + c] + (o[i + c] - blur) * amt;
+      }
+    }
+    x.putImageData(d, 0, 0);
   }
   const skins = {};
   // pictures are drawn into a 512-unit box; px is how many real pixels that box gets on screen
@@ -267,9 +283,11 @@
     if (frontR) part(g, L.armR, P.armR, arms[1], bend[1]);
   }
 
-  function fit(canvas, fallback) {
+  // the canvas is drawn at ss× the pixels it covers: the buddy is always being squashed and tilted by a CSS
+  // transform, and shrinking a bigger picture on the fly keeps the clay texture and eyes crisp
+  function fit(canvas, fallback, ss = 2) {
     const r = canvas.getBoundingClientRect();
-    const px = Math.round(Math.max(r.width, r.height) * (window.devicePixelRatio || 1)) || fallback;
+    const px = Math.round(Math.max(r.width, r.height) * (window.devicePixelRatio || 1) * ss) || fallback;
     const n = clamp(px, 48, 1024);
     if (canvas.width !== n) { canvas.width = n; canvas.height = n; }
   }
@@ -284,7 +302,7 @@
     if (!name) return Promise.resolve();
     return (queue = queue.then(breathe).then(() => load(name)).then((ch) => {
       if (!canvas.isConnected) return;
-      fit(canvas, 256);
+      fit(canvas, 256, 1.5);
       const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
       drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
       canvas.dataset.painted = '1';
