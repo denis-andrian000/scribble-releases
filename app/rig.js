@@ -56,13 +56,17 @@
   // k: how much smaller than the stored picture this copy is (small buddies and previews don't need 768px)
   function skinLayer(img, rig, look, layerName, k) {
     const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
+    // willReadFrequently keeps this layer in normal memory: graphics-memory canvases can be wiped when Windows
+    // resets the GPU (e.g. as another window hides), which left the buddy invisible
+    const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
     if (k < 0.9) sharpen(x, c.width, c.height, k < 0.45 ? 0.5 : 0.3);   // shrunk copies get their fine clay texture back
     const recolor = look.hsv, pat = look.pattern && look.pattern !== 'none';
     if (!recolor && !pat) return c;
     let d;
     try { d = x.getImageData(0, 0, c.width, c.height); } catch { return c; }
     const p = d.data, fh = rig.furHue, fs = rig.furSat || 0.6, fv = rig.furVal || 0.9;
+    const sm = rig.satMin || 0.22;
+    const vm = rig.valMin || 0.5;                        // how dark a shadow still counts as fur                       // pastel furs (the bunny) need a lower bar than the cream
     // where this layer sits in the rig box (patterns are laid out in rig units)
     const q = (rig.q || 1) * k;
     let pd = null;
@@ -76,10 +80,10 @@
     for (let i = 0; i < p.length; i += 4) {
       if (!p[i + 3]) continue;
       const r = p[i] / 255, g = p[i + 1] / 255, b = p[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn, s = mx ? dl / mx : 0;
-      if (s < 0.22 || mx < 0.5) continue;
+      if (s < sm || mx < vm) continue;
       let h = dl === 0 ? 0 : mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4; h = ((h / 6) + 1) % 1;
       let dh = Math.abs(h - fh); dh = Math.min(dh, 1 - dh);
-      const tol = rig.furTol || 0.05, w = clamp((tol - dh) / Math.min(0.02, tol * 0.3), 0, 1) * clamp((s - 0.22) / 0.12, 0, 1) * clamp((mx - 0.5) / 0.1, 0, 1);
+      const tol = rig.furTol || 0.05, w = clamp((tol - dh) / Math.min(0.02, tol * 0.3), 0, 1) * clamp((s - sm) / (sm * 0.55), 0, 1) * clamp((mx - vm) / 0.1, 0, 1);
       if (!w) continue;
       const shade = mx / fv;                                // the clay's light and shadow at this pixel
       let [R, G, Bc] = recolor ? hsvRgb(th, clamp(s * ts / fs, 0, 1), clamp(tv * shade, 0, 1)) : [r, g, b];
@@ -120,6 +124,8 @@
     const look = { hsv: col ? hexHsv(col) : null, pattern, patColor: cfg.patColor };
     const L = {};
     for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n, k);
+    // the nose picture was cut with a little fur round it: that fur follows the colour too (never the pattern)
+    if (ch.img.nose) L.nose = skinLayer(ch.img.nose, rig, { ...look, pattern: 'none' }, 'nose', 1);
     const keys = Object.keys(skins); if (keys.length > 24) delete skins[keys[0]];
     skins[key] = L;
     return L;
@@ -173,8 +179,8 @@
     for (let i = 0; i <= 40; i++) { const t = i / 40, a = a0 + t * 2.6 * Math.PI * 2, rr = r * t; const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; i ? g.lineTo(x, y) : g.moveTo(x, y); }
     g.stroke();
   }
-  function face(g, ch, s) {
-    const R = ch.rig, I = ch.img, K = R.k || 1, MK = R.mk || K;
+  function face(g, ch, s, L) {
+    const R = ch.rig, I = L && L.nose ? { ...ch.img, nose: L.nose } : ch.img, K = R.k || 1, MK = R.mk || K;
     const lx = (s.look?.[0] || 0) * 7 * K, ly = (s.look?.[1] || 0) * 5 * K;
     g.save();
     g.globalAlpha = clamp(s.faceAlpha ?? 1, 0, 1);
@@ -274,11 +280,12 @@
     if (P.tail) part(g, L.tail, P.tail, s.tail || 0, s.tailBend || 0);
     for (const n of Object.keys(P)) if (P[n].kind === 'foot') part(g, L[n], P[n], 0, 0);
     // arms hang behind the body; raised, they come in front (otherwise the big head hides them)
-    const frontL = arms[0] > 0.55, frontR = arms[1] < -0.55;
+    // (some characters, like the dragon, hold their arms in front of the belly all the time)
+    const frontL = arms[0] > 0.55 || P.armL?.layer === 'front', frontR = arms[1] < -0.55 || P.armR?.layer === 'front';
     if (!frontL) part(g, L.armL, P.armL, arms[0], bend[0]);
     if (!frontR) part(g, L.armR, P.armR, arms[1], bend[1]);
     g.drawImage(L.body, 0, 0, 512, 512);
-    face(g, ch, s);
+    face(g, ch, s, L);
     if (frontL) part(g, L.armL, P.armL, arms[0], bend[0]);
     if (frontR) part(g, L.armR, P.armR, arms[1], bend[1]);
   }
@@ -313,6 +320,8 @@
     const name = DATA()[cfg.clay] ? cfg.clay : Object.keys(DATA())[0];
     let ch = null, L = null, n = 0, last = 0;
     const ready = load(name).then((c) => { ch = c; fit(canvas, 160); L = skin(c, cfg, canvas.width); }).catch(() => {});
+    // after a graphics reset the canvas comes back empty: rebuild the layers and carry on drawing
+    canvas.addEventListener('contextrestored', () => { for (const k of Object.keys(skins)) delete skins[k]; if (ch) L = skin(ch, cfg, canvas.width); last = 0; });
     return {
       ready, name,
       get rig() { return ch && ch.rig; },
