@@ -659,3 +659,8 @@ body.pad-open { overscroll-behavior: none; }
 .about-by img { height: 15px; width: auto; }
 .about .brand-d { display: none; }
 @media (prefers-color-scheme: dark) { .about .brand-l { display: none; } .about .brand-d { display: inline; } }
+
+/* Settings → Buddy → Sounds */
+.snd-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.snd-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.snd-row .btn { white-space: nowrap; }
