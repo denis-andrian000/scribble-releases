@@ -164,7 +164,8 @@
   function configure(av) {
     const snd = (av && av.sound) || {};
     cfg = { on: snd.on !== false, idle: !!snd.idle, vol: snd.vol == null ? 0.6 : Math.max(0, Math.min(1, Number(snd.vol))) };
-    pitch = PITCH[av && av.shape] || 1;
+    // clay characters: the chick chirps higher, the dog is a little deeper
+    pitch = (av && av.kind === 'clay' ? { fox: 1.05, cat: 1.12, dog: 0.9, chicken: 1.3 }[av.clay] : PITCH[av && av.shape]) || 1;
     if (master) master.gain.setTargetAtTime(cfg.vol, ctx.currentTime, 0.05);
   }
   window.ScribbleSound = { play, configure, names: Object.keys(S), has: (n) => !!S[n], get config() { return { ...cfg, pitch }; }, get state() { return ctx ? ctx.state : 'none'; }, get played() { return played.slice(); } };

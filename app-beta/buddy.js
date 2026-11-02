@@ -38,6 +38,7 @@ const ALL = [...Object.values(B), ...Object.values(F)];
 // ---------------------------------------------------------------- avatar + face DOM
 let cfg = {};
 let svg = null, faceG = null, accG = null, face = null;
+let rig = null;                           // clay characters: their canvas puppet (rig.js)
 let base = { curve: 0.55, open: 0, width: 1, cat: false, noMouth: false, eyes: 'shine', blush: 0.55, eyeColor: INK };
 const Life = () => window.BuddyLife;      // creature behaviours (buddy-life.js)
 
@@ -101,7 +102,11 @@ function render(c) {
   faceG = holder.querySelector('#face');
   accG = holder.querySelector('#acc');
   svg.style.transformOrigin = '0 0';
-  const fb = { mouth: cfg.mouth, eyes: cfg.eyes, eyeColor: window.Avatar.faceInk ? window.Avatar.faceInk(cfg) : (cfg.eyeColor || INK) };
+  const rc = svg && svg.querySelector('canvas.rig-c');
+  rig = rc && window.Rig ? window.Rig.player(rc, JSON.parse(rc.dataset.look || '{}')) : null;
+  const fb = rig
+    ? { mouth: 'smile', eyes: 'shine', eyeColor: INK }
+    : { mouth: cfg.mouth, eyes: cfg.eyes, eyeColor: window.Avatar.faceInk ? window.Avatar.faceInk(cfg) : (cfg.eyeColor || INK) };
   const m = { smile: [0.55, 0, 1], grin: [0.85, 0.5, 1.05], cat: [0.6, 0, 1], flat: [0, 0, 0.85], o: [0, 0.55, 0.55], none: [0.4, 0, 1] }[fb.mouth] || [0.55, 0, 1];
   base = {
     curve: m[0], open: m[1], width: m[2],
@@ -228,6 +233,7 @@ function dragFinish() {
 }
 function tapped() {
   // a click: boing, then a happy blink
+  st.waveUntil = now() + 1700;
   clearTimeout(squishTimer); snd('tap');
   B.sy.kick(-3.4); B.sx.kick(2.8); B.ty.kick(30);
   st.giggleUntil = now() + 700;
@@ -519,6 +525,49 @@ function drawFace(t, mood) {
   if (sw > 0.02) face.sweat.setAttribute('transform', `translate(80 ${(26 + ((t / 90) % 14)).toFixed(2)}) scale(${(0.8 + sw * 0.4).toFixed(2)})`);
 }
 
+// ---------------------------------------------------------------- clay characters
+// The springs still squash, tilt and bounce the whole buddy; here the arms, tail and face follow what it's doing.
+const RS = { armL: new Spring(0, 90, 9), armR: new Spring(0, 90, 9) };
+ALL.push(...Object.values(RS));
+let tailPhase = 0, rigLast = null;
+const CHEER = ['hearts', 'clap', 'sing', 'playBow', 'wiggle', 'hop', 'babble'];
+function rigState(t, dt, mood) {
+  const a = Life()?.current?.() || null, P = Life()?.P;
+  // + lifts the left arm, − lifts the right one (radians from hanging down)
+  let L = Math.sin(t / 900) * 0.05, R = -Math.sin(t / 900 + 1) * 0.05;
+  const waving = t < (st.waveUntil || 0) || a === 'wave' || t < st.alertUntil;
+  const cheer = st.ext === 'happy' || CHEER.includes(a) || mood === 'giggle' || mood === 'love';
+  if (st.held) { const sw = Math.sin(t / 180) * 0.15; L = 1.9 + sw; R = -1.9 + sw; }
+  else if (st.falling) { L = 1.5 + Math.sin(t / 60) * 0.35; R = -1.5 - Math.sin(t / 60 + 1) * 0.35; }
+  else if (mood === 'dizzy') { L = 0.7 + Math.sin(t / 110) * 0.3; R = -0.7 + Math.sin(t / 110) * 0.3; }
+  else if (a === 'peekaboo') { L = 2.5; R = -2.5; }
+  else if (a === 'stretch' || mood === 'stretch') { L = 2.3; R = -2.3; }
+  else if (waving) R = -2.0 + Math.sin(t / 95) * 0.32;
+  else if (cheer) { const b = Math.abs(Math.sin(t / 160)); L = 0.9 + b * 0.5; R = -0.9 - b * 0.5; }
+  else if (mood === 'yawn') R = -1.35;
+  else if (mood === 'thinking') R = -1.25 + Math.sin(t / 400) * 0.08;
+  else if (mood === 'asking') L = 0.55;
+  else if (mood === 'surprised' || mood === 'alert' || mood === 'whee' || mood === 'falling') { L = 1.2; R = -1.2; }
+  else if (mood === 'shy') { L = 1.5; R = -1.5; }
+  else if (mood === 'pressed') { L = 0.45; R = -0.45; }
+  else if (mood === 'sad' || mood === 'asleep' || mood === 'sleepy') { L = -0.08; R = 0.08; }
+  else if (t < st.typingUntil) { L = 0.22 * Math.abs(Math.sin(t / 130)); R = -0.22 * Math.abs(Math.cos(t / 130)); }
+  RS.armL.t = L; RS.armR.t = R;
+  // tail: the same wag springs the old buddies used (actions turn them up and down)
+  const amp = (P ? P.tailAmp.x : 8) * (cheer || waving ? 1.8 : 1), freq = (P ? P.tailFreq.x : 0.6) * (cheer ? 2.2 : 1);
+  tailPhase += dt * freq * Math.PI * 2;
+  const tail = ((Math.sin(tailPhase) * amp + (P ? P.tail.x * 0.2 + P.tailBase.x : 0)) * Math.PI) / 180;
+  return {
+    t, arms: [RS.armL.x, RS.armR.x], bend: [-RS.armL.v * 0.06, -RS.armR.v * 0.06],
+    tail, tailBend: (Math.cos(tailPhase) * amp * Math.PI) / 180 * 0.7,
+    look: [F.lookX.x, F.lookY.x], open: [F.openL.x, F.openR.x], eyeScale: F.eyeScale.x,
+    joy: F.joy.x, squint: F.squint.x, dizzy: F.dizzy.x, blush: F.blush.x, sweat: F.sweat.x,
+    brow: { a: F.browA.x, y: F.browY.x, ang: F.browAng.x, asym: F.browAsym.x },
+    mouth: { o: F.mOpen.x, c: F.mCurve.x, w: F.mWidth.x, side: F.mSide.x },
+    faceAlpha: B.sx.x < 0.08 ? 0 : 1,                 // turning round: no face on its back
+  };
+}
+
 // ---------------------------------------------------------------- the loop
 let last = now(), prevRot = 0, prevTy = 0, frames = 0, fpsT = now();
 window.__fps = 0;
@@ -555,6 +604,7 @@ function frame(t) {
       `rotate(${B.rot.x.toFixed(2)}deg) skewX(${B.skew.x.toFixed(2)}deg) scale(${sx.toFixed(4)}, ${sy.toFixed(4)}) ` +
       `translate(${-px}px, ${(-py).toFixed(2)}px)`;
     if (accG) accG.setAttribute('transform', `rotate(${clamp(B.acc.x, -25, 25).toFixed(2)} 50 40) translate(0 ${clamp(B.accY.x * 0.15, -4, 4).toFixed(2)})`);
+    if (rig) rig.update(rigLast = rigState(t, dt, mood));
     drawFace(t, mood);
     Life()?.draw(t, dt, mood);
   }
@@ -565,6 +615,6 @@ function frame(t) {
 }
 
 // handy for debugging from devtools
-window.__buddy = { st, B, F, input: { press: pressStart, dragStart: dragBegin, dragEnd: () => { dragFinish(); dragging = false; }, click: () => { tapped(); dragging = false; }, cancel: () => { st.pressed = false; dragging = false; } } };
+window.__buddy = { st, B, F, get rig() { return rig; }, get pose() { return rigLast; }, input: { press: pressStart, dragStart: dragBegin, dragEnd: () => { dragFinish(); dragging = false; }, click: () => { tapped(); dragging = false; }, cancel: () => { st.pressed = false; dragging = false; } } };
 
 S.getAvatar().then((a) => { window.ScribbleSound?.configure(a); render(a); requestAnimationFrame(frame); });

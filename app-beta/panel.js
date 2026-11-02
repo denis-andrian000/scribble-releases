@@ -2023,8 +2023,10 @@ function optionGrid(key, values) {
 
 function swatchRow(key, colors) {
   const row = el('div', 'av-swatches');
+  // a clay character with no colour of its own is in its original colours (the first swatch)
+  const cur = (av[key] || (key === 'color' && av.kind === 'clay' ? colors[0] : '')).toLowerCase();
   for (const c of colors) {
-    const b = el('button', `sw${(av[key] || '').toLowerCase() === c.toLowerCase() ? ' on' : ''}`);
+    const b = el('button', `sw${cur === c.toLowerCase() ? ' on' : ''}`);
     b.type = 'button';
     b.style.background = c;
     b.title = c;
@@ -2033,7 +2035,7 @@ function swatchRow(key, colors) {
   }
   const custom = el('input');
   custom.type = 'color';
-  custom.value = av[key] || '#FFCE47';
+  custom.value = av[key] || colors[0] || '#FFCE47';
   custom.title = 'Custom color';
   custom.className = 'sw custom';
   custom.addEventListener('input', () => setAvatar({ [key]: custom.value }, { debounce: true }));
@@ -2073,52 +2075,31 @@ function renderCustomizer() {
   top.append(stage, who);
   box.append(top);
 
-  box.append(section('Start from a template', templateGrid()));
-  box.append(section('Shape', optionGrid('shape', [...Avatar.shapes, 'image'])));
-  if (av.shape === 'image') {
-    box.append(section('Picture', pictureControls()));
-    if (av.faceOnImage) {
-      box.append(section('Eyes', optionGrid('eyes', Avatar.eyes)));
-      box.append(section('Mouth', optionGrid('mouth', Avatar.mouths)));
-    }
-  } else {
-    box.append(section(av.shape === 'mushroom' ? 'Cap colour' : 'Colour', swatchRow('color', SWATCHES)));
-    box.append(section('Pattern', optionGrid('pattern', Avatar.patterns)));
-    if (!['none', 'soft', 'confetti', 'clouds'].includes(av.pattern || 'none')) box.append(section('Pattern colour', swatchRow('patColor', PAT_SWATCHES)));
-    box.append(section('Eyes', optionGrid('eyes', Avatar.eyes)));
-    box.append(section('Face colour', swatchRow('eyeColor', EYE_SWATCHES)));
-    box.append(section('Mouth', optionGrid('mouth', Avatar.mouths)));
-    const look = el('div', 'av-sec');
-    const ol = el('label', 'toggle');
-    const oc = el('input'); oc.type = 'checkbox'; oc.checked = !!av.outline;
-    oc.addEventListener('change', () => setAvatar({ outline: oc.checked }));
-    const ot = el('span'); ot.textContent = 'Sticker outline';
-    ol.append(oc, ot);
-    look.append(ol);
-    if (av.outline) look.append(swatchRow('outlineColor', OUTLINE_SWATCHES));
-    box.append(look);
+  // clay characters: pick one, then colour and pattern (cosmetic only: the character's rig never changes)
+  const C = Avatar.clay, cur = C.name(av);
+  const chars = el('div', 'av-grid tpl-grid clay-grid');
+  for (const [k, c] of Object.entries(C.chars)) {
+    const b = el('button', `av-opt${cur === k ? ' on' : ''}`);
+    b.type = 'button'; b.title = c.label; b.dataset.clay = k;
+    b.innerHTML = Avatar.build({ ...av, kind: 'clay', clay: k, color: cur === k ? av.color : null });
+    const cap = el('span', 'av-cap'); cap.textContent = c.label; b.append(cap);
+    b.addEventListener('click', () => { if (cur !== k) setAvatar({ kind: 'clay', clay: k, color: null }); });
+    chars.append(b);
   }
-  // arms, feet and tail: each optional (all off = a plain blob)
-  if (av.shape !== 'image' && Avatar.hasLimbs && Avatar.hasLimbs(av.shape)) {
-    const parts = el('div', 'av-sec');
-    const h = el('span', 'av-h'); h.textContent = 'Body';
-    parts.append(h);
-    const sw = (key, label, on, set) => {
-      const l = el('label', 'toggle');
-      const i = el('input'); i.type = 'checkbox'; i.checked = on;
-      i.addEventListener('change', () => setAvatar(set(i.checked)));
-      const t = el('span'); t.textContent = label;
-      l.append(i, t);
-      parts.append(l);
-    };
-    sw('arms', 'Arms', av.arms !== false, (v) => ({ arms: v }));
-    sw('feet', 'Feet', av.feet !== false, (v) => ({ feet: v }));
-    if (Avatar.hasTail(av.shape)) sw('tail', 'Tail', av.tail !== 'none' && av.tail !== false, (v) => ({ tail: v ? 'auto' : 'none' }));
-    if (Avatar.clings(av.shape)) { const n = el('small'); n.textContent = 'On Android, it hangs on to the side of the screen when docked there (needs arms).'; parts.append(n); }
-    box.append(parts);
+  box.append(section('Character', chars));
+  box.append(section('Colour', swatchRow('color', C.chars[cur].palette)));
+  const pg = el('div', 'av-grid pat-grid');
+  for (const p of C.patterns) {
+    const on = (av.pattern || 'none') === p;
+    const b = el('button', `av-opt${on ? ' on' : ''}`);
+    b.type = 'button'; b.title = LABELS.pattern?.[p] || p; b.dataset.pattern = p;
+    b.innerHTML = Avatar.build({ ...av, pattern: p });
+    const cap = el('span', 'av-cap'); cap.textContent = { none: 'Plain', dots: 'Dots', stripes: 'Stripes', hearts: 'Hearts' }[p]; b.append(cap);
+    b.addEventListener('click', () => setAvatar({ pattern: p }));
+    pg.append(b);
   }
-  box.append(section('Accessory', optionGrid('accessory', Avatar.accessories)));
-  if (!['none', 'crown', 'halo', 'wings', 'chef', 'moon', 'berry', 'peach'].includes(av.accessory)) box.append(section('Accessory colour', swatchRow('accColor', ACC_SWATCHES)));
+  box.append(section('Pattern', pg));
+  if (av.pattern && av.pattern !== 'none') box.append(section('Pattern colour', swatchRow('patColor', C.inks)));
 
   const tp = el('div', 'temper-grid');
   for (const [k, l, d] of TEMPERS) {
@@ -2165,7 +2146,7 @@ function renderCustomizer() {
   }
   const sizeRow = el('div', 'av-line'); const sl = el('span', 'av-h'); sl.textContent = 'Size'; sizeRow.append(sl, sizeSeg);
   extra.append(sizeRow);
-  if (av.shape !== 'image' || av.faceOnImage) {
+  {
     const ck = el('label', 'toggle');
     const c = el('input'); c.type = 'checkbox'; c.checked = av.cheeks !== false;
     c.addEventListener('change', () => setAvatar({ cheeks: c.checked }));
@@ -2173,15 +2154,9 @@ function renderCustomizer() {
     ck.append(c, t);
     extra.append(ck);
     if (av.cheeks !== false) extra.append(swatchRow('blushColor', BLUSH_SWATCHES));
-    const fk = el('label', 'toggle');
-    const f = el('input'); f.type = 'checkbox'; f.checked = !!av.freckles;
-    f.addEventListener('change', () => setAvatar({ freckles: f.checked }));
-    const ft = el('span'); ft.textContent = 'Freckles';
-    fk.append(f, ft);
-    extra.append(fk);
   }
   const reset = el('button', 'link'); reset.textContent = 'Reset to default buddy';
-  reset.addEventListener('click', async () => { const d = await S.avatarDefaults(); setAvatar({ ...d, kind: 'classic', name: av.name }); });
+  reset.addEventListener('click', async () => { const d = await S.avatarDefaults(); setAvatar({ ...d, kind: 'clay', clay: 'fox', color: null, pattern: 'none', name: av.name }); });
   extra.append(reset);
   box.append(extra);
   if (scroll != null) box.closest('.settings').scrollTop = scroll;
@@ -2196,23 +2171,6 @@ const TEMPERS = [
   ['shy', 'Shy', 'Peekaboo, blushes, looks away'],
 ];
 
-// ready-made looks: one click sets shape, colours, face and accessory (your name and settings stay)
-function templateGrid() {
-  const grid = el('div', 'av-grid tpl-grid');
-  for (const t of Avatar.templates) {
-    const look = Avatar.applyTemplate(t);
-    const on = look.shape === av.shape && (look.color || '').toLowerCase() === (av.color || '').toLowerCase() && look.accessory === av.accessory;
-    const b = el('button', `av-opt${on ? ' on' : ''}`);
-    b.type = 'button';
-    b.title = t.label;
-    b.innerHTML = Avatar.build({ ...av, ...look, shape: look.shape });
-    const cap = el('span', 'av-cap'); cap.textContent = t.label;
-    b.append(cap);
-    b.addEventListener('click', () => setAvatar(look));
-    grid.append(b);
-  }
-  return grid;
-}
 
 // Custom picture. Animated GIFs are kept as they are (up to 3 MB) so they keep playing;
 // other images are scaled to at most 512px (enough room to zoom and pan) and keep transparency.
@@ -2434,7 +2392,7 @@ const GUIDES = {
 };
 let obPick = null;
 function obBuddies() {
-  const look = av || {};
+  const look = av && av.kind ? av : { kind: 'clay', clay: 'fox' };
   $('#ob-buddy0').innerHTML = Avatar.build(look);
   $('#ob-buddy').innerHTML = Avatar.build(look);
   $('#ob-buddy2').innerHTML = Avatar.build({ ...look, eyes: 'happy', mouth: 'grin' });
@@ -2471,16 +2429,14 @@ function renderBuddyStep() {
   $('#ob-bd-preview').innerHTML = Avatar.build(av);
   const grid = $('#ob-tpl');
   grid.innerHTML = '';
-  for (const t of Avatar.templates) {
-    const look = Avatar.applyTemplate(t);
-    const on = look.shape === av.shape && (look.color || '').toLowerCase() === (av.color || '').toLowerCase() && look.accessory === av.accessory;
-    const b = el('button', `ob-tpl-opt${on ? ' on' : ''}`);
-    b.type = 'button';
-    b.title = t.label;
-    b.innerHTML = Avatar.build({ ...av, ...look });
-    const cap = el('span'); cap.textContent = t.label;
+  const C = Avatar.clay, cur = C.name(av);
+  for (const [k, c] of Object.entries(C.chars)) {
+    const b = el('button', `ob-tpl-opt${cur === k ? ' on' : ''}`);
+    b.type = 'button'; b.title = c.label; b.dataset.clay = k;
+    b.innerHTML = Avatar.build({ ...av, kind: 'clay', clay: k, color: cur === k ? av.color : null });
+    const cap = el('span'); cap.textContent = c.label;
     b.append(cap);
-    b.addEventListener('click', () => { setAvatar(look); renderBuddyStep(); });
+    b.addEventListener('click', () => { setAvatar({ kind: 'clay', clay: k, color: null }); renderBuddyStep(); });
     grid.append(b);
   }
   const tp = $('#ob-temper');

@@ -664,3 +664,8 @@ body.pad-open { overscroll-behavior: none; }
 .snd-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
 .snd-row input[type=range] { flex: 1; accent-color: var(--accent); }
 .snd-row .btn { white-space: nowrap; }
+
+/* clay characters (Settings → Buddy, first-run setup) */
+.av-grid.clay-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.av-grid.clay-grid .av-opt svg { width: 100%; height: auto; aspect-ratio: 1; }
+.av-grid.pat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
