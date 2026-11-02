@@ -52,3 +52,8 @@ html, body { overflow-x: hidden; }
 .stat { background: var(--bg2); border-radius: 999px; padding: 5px 14px; font-size: 14px; color: var(--ink2); }
 .stat b { color: var(--ink); }
 #st-dl b::before { content: "⬇ "; color: var(--accent); }
+
+footer .by { display: inline-flex; align-items: center; gap: 7px; }
+footer .by img { height: 13px; width: auto; }
+footer .by .d { display: none; }
+@media (prefers-color-scheme: dark) { footer .by .l { display: none; } footer .by .d { display: inline; } }
