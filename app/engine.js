@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.6.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.6.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -38679,7 +38679,7 @@ Content-Type: application/octet-stream\r
       }
       function buddySize() {
         const a = avatar();
-        const k = SIZES[a.size] || 1;
+        const k = Number(a.scale) > 0 ? Math.max(0.6, Math.min(2.5, Number(a.scale))) : SIZES[a.size] || 1;
         return { w: Math.round(112 * k), h: Math.round(112 * k) };
       }
       function resizeBuddy(before) {

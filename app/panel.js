@@ -2038,7 +2038,9 @@ function swatchRow(key, colors) {
   custom.value = av[key] || colors[0] || '#FFCE47';
   custom.title = 'Custom color';
   custom.className = 'sw custom';
-  custom.addEventListener('input', () => setAvatar({ [key]: custom.value }, { debounce: true }));
+  // while the colour picker is open only the previews update: rebuilding Settings would close the picker
+  custom.addEventListener('input', () => setAvatar({ [key]: custom.value }, { debounce: true, light: true }));
+  custom.addEventListener('change', () => setAvatar({ [key]: custom.value }));
   row.append(custom);
   return row;
 }
@@ -2100,6 +2102,7 @@ function renderCustomizer() {
   }
   box.append(section('Pattern', pg));
   if (av.pattern && av.pattern !== 'none') box.append(section('Pattern colour', swatchRow('patColor', C.inks)));
+  box.append(section('Size', sizeControl()));
 
   const tp = el('div', 'temper-grid');
   for (const [k, l, d] of TEMPERS) {
@@ -2138,14 +2141,7 @@ function renderCustomizer() {
   }
 
   const extra = el('div', 'av-sec');
-  const sizeSeg = el('div', 'seg small');
-  for (const [k, l] of [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]) {
-    const b = el('button', av.size === k ? 'on' : ''); b.type = 'button'; b.textContent = l;
-    b.addEventListener('click', () => setAvatar({ size: k }));
-    sizeSeg.append(b);
-  }
-  const sizeRow = el('div', 'av-line'); const sl = el('span', 'av-h'); sl.textContent = 'Size'; sizeRow.append(sl, sizeSeg);
-  extra.append(sizeRow);
+
   {
     const ck = el('label', 'toggle');
     const c = el('input'); c.type = 'checkbox'; c.checked = av.cheeks !== false;
@@ -2163,6 +2159,20 @@ function renderCustomizer() {
 }
 
 // personalities: which idle antics the buddy prefers
+// size: any size from 60% to 250% (older versions only know small/medium/large, so that's kept up to date too)
+function sizeControl() {
+  const scaleOf = (a) => (Number(a.scale) > 0 ? Number(a.scale) : { s: 0.8, m: 1, l: 1.3 }[a.size] || 1);
+  const sizeRow = el('div', 'av-line size-row');
+  const sz = el('input'); sz.type = 'range'; sz.min = '0.6'; sz.max = '2.5'; sz.step = '0.05'; sz.value = String(scaleOf(av));
+  sz.setAttribute('aria-label', 'Size');
+  const szv = el('span', 'size-val'); szv.textContent = Math.round(scaleOf(av) * 100) + '%';
+  const sizePatch = (v) => ({ scale: v, size: v < 0.9 ? 's' : v < 1.15 ? 'm' : 'l' });
+  sz.addEventListener('input', () => { const v = Number(sz.value); szv.textContent = Math.round(v * 100) + '%'; setAvatar(sizePatch(v), { debounce: true, light: true }); });
+  sz.addEventListener('change', () => setAvatar(sizePatch(Number(sz.value)), { light: true }));
+  sizeRow.append(sz, szv);
+  return sizeRow;
+}
+
 const TEMPERS = [
   ['playful', 'Playful', 'Hops, rolls, pounces, scoots around'],
   ['joyful', 'Joyful', 'Wiggles, waves, babbles, sends hearts'],
