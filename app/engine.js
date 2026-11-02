@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.5.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.6.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37043,7 +37043,9 @@ Content-Type: application/octet-stream\r
         "Also when it does things on its own (hops, sneezes, naps\u2026)": "Juga saat ia beraksi sendiri (melompat, bersin, tidur siang\u2026)",
         Volume: "Volume",
         "Play a sound": "Putar suara",
-        "Each buddy has its own voice. Quiet when your phone is on silent.": "Tiap buddy punya suaranya sendiri. Diam saat ponselmu dalam mode senyap."
+        "Each buddy has its own voice. Quiet when your phone is on silent.": "Tiap buddy punya suaranya sendiri. Diam saat ponselmu dalam mode senyap.",
+        Character: "Karakter",
+        Dog: "Anjing"
       };
     }
   });
@@ -38619,16 +38621,17 @@ Content-Type: application/octet-stream\r
         return notebook.root;
       });
       var AVATAR_DEFAULT = {
-        kind: "classic",
+        kind: "clay",
+        clay: "fox",
         temperament: "playful",
         shape: "note",
-        color: "#FFCE47",
+        color: null,
         eyes: "shine",
         mouth: "smile",
         accessory: "pencil",
         accColor: "#5B8DEF",
         pattern: "none",
-        patColor: "#FFFFFF",
+        patColor: "#FFF4EC",
         eyeColor: "#2B2A4C",
         blushColor: "#FF8A80",
         outline: false,
@@ -38650,10 +38653,29 @@ Content-Type: application/octet-stream\r
       var SIZES = { s: 0.8, m: 1, l: 1.3 };
       var OLD_KEYS = ["species", "creatures", "stageLock", "stage", "points", "naturalStage", "hatch", "growth", "previewStage", "nextAt", "prevAt", "robot"];
       function avatar() {
-        const a = { ...AVATAR_DEFAULT, ...config.avatar || {} };
-        a.kind = "classic";
+        const a = { ...AVATAR_DEFAULT, ...migrateAvatar(config.avatar || {}) };
         for (const k of OLD_KEYS) delete a[k];
         return a;
+      }
+      var CLAY_CHARS = ["fox", "cat", "dog", "chicken"];
+      function clayFor(shape) {
+        if (/cat|kitty/.test(shape || "")) return "cat";
+        if (/dog|puppy|bear|panda|koala|tanuki/.test(shape || "")) return "dog";
+        if (/bird|chick|duck|penguin|owl|egg/.test(shape || "")) return "chicken";
+        return "fox";
+      }
+      function migrateAvatar(av) {
+        if (!av) return {};
+        if (av.kind === "clay" && CLAY_CHARS.includes(av.clay)) return av;
+        const clay = av.kind === "clay" ? "fox" : clayFor(av.shape);
+        return {
+          ...av,
+          kind: "clay",
+          clay,
+          color: null,
+          pattern: ["dots", "stripes", "hearts"].includes(av.pattern) ? av.pattern : "none",
+          patColor: av.patColor && !/^#FFFFFF$/i.test(av.patColor) ? av.patColor : "#FFF4EC"
+        };
       }
       function buddySize() {
         const a = avatar();
@@ -39120,6 +39142,10 @@ ${lines.join("\n")}
         config = loadConfig();
         I18n.setLang(appLang());
         migrateKeys();
+        if (config.avatar && (config.avatar.kind !== "clay" || !CLAY_CHARS.includes(config.avatar.clay))) {
+          config.avatar = migrateAvatar(config.avatar);
+          saveConfig();
+        }
         notebook = new Notebook(config.notebookDir || path.join(app.getPath("documents"), "Scribble Notebook"));
         config.notebookDir = notebook.root;
         delete config.growth;

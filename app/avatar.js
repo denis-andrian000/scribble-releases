@@ -445,7 +445,46 @@
 
   let uid = 0;
   // opts.live: leave the face empty (the floating buddy draws an animated one) and wrap the accessory so it can jiggle.
+  // ------------------------------------------------------------------ clay characters
+  // Cut-out clay puppets drawn on a canvas by rig.js (pictures + rigs in chars.js, made in art/chars).
+  // Colour and pattern are purely cosmetic: they can't change the shape, the rig or the animations.
+  // The <svg id="buddy"> wrapper keeps everything that sizes, shadows or transforms a buddy working as before.
+  const PALETTE = ['#E8A23A', '#A0785A', '#8E96A8', '#F3EEE6', '#6FA8DC', '#F28DB2', '#9C7BD9', '#5FB58A', '#4A4E69'];
+  const charData = () => (typeof window !== 'undefined' && window.__CHARS__) || {};
+  const CLAY = new Proxy({}, {
+    get: (_, k) => { const d = charData()[k]; return d && { label: d.rig.label, color: d.rig.fur, palette: [d.rig.fur, ...PALETTE] }; },
+    ownKeys: () => Object.keys(charData()),
+    getOwnPropertyDescriptor: (_, k) => (charData()[k] ? { enumerable: true, configurable: true } : undefined),
+  });
+  const CLAY_PATTERNS = ['none', 'dots', 'stripes', 'hearts'];
+  const CLAY_INKS = ['#FFF4EC', '#FFE066', '#2B2A4C', '#FF8FB1', '#8FD3FF'];
+  const isClay = (cfg) => !!cfg && cfg.kind === 'clay';
+  const clayName = (cfg) => (charData()[cfg && cfg.clay] ? cfg.clay : (Object.keys(charData())[0] || 'fox'));
+  function buildClay(cfg, opts) {
+    const name = clayName(cfg);
+    const look = { clay: name, color: cfg.color || null, pattern: cfg.pattern || 'none', patColor: cfg.patColor || CLAY_INKS[0], cheeks: cfg.cheeks, blushColor: cfg.blushColor };
+    // previews get painted as soon as they're on the page (see the observer below); the live buddy animates its own
+    return `<svg id="buddy" class="clay" viewBox="0 0 100 100" data-clay="${name}" aria-label="${esc(cfg.name || 'Buddy')}"><g id="rig">` +
+      `<foreignObject x="0" y="0" width="100" height="100"><canvas xmlns="http://www.w3.org/1999/xhtml" class="rig-c" width="160" height="160" style="width:100%;height:100%;display:block"` +
+      ` data-look="${esc(JSON.stringify(look))}"${opts.live ? ' data-live="1"' : ''}></canvas></foreignObject></g></svg>`;
+  }
+  function paintPending(root) {
+    if (!window.Rig || !root || !root.querySelectorAll) return;
+    const list = root.matches && root.matches('canvas.rig-c') ? [root] : root.querySelectorAll('canvas.rig-c');
+    for (const c of list) {
+      if (c.dataset.live || c.dataset.painted) continue;
+      c.dataset.painted = '0';
+      try { window.Rig.paint(c, JSON.parse(c.dataset.look)); } catch {}
+    }
+  }
+  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+    const mo = new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) paintPending(n); });
+    const start = () => { mo.observe(document.body, { childList: true, subtree: true }); paintPending(document.body); };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+
   function build(cfg = {}, opts = {}) {
+    if (isClay(cfg)) return buildClay(cfg, opts);
     const color = cfg.color || '#FFCE47';
     const acc = cfg.accColor || '#5B8DEF';
     if (cfg.shape === 'image' && cfg.image) return buildImage(cfg, opts, acc);
@@ -531,6 +570,7 @@
 
   window.Avatar = {
     build,
+    clay: { chars: CLAY, patterns: CLAY_PATTERNS, inks: CLAY_INKS, isClay, name: clayName, paint: paintPending },
     shapes: Object.keys(SHAPES),
     eyes: Object.keys(EYES),
     mouths: Object.keys(MOUTHS),

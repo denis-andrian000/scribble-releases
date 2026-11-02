@@ -896,6 +896,7 @@
 
   window.BuddyLife = {
     onRender, update, draw, mood, onActivity, interrupt, onClick, morph, afterAvatar,
+    current: () => (act ? act.name : null),
     // for testing / devtools
     play: (name) => startAction(name), actions: () => Object.keys(A).filter((k) => k[0] !== '_'), current: () => act && act.name,
     available: () => Object.entries(A).filter(([k, a]) => k[0] !== '_' && whoFits(a, sp())).map(([k]) => k),
