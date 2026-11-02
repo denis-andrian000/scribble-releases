@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.5.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.5.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37239,6 +37239,10 @@ Content-Type: application/octet-stream\r
         } catch {
         }
       }
+      if (typeof process !== "undefined" && typeof process.on === "function" && process.versions && process.versions.electron) {
+        process.on("uncaughtException", (e) => logLine("uncaught error", e && e.stack || String(e)));
+        process.on("unhandledRejection", (e) => logLine("unhandled promise", e && e.stack || String(e)));
+      }
       function saveConfig() {
         fs2.mkdirSync(userDir(), { recursive: true });
         fs2.writeFileSync(configFile(), JSON.stringify(config, null, 2));
@@ -37698,6 +37702,21 @@ Content-Type: application/octet-stream\r
         });
         return out.filter((m) => m.text || m.tools && m.tools.length);
       }
+      function moveWin(win, x, y, why = "") {
+        if (!win || win.isDestroyed()) return false;
+        const nx = Math.round(Number(x)), ny = Math.round(Number(y));
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || Math.abs(nx) > 1e5 || Math.abs(ny) > 1e5) {
+          logLine("skipped a bad window position", why, x, y);
+          return false;
+        }
+        try {
+          win.setPosition(nx, ny);
+        } catch (e) {
+          logLine("window move failed", why, nx, ny, e && e.message);
+          return false;
+        }
+        return true;
+      }
       function workAreaFor(x, y) {
         return screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) }).workArea;
       }
@@ -37817,7 +37836,7 @@ Content-Type: application/octet-stream\r
         }
         x = Math.min(Math.max(x, wa.x), wa.x + wa.width - pw);
         y = Math.min(Math.max(y, wa.y), wa.y + wa.height - ph);
-        panelWin.setPosition(Math.round(x), Math.round(y));
+        moveWin(panelWin, Math.round(x), Math.round(y));
       }
       function showPanel(tab, sub) {
         if (config.panelWide && !wide) setWide(true, { save: false });
@@ -37847,8 +37866,13 @@ Content-Type: application/octet-stream\r
       }
       var fallTimer = null;
       function fallToBottom(v0 = 0) {
-        if (!buddyWin) return;
+        if (!buddyWin || buddyWin.isDestroyed()) return;
         clearInterval(fallTimer);
+        fallTimer = null;
+        clearInterval(walkTimer);
+        walkTimer = null;
+        v0 = Number(v0);
+        if (!Number.isFinite(v0)) v0 = 0;
         const b = buddyWin.getBounds();
         const wa = workAreaFor(b.x + b.width / 2, b.y + b.height / 2);
         const floor = wa.y + wa.height - b.height;
@@ -37857,26 +37881,42 @@ Content-Type: application/octet-stream\r
         if (y >= floor && v <= 0) return finishMove();
         sendBuddy("buddy:state", "falling");
         fallTimer = setInterval(() => {
-          const t2 = Date.now(), dt = Math.min(0.04, (t2 - lastT) / 1e3);
-          lastT = t2;
-          v += 3200 * dt;
-          y += v * dt;
-          if (y >= floor) {
-            y = floor;
-            sendBuddy("buddy:land", v);
-            v = -v * 0.32;
-            bounces++;
-            if (bounces > 2 || Math.abs(v) < 120) {
+          try {
+            if (!buddyWin || buddyWin.isDestroyed()) {
               clearInterval(fallTimer);
-              buddyWin.setPosition(b.x, Math.round(floor));
-              sendBuddy("buddy:motion", { vx: 0, vy: 0 });
-              sendBuddy("buddy:state", "landed");
-              return finishMove();
+              fallTimer = null;
+              return;
+            }
+            const t2 = Date.now(), dt = Math.max(0, Math.min(0.04, (t2 - lastT) / 1e3));
+            lastT = t2;
+            v += 3200 * dt;
+            y += v * dt;
+            if (y >= floor) {
+              y = floor;
+              sendBuddy("buddy:land", v);
+              v = -v * 0.32;
+              bounces++;
+              if (bounces > 2 || Math.abs(v) < 120 || !Number.isFinite(v)) {
+                clearInterval(fallTimer);
+                fallTimer = null;
+                moveWin(buddyWin, b.x, Math.round(floor));
+                sendBuddy("buddy:motion", { vx: 0, vy: 0 });
+                sendBuddy("buddy:state", "landed");
+                return finishMove();
+              }
+            }
+            moveWin(buddyWin, b.x, Math.round(y));
+            sendBuddy("buddy:motion", { vx: 0, vy: v });
+            if (panelWin.isVisible()) placePanel();
+          } catch (e) {
+            clearInterval(fallTimer);
+            fallTimer = null;
+            logLine("fall stopped", e && e.message);
+            try {
+              finishMove();
+            } catch {
             }
           }
-          buddyWin.setPosition(b.x, Math.round(y));
-          sendBuddy("buddy:motion", { vx: 0, vy: v });
-          if (panelWin.isVisible()) placePanel();
         }, 16);
       }
       function finishMove() {
@@ -37911,7 +37951,7 @@ Content-Type: application/octet-stream\r
           { label: t("Reset buddy position"), click: () => {
             delete config.buddyPos;
             const wa = screen.getPrimaryDisplay().workArea;
-            buddyWin.setPosition(wa.x + wa.width - BUDDY.w - 24, wa.y + wa.height - BUDDY.h);
+            moveWin(buddyWin, wa.x + wa.width - BUDDY.w - 24, wa.y + wa.height - BUDDY.h);
             finishMove();
           } },
           { label: t("Customize buddy\u2026"), click: () => showPanel("settings", "buddy") },
@@ -38005,30 +38045,39 @@ Content-Type: application/octet-stream\r
       var dragTimer = null;
       ipcMain.on("buddy:dragStart", () => {
         clearInterval(fallTimer);
+        fallTimer = null;
         clearInterval(walkTimer);
+        walkTimer = null;
+        if (!buddyWin || buddyWin.isDestroyed()) return;
         const c = screen.getCursorScreenPoint();
         const [x, y] = buddyWin.getPosition();
         drag = { cx: c.x, cy: c.y, x, y, lx: x, ly: y, lt: Date.now(), vx: 0, vy: 0, lastSend: 0 };
         clearInterval(dragTimer);
         dragTimer = setInterval(() => {
-          if (!drag || !buddyWin) return;
-          const c2 = screen.getCursorScreenPoint();
-          const p = clampBuddy(drag.x + c2.x - drag.cx, drag.y + c2.y - drag.cy);
-          const nx = Math.round(p.x), ny = Math.round(p.y);
-          const t2 = Date.now(), dt = Math.max(1, t2 - drag.lt) / 1e3;
-          drag.vx = drag.vx * 0.6 + (nx - drag.lx) / dt * 0.4;
-          drag.vy = drag.vy * 0.6 + (ny - drag.ly) / dt * 0.4;
-          drag.lx = nx;
-          drag.ly = ny;
-          drag.lt = t2;
-          const [cx, cy] = buddyWin.getPosition();
-          if (cx !== nx || cy !== ny) {
-            buddyWin.setPosition(nx, ny);
-            if (panelWin.isVisible()) placePanel();
-          }
-          if (t2 - drag.lastSend >= 16) {
-            sendBuddy("buddy:motion", { vx: drag.vx, vy: drag.vy });
-            drag.lastSend = t2;
+          try {
+            if (!drag || !buddyWin || buddyWin.isDestroyed()) return;
+            const c2 = screen.getCursorScreenPoint();
+            const p = clampBuddy(drag.x + c2.x - drag.cx, drag.y + c2.y - drag.cy);
+            const nx = Math.round(p.x), ny = Math.round(p.y);
+            const t2 = Date.now(), dt = Math.max(1, t2 - drag.lt) / 1e3;
+            drag.vx = drag.vx * 0.6 + (nx - drag.lx) / dt * 0.4;
+            drag.vy = drag.vy * 0.6 + (ny - drag.ly) / dt * 0.4;
+            drag.lx = nx;
+            drag.ly = ny;
+            drag.lt = t2;
+            const [cx, cy] = buddyWin.getPosition();
+            if (cx !== nx || cy !== ny) {
+              moveWin(buddyWin, nx, ny);
+              if (panelWin.isVisible()) placePanel();
+            }
+            if (!Number.isFinite(drag.vx)) drag.vx = 0;
+            if (!Number.isFinite(drag.vy)) drag.vy = 0;
+            if (t2 - drag.lastSend >= 16) {
+              sendBuddy("buddy:motion", { vx: drag.vx, vy: drag.vy });
+              drag.lastSend = t2;
+            }
+          } catch (e) {
+            logLine("drag step skipped", e && e.message);
           }
         }, 8);
       });
@@ -38052,7 +38101,7 @@ Content-Type: application/octet-stream\r
       });
       var walkTimer = null;
       ipcMain.handle("buddy:walk", (_e, dx) => {
-        if (!buddyWin || drag || panelWin && panelWin.isVisible() || config.wander === false) return { dx: 0, ms: 0 };
+        if (!buddyWin || drag || fallTimer || panelWin && panelWin.isVisible() || config.wander === false) return { dx: 0, ms: 0 };
         clearInterval(walkTimer);
         const b = buddyWin.getBounds();
         const wa = workAreaFor(b.x + b.width / 2, b.y + b.height / 2);
@@ -38063,12 +38112,23 @@ Content-Type: application/octet-stream\r
         const ms = Math.abs(dist) / speed * 1e3;
         const t0 = Date.now();
         walkTimer = setInterval(() => {
-          if (!buddyWin || buddyWin.isDestroyed()) return clearInterval(walkTimer);
-          const k = Math.min(1, (Date.now() - t0) / ms);
-          buddyWin.setPosition(Math.round(b.x + dist * k), b.y);
-          if (k >= 1) {
+          try {
+            if (!buddyWin || buddyWin.isDestroyed() || drag || fallTimer) {
+              clearInterval(walkTimer);
+              walkTimer = null;
+              return;
+            }
+            const k = Math.min(1, (Date.now() - t0) / ms);
+            moveWin(buddyWin, Math.round(b.x + dist * k), b.y);
+            if (k >= 1) {
+              clearInterval(walkTimer);
+              walkTimer = null;
+              finishMove();
+            }
+          } catch (e) {
             clearInterval(walkTimer);
-            finishMove();
+            walkTimer = null;
+            logLine("walk stopped", e && e.message);
           }
         }, 16);
         return { dx: dist, ms };
@@ -39096,7 +39156,7 @@ ${lines.join("\n")}
           if (!buddyWin) return;
           const [x, y] = buddyWin.getPosition();
           const p = clampBuddy(x, y);
-          buddyWin.setPosition(p.x, p.y);
+          moveWin(buddyWin, p.x, p.y);
         });
       });
       module.exports = { captureClipboard };
