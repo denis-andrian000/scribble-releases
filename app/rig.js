@@ -93,7 +93,7 @@
         shade = mx / fv;
         [R, G, Bc] = recolor ? hsvRgb(th, clamp(ts * 0.85, 0, 1), clamp(tv * (0.55 + 0.45 * shade), 0, 1)) : [r, g, b];
       } else {
-        if (s < sm || mx < vm) continue;
+        if (s < sm || mx < vm || mx > (rig.valMax || 2)) continue;          // valMax: dark fur only, not bright orange spikes
         const tol = rig.furTol || 0.05;
         w = clamp((tol - dh) / Math.min(0.02, tol * 0.3), 0, 1) * clamp((s - sm) / (rig.satRamp || sm * 0.55), 0, 1) * clamp((mx - vm) / 0.1, 0, 1);
         if (!w) continue;

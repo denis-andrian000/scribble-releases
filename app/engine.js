@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.10.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.11.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37054,6 +37054,8 @@ Content-Type: application/octet-stream\r
         Shark: "Hiu",
         Lamb: "Domba",
         Owl: "Burung hantu",
+        Gecko: "Tokek",
+        Skink: "Kadal",
         "Change character automatically": "Ganti karakter otomatis",
         "Each time Scribble starts": "Setiap kali Scribble dibuka",
         "Every hour": "Setiap jam",
@@ -38688,7 +38690,7 @@ Content-Type: application/octet-stream\r
         for (const k of OLD_KEYS) delete a[k];
         return a;
       }
-      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon", "capybara", "wolf", "axolotl", "duck", "penguin", "unicorn", "octopus", "bee", "shark", "frog", "lamb", "panda", "owl"];
+      var CLAY_CHARS = ["fox", "cat", "dog", "bunny", "dragon", "capybara", "wolf", "axolotl", "duck", "penguin", "unicorn", "octopus", "bee", "shark", "frog", "lamb", "panda", "owl", "gecko", "skink"];
       function clayFor(shape) {
         if (/bunny|rabbit|mouse|hamster/.test(shape || "")) return "bunny";
         if (/wolf|husky/.test(shape || "")) return "wolf";
@@ -38701,14 +38703,16 @@ Content-Type: application/octet-stream\r
         if (/panda/.test(shape || "")) return "panda";
         if (/axolotl|slime|blob/.test(shape || "")) return "axolotl";
         if (/capybara|bear|koala|tanuki/.test(shape || "")) return "capybara";
-        if (/dragon|dino|lizard|chameleon|turtle/.test(shape || "")) return "dragon";
+        if (/lizard|gecko|chameleon/.test(shape || "")) return "gecko";
+        if (/dragon|dino|turtle/.test(shape || "")) return "dragon";
         if (/cat|kitty/.test(shape || "")) return "cat";
         if (/dog|puppy/.test(shape || "")) return "dog";
-        if (/bird|chick|egg/.test(shape || "")) return "chicken";
+        if (/bird|chick|egg/.test(shape || "")) return "duck";
         return "fox";
       }
       function migrateAvatar(av) {
         if (!av) return {};
+        if (av.kind === "clay" && av.clay === "chicken") return { ...av, clay: "duck", color: av.color || "#F6CE3F" };
         if (av.kind === "clay" && CLAY_CHARS.includes(av.clay)) return av;
         const clay = av.kind === "clay" ? "fox" : clayFor(av.shape);
         return {
