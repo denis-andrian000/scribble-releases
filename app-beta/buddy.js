@@ -213,15 +213,55 @@ if (S.onEdge) S.onEdge((side) => {
   body.classList.toggle('cling-right', side === 'right');
   if (side && document.querySelector('#buddy[data-cling]')) snd('cling');
 });
-// a different character (picked, or the automatic change): it glows and spins, a flash, and the new one pops out
+// a different character (picked, or the automatic change): poof, a cloud of smoke hides the old one, and the new one
+// comes out of it dizzy and coughing
 let swapTimer = 0;
+const coughTimers = [];
+function smoke() {
+  const box = document.createElement('div'); box.className = 'smoke';
+  const r = holder.getBoundingClientRect(), cx = (r.left + r.width / 2) / innerWidth * 100, cy = (r.top + r.height * 0.47) / innerHeight * 100;
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 10) * Math.PI * 2, d = i ? 19 : 0, p = document.createElement('i');
+    p.style.left = `${cx + Math.cos(a) * d}%`; p.style.top = `${cy + Math.sin(a) * d * 0.85}%`;
+    p.style.setProperty('--d', `${i * 22}ms`);
+    p.style.setProperty('--dx', `${Math.round(Math.cos(a) * 45)}%`); p.style.setProperty('--dy', `${Math.round(Math.sin(a) * 30 - 35)}%`);
+    box.append(p);
+  }
+  document.body.append(box);
+  setTimeout(() => box.remove(), 1900);
+}
+function coughPuff() {
+  const R = rig && rig.rig, hr = holder.getBoundingClientRect();
+  const m = R && R.mouth ? R.mouth : [256, 300];
+  const x = hr.left + (m[0] / 512) * hr.width, y = hr.top + (m[1] / 512) * hr.height, k = hr.width / 76;
+  for (let i = 0; i < 3; i++) {
+    const n = document.createElement('div'); n.className = 'pt puff';
+    n.style.left = `${x}px`; n.style.top = `${y}px`; n.style.width = n.style.height = `${Math.round(8 * k)}px`;
+    n.style.setProperty('--dx', `${Math.round((Math.random() * 2 - 1) * 14 * k)}px`); n.style.setProperty('--dy', `${Math.round((-4 - Math.random() * 8) * k)}px`);
+    n.style.animationDelay = `${i * 40}ms`;
+    document.body.append(n); setTimeout(() => n.remove(), 900);
+  }
+}
+function arrive() {
+  const t = now();
+  st.dizzyUntil = t + 2600;                       // spiral eyes and a wobble
+  B.sy.kick(3); B.ty.kick(-140);
+  coughTimers.splice(0).forEach(clearTimeout);
+  coughTimers.push(setTimeout(() => snd('cough'), 850));
+  for (const at of [900, 1230, 1500]) coughTimers.push(setTimeout(() => {
+    B.sy.kick(-3); B.sx.kick(2); B.ty.kick(40); B.rot.kick(-40);
+    F.mOpen.kick(30); F.mWidth.kick(-8);
+    coughPuff();
+  }, at));
+}
 S.onAvatar((a) => {
   window.ScribbleSound?.configure(a);
-  const swap = rig && a.kind === 'clay' && cfg.kind === 'clay' && a.clay !== cfg.clay && Life()?.morph;
+  const swap = rig && a.kind === 'clay' && cfg.kind === 'clay' && a.clay !== cfg.clay;
   clearTimeout(swapTimer);
   if (swap) {
-    snd('twirl'); Life().morph('grow');
-    swapTimer = setTimeout(() => { render(a); snd('saved'); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar(); }, 1250);
+    Life()?.interrupt();
+    snd('poof'); smoke();
+    swapTimer = setTimeout(() => { render(a); arrive(); }, 430);
     return;
   }
   render(a); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar();

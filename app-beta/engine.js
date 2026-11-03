@@ -37053,7 +37053,7 @@ Content-Type: application/octet-stream\r
         "Every hour": "Setiap jam",
         "Every day": "Setiap hari",
         Off: "Mati",
-        "Your buddy turns into one of the others, with a little magic trick.": "Buddy-mu berubah jadi karakter lain, dengan sedikit sulap."
+        "Poof! Your buddy turns into one of the others in a cloud of smoke.": "Puf! Buddy-mu berubah jadi karakter lain di balik kepulan asap."
       };
     }
   });

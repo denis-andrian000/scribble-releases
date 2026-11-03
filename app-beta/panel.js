@@ -2109,7 +2109,7 @@ function renderCustomizer() {
     const o = el('option'); o.value = k; o.textContent = l; if ((av.rotate || 'off') === k) o.selected = true; rot.append(o);
   }
   rot.addEventListener('change', () => setAvatar({ rotate: rot.value, rotatedAt: Date.now() }));
-  const rotNote = el('small'); rotNote.textContent = 'Your buddy turns into one of the others, with a little magic trick.';
+  const rotNote = el('small'); rotNote.textContent = 'Poof! Your buddy turns into one of the others in a cloud of smoke.';
   const rotBox = el('div'); rotBox.append(rot, rotNote);
   box.append(section('Change character automatically', rotBox));
 

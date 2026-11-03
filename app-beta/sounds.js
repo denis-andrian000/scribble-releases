@@ -110,6 +110,8 @@
     roll:     { idle: true, play: () => { [1046, 880, 740, 622].forEach((f, i) => tone(i * 0.09, f, 0.08, { g: 0.1, dec: 0.03 })); slide(0.4, 160, 60, 0.14, { g: 0.12, dec: 0.05 }); } },
     stretch:  { idle: true, play: () => { slide(0, 300, 620, 0.7, { g: 0.1, dec: 0.5, a: 0.25, type: 'triangle' }); tone(0.72, 784, 0.25, { g: 0.05, dec: 0.1 }); } },
     yawn:     { idle: true, play: () => { slide(0, 620, 330, 0.9, { g: 0.09, dec: 0.6, a: 0.2, type: 'triangle' }); noise(0, 0.9, 1200, 1400, { g: 0.03, dec: 0.5, a: 0.2 }); } },
+    poof:     { play: () => { noise(0, 0.32, 700, 1200, { g: 0.24, dec: 0.16, a: 0.01 }); slide(0, 260, 110, 0.25, { g: 0.12, dec: 0.12 }); sparkle(0.12, 0.05); } },
+    cough:    { play: () => [0, 0.33, 0.6].forEach((at, i) => { noise(at, 0.07, 1000 - i * 80, 900, { g: 0.17, dec: 0.05 }); tone(at, 230 - i * 15, 0.05, { g: 0.07, type: 'triangle', dec: 0.04 }); }) },
     sneeze:   { idle: true, play: () => {
       slide(0, 500, 620, 0.22, { g: 0.07, dec: 0.2, a: 0.05, type: 'triangle' }); slide(0.35, 560, 760, 0.25, { g: 0.08, dec: 0.2, a: 0.05, type: 'triangle' });
       noise(0.75, 0.18, 3200, 3000, { g: 0.16, dec: 0.07 }); slide(0.76, 900, 500, 0.1, { g: 0.07, dec: 0.05 });
