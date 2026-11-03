@@ -317,18 +317,30 @@
   const NEUTRAL = { look: [0, 0], open: [1, 1], eyeScale: 1, blush: 0.55, mouth: { o: 0, c: 0.55, w: 1 }, arms: [0, 0], tail: 0 };
   // a still picture (settings, onboarding, header)
   // previews are painted one at a time with a breather in between, so a page full of them never freezes the app
-  let queue = Promise.resolve();
-  const breathe = () => new Promise((r) => setTimeout(r, 0));
+  // the header buddy and the big preview first, then the chooser tiles, one at a time with a breather in
+  // between, so a page full of previews never freezes the app
+  const jobs = []; let busy = false;
+  const urgent = (c) => !!(c.closest && c.closest('header, .logo, .av-stage, .ob-bd-preview, .ob-buddy'));
+  function pump() {
+    if (busy || !jobs.length) return;
+    busy = true;
+    jobs.sort((a, b) => a.pri - b.pri);
+    const job = jobs.shift();
+    setTimeout(() => job.run().finally(() => { busy = false; pump(); }), 0);
+  }
   function paint(canvas, cfg, pose) {
     const name = DATA()[cfg.clay] ? cfg.clay : Object.keys(DATA())[0];
     if (!name) return Promise.resolve();
-    return (queue = queue.then(breathe).then(() => load(name)).then((ch) => {
-      if (!canvas.isConnected) return;
-      fit(canvas, 256, 1.5);
-      const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
-      drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
-      canvas.dataset.painted = '1';
-    }).catch(() => {}));
+    return new Promise((done) => {
+      jobs.push({ pri: urgent(canvas) ? 0 : 1, run: () => load(name).then((ch) => {
+        if (!canvas.isConnected) return;
+        fit(canvas, 256, 1.5);
+        const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
+        drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
+        canvas.dataset.painted = '1';
+      }).catch(() => {}).finally(done) });
+      pump();
+    });
   }
   // the live buddy: buddy.js calls update(state) every frame
   function player(canvas, cfg) {
