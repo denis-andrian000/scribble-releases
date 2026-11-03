@@ -59,4 +59,4 @@ footer .by .d { display: none; }
 @media (prefers-color-scheme: dark) { footer .by .l { display: none; } footer .by .d { display: inline; } }
 
 .friends-cap { text-align: center; margin: 0; }
-@media (max-width: 480px) { .friends .bd { width: 58px; height: 58px; } .friends { gap: 4px; } }
+@media (max-width: 480px) { .friends .bd { width: 44px; height: 44px; } .friends { gap: 1px; flex-wrap: nowrap; } }
