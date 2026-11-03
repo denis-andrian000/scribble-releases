@@ -240,7 +240,8 @@
       if (R.nose && I.nose) g.drawImage(I.nose, R.nose[0] + lx * 0.5, R.nose[1] + ly * 0.5, R.nose[2], R.nose[3]);
       const X = R.mouth[0] + lx * 0.5 + (m.side || 0) * 1.5 * MK, Y = R.mouth[1] + ly * 0.5 - 2;
       g.save(); g.translate(X, Y); g.scale(MK, MK); g.lineWidth = 3.4; g.strokeStyle = INK;
-      if (o < 0.08) {
+      if (R.mouthOpenOnly && o < 0.08) { /* the bill or beak is the mouth */ }
+      else if (o < 0.08) {
         if (R.calm && cu < 0.8) { g.beginPath(); g.moveTo(-5, 2); g.quadraticCurveTo(0, 2 + cu * 3, 5, 2); g.stroke(); }   // the wolf keeps it cool
         else if (cu > 0.3) { g.save(); g.scale(clamp(w, 0.6, 1.3), 1); g.beginPath(); g.arc(-5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.beginPath(); g.arc(5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.restore(); }
         else { const hw = 6 * w; g.beginPath(); g.moveTo(-hw, 2); g.quadraticCurveTo(0, 2 + cu * 9, hw, 2); g.stroke(); }
