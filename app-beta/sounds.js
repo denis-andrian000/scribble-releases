@@ -167,7 +167,7 @@
     const snd = (av && av.sound) || {};
     cfg = { on: snd.on !== false, idle: !!snd.idle, vol: snd.vol == null ? 0.6 : Math.max(0, Math.min(1, Number(snd.vol))) };
     // clay characters: the chick chirps higher, the dog is a little deeper
-    pitch = (av && av.kind === 'clay' ? { fox: 1.05, cat: 1.12, dog: 0.9, chicken: 1.3, bunny: 1.2, dragon: 0.82, capybara: 0.88, wolf: 0.8, axolotl: 1.15, duck: 1.1, penguin: 1.0 }[av.clay] : PITCH[av && av.shape]) || 1;
+    pitch = (av && av.kind === 'clay' ? { fox: 1.05, cat: 1.12, dog: 0.9, chicken: 1.3, bunny: 1.2, dragon: 0.82, capybara: 0.88, wolf: 0.8, axolotl: 1.15, duck: 1.1, penguin: 1.0, unicorn: 1.18, octopus: 0.95, bee: 1.35, shark: 0.85, frog: 0.9, lamb: 1.15, panda: 0.86, owl: 0.95 }[av.clay] : PITCH[av && av.shape]) || 1;
     if (master) master.gain.setTargetAtTime(cfg.vol, ctx.currentTime, 0.05);
   }
   window.ScribbleSound = { play, configure, names: Object.keys(S), has: (n) => !!S[n], get config() { return { ...cfg, pitch }; }, get state() { return ctx ? ctx.state : 'none'; }, get played() { return played.slice(); } };

@@ -87,8 +87,8 @@
       if (gf) {
         // grey fur (the wolf): it has almost no colour, so it's picked out by being dark and cool, not by its hue;
         // a new colour takes the picked colour's own brightness, shaded like the clay
-        if (mx > gf[1] + 0.08 || mx < gf[0] - 0.08 || (s > 0.12 && dh > 0.12)) continue;
-        w = clamp((gf[1] + 0.08 - mx) / 0.08, 0, 1) * clamp((mx - gf[0] + 0.08) / 0.08, 0, 1) * (s > 0.04 ? clamp((0.2 - dh) / 0.08, 0, 1) : 1);
+        if (mx > gf[1] + 0.08 || mx < gf[0] - 0.08 || (s > 0.12 && dh > 0.12) ) continue;   // greySat: white/black fur only, not the tan face or lilac hooves
+        w = (rig.greySat ? clamp((rig.greySat - s) / 0.06, 0, 1) : 1) * clamp((gf[1] + 0.08 - mx) / 0.08, 0, 1) * clamp((mx - gf[0] + 0.08) / 0.08, 0, 1) * (s > 0.04 ? clamp((0.2 - dh) / 0.08, 0, 1) : 1);
         if (!w) continue;
         shade = mx / fv;
         [R, G, Bc] = recolor ? hsvRgb(th, clamp(ts * 0.85, 0, 1), clamp(tv * (0.55 + 0.45 * shade), 0, 1)) : [r, g, b];
@@ -138,7 +138,7 @@
     const L = {};
     for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n, k);
     // the nose picture was cut with a little fur round it: that fur follows the colour too (never the pattern)
-    for (const n of ['nose', 'eyeL', 'eyeR']) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, { ...look, pattern: 'none' }, n, 1);
+    for (const n of rig.keepEyes ? ['nose'] : ['nose', 'eyeL', 'eyeR']) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, { ...look, pattern: 'none' }, n, 1);
     const keys = Object.keys(skins); if (keys.length > 24) delete skins[keys[0]];
     skins[key] = L;
     return L;
@@ -207,7 +207,7 @@
       g.globalAlpha = a;
     }
     // eyes
-    g.strokeStyle = INK; g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 4.2 * K;
+    g.strokeStyle = R.eyeInk || INK; g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 4.2 * K;   // light lines on dark eye patches (panda)
     const es = s.eyeScale ?? 1, opens = s.open || [1, 1];
     [[I.eyeL, R.eyeL, R.eyes[0], opens[0], -1], [I.eyeR, R.eyeR, R.eyes[1], opens[1], 1]].forEach(([img, box, c, open, side]) => {
       const cx = c[0] + lx, cy = c[1] + ly, rr = box[2] * 0.28;
