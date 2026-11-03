@@ -672,3 +672,5 @@ body.pad-open { overscroll-behavior: none; }
 
 .size-row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
 .size-row .size-val { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
+
+.rot-sel { width: 100%; padding: 7px 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; margin-bottom: 4px; }

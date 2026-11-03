@@ -37047,7 +37047,13 @@ Content-Type: application/octet-stream\r
         Character: "Karakter",
         Dog: "Anjing",
         Capybara: "Kapibara",
-        Wolf: "Serigala"
+        Wolf: "Serigala",
+        "Change character automatically": "Ganti karakter otomatis",
+        "Each time Scribble starts": "Setiap kali Scribble dibuka",
+        "Every hour": "Setiap jam",
+        "Every day": "Setiap hari",
+        Off: "Mati",
+        "Your buddy turns into one of the others, with a little magic trick.": "Buddy-mu berubah jadi karakter lain, dengan sedikit sulap."
       };
     }
   });
@@ -39145,6 +39151,22 @@ ${lines.join("\n")}
         if (changed) saveConfig();
       }
       setInterval(routineTick, 30 * 1e3);
+      function rotateBuddy() {
+        const a = avatar();
+        if (a.kind !== "clay") return;
+        const others = CLAY_CHARS.filter((c) => c !== a.clay);
+        config.avatar = { ...a, clay: others[Math.floor(Math.random() * others.length)], color: null, rotatedAt: Date.now() };
+        saveConfig();
+        const b = avatar();
+        sendBuddy("avatar:update", b);
+        sendPanel("avatar:update", b);
+      }
+      function rotateTick() {
+        const a = avatar(), last = a.rotatedAt || 0;
+        if (a.rotate === "hour" && Date.now() - last >= 36e5) rotateBuddy();
+        else if (a.rotate === "day" && new Date(last).toDateString() !== (/* @__PURE__ */ new Date()).toDateString()) rotateBuddy();
+      }
+      setInterval(rotateTick, 60 * 1e3);
       app.on("second-instance", () => showPanel());
       var quitSynced = false;
       app.on("before-quit", (e) => {
@@ -39168,6 +39190,7 @@ ${lines.join("\n")}
         config = loadConfig();
         I18n.setLang(appLang());
         migrateKeys();
+        if (config.avatar && config.avatar.rotate === "launch") setTimeout(rotateBuddy, 4e3);
         if (config.avatar && (config.avatar.kind !== "clay" || !CLAY_CHARS.includes(config.avatar.clay))) {
           config.avatar = migrateAvatar(config.avatar);
           saveConfig();

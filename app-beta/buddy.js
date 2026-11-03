@@ -213,7 +213,19 @@ if (S.onEdge) S.onEdge((side) => {
   body.classList.toggle('cling-right', side === 'right');
   if (side && document.querySelector('#buddy[data-cling]')) snd('cling');
 });
-S.onAvatar((a) => { window.ScribbleSound?.configure(a); render(a); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar(); });
+// a different character (picked, or the automatic change): it glows and spins, a flash, and the new one pops out
+let swapTimer = 0;
+S.onAvatar((a) => {
+  window.ScribbleSound?.configure(a);
+  const swap = rig && a.kind === 'clay' && cfg.kind === 'clay' && a.clay !== cfg.clay && Life()?.morph;
+  clearTimeout(swapTimer);
+  if (swap) {
+    snd('twirl'); Life().morph('grow');
+    swapTimer = setTimeout(() => { render(a); snd('saved'); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar(); }, 1250);
+    return;
+  }
+  render(a); B.sy.kick(3); B.ty.kick(-150); Life()?.afterAvatar();
+});
 
 // pointer: press, drag, click, hover
 // (the gesture steps are also exposed on window.__buddy.input, so the Android floating buddy can drive them from native touch)
