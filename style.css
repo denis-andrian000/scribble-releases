@@ -17,8 +17,8 @@ h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.15; margin: 18px 0 10px; 
 .btn { display: inline-block; margin-top: 26px; background: var(--accent); color: var(--accent-ink); padding: 13px 26px; border-radius: 12px; font-weight: 700; text-decoration: none; }
 .btn:hover { filter: brightness(1.05); }
 .small { font-size: 13.5px; color: var(--ink2); }
-.friends { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 34px 0 8px; }
-.friends .bd { width: 80px; height: 80px; object-fit: contain; }
+.friends { display: flex; justify-content: center; gap: 2px; flex-wrap: wrap; margin: 34px 0 8px; }
+.friends .bd { width: 64px; height: 64px; object-fit: contain; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; margin: 34px 0; }
 .card { background: var(--bg2); border-radius: 14px; padding: 16px 18px; }
 .card b { display: block; margin-bottom: 4px; }
@@ -59,4 +59,4 @@ footer .by .d { display: none; }
 @media (prefers-color-scheme: dark) { footer .by .l { display: none; } footer .by .d { display: inline; } }
 
 .friends-cap { text-align: center; margin: 0; }
-@media (max-width: 480px) { .friends .bd { width: 44px; height: 44px; } .friends { gap: 1px; flex-wrap: nowrap; } }
+@media (max-width: 480px) { .friends .bd { width: 52px; height: 52px; } .friends { gap: 2px; flex-wrap: wrap; max-width: 330px; margin-left: auto; margin-right: auto; } }
