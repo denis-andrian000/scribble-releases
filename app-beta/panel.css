@@ -666,7 +666,7 @@ body.pad-open { overscroll-behavior: none; }
 .snd-row .btn { white-space: nowrap; }
 
 /* clay characters (Settings → Buddy, first-run setup) */
-.av-grid.clay-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.av-grid.clay-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .av-grid.clay-grid .av-opt svg { width: 100%; height: auto; aspect-ratio: 1; }
 .av-grid.pat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 

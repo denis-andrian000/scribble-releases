@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.7.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.8.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37045,7 +37045,9 @@ Content-Type: application/octet-stream\r
         "Play a sound": "Putar suara",
         "Each buddy has its own voice. Quiet when your phone is on silent.": "Tiap buddy punya suaranya sendiri. Diam saat ponselmu dalam mode senyap.",
         Character: "Karakter",
-        Dog: "Anjing"
+        Dog: "Anjing",
+        Capybara: "Kapibara",
+        Wolf: "Serigala"
       };
     }
   });
@@ -38674,12 +38676,14 @@ Content-Type: application/octet-stream\r
         for (const k of OLD_KEYS) delete a[k];
         return a;
       }
-      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon"];
+      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon", "capybara", "wolf"];
       function clayFor(shape) {
         if (/bunny|rabbit|mouse|hamster/.test(shape || "")) return "bunny";
+        if (/wolf|husky/.test(shape || "")) return "wolf";
+        if (/capybara|bear|panda|koala|tanuki/.test(shape || "")) return "capybara";
         if (/dragon|dino|lizard|frog|axolotl|chameleon|turtle/.test(shape || "")) return "dragon";
         if (/cat|kitty/.test(shape || "")) return "cat";
-        if (/dog|puppy|bear|panda|koala|tanuki/.test(shape || "")) return "dog";
+        if (/dog|puppy/.test(shape || "")) return "dog";
         if (/bird|chick|duck|penguin|owl|egg/.test(shape || "")) return "chicken";
         return "fox";
       }
