@@ -66,7 +66,8 @@
     try { d = x.getImageData(0, 0, c.width, c.height); } catch { return c; }
     const p = d.data, fh = rig.furHue, fs = rig.furSat || 0.6, fv = rig.furVal || 0.9;
     const sm = rig.satMin || 0.22;
-    const vm = rig.valMin || 0.5;                        // how dark a shadow still counts as fur                       // pastel furs (the bunny) need a lower bar than the cream
+    const vm = rig.valMin || 0.5;
+    const gf = rig.furGrey || null;                      // [darkest, lightest] value of a grey fur                        // how dark a shadow still counts as fur                       // pastel furs (the bunny) need a lower bar than the cream
     // where this layer sits in the rig box (patterns are laid out in rig units)
     const q = (rig.q || 1) * k;
     let pd = null;
@@ -80,13 +81,25 @@
     for (let i = 0; i < p.length; i += 4) {
       if (!p[i + 3]) continue;
       const r = p[i] / 255, g = p[i + 1] / 255, b = p[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn, s = mx ? dl / mx : 0;
-      if (s < sm || mx < vm) continue;
       let h = dl === 0 ? 0 : mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4; h = ((h / 6) + 1) % 1;
       let dh = Math.abs(h - fh); dh = Math.min(dh, 1 - dh);
-      const tol = rig.furTol || 0.05, w = clamp((tol - dh) / Math.min(0.02, tol * 0.3), 0, 1) * clamp((s - sm) / (sm * 0.55), 0, 1) * clamp((mx - vm) / 0.1, 0, 1);
-      if (!w) continue;
-      const shade = mx / fv;                                // the clay's light and shadow at this pixel
-      let [R, G, Bc] = recolor ? hsvRgb(th, clamp(s * ts / fs, 0, 1), clamp(tv * shade, 0, 1)) : [r, g, b];
+      let w, shade, R, G, Bc;
+      if (gf) {
+        // grey fur (the wolf): it has almost no colour, so it's picked out by being dark and cool, not by its hue;
+        // a new colour takes the picked colour's own brightness, shaded like the clay
+        if (mx > gf[1] + 0.08 || mx < gf[0] - 0.08 || (s > 0.12 && dh > 0.12)) continue;
+        w = clamp((gf[1] + 0.08 - mx) / 0.08, 0, 1) * clamp((mx - gf[0] + 0.08) / 0.08, 0, 1) * (s > 0.04 ? clamp((0.2 - dh) / 0.08, 0, 1) : 1);
+        if (!w) continue;
+        shade = mx / fv;
+        [R, G, Bc] = recolor ? hsvRgb(th, clamp(ts * 0.85, 0, 1), clamp(tv * (0.55 + 0.45 * shade), 0, 1)) : [r, g, b];
+      } else {
+        if (s < sm || mx < vm) continue;
+        const tol = rig.furTol || 0.05;
+        w = clamp((tol - dh) / Math.min(0.02, tol * 0.3), 0, 1) * clamp((s - sm) / (rig.satRamp || sm * 0.55), 0, 1) * clamp((mx - vm) / 0.1, 0, 1);
+        if (!w) continue;
+        shade = mx / fv;                                    // the clay's light and shadow at this pixel
+        [R, G, Bc] = recolor ? hsvRgb(th, clamp(s * ts / fs, 0, 1), clamp(tv * shade, 0, 1)) : [r, g, b];
+      }
       if (pd) {
         const a = pd[i + 3] / 255 * w;
         if (a > 0) { const [ir, ig, ib] = hsvRgb(ink[0], ink[1], clamp(ink[2] * (0.55 + 0.45 * shade), 0, 1)); R += (ir - R) * a; G += (ig - G) * a; Bc += (ib - Bc) * a; }
@@ -125,7 +138,7 @@
     const L = {};
     for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n, k);
     // the nose picture was cut with a little fur round it: that fur follows the colour too (never the pattern)
-    if (ch.img.nose) L.nose = skinLayer(ch.img.nose, rig, { ...look, pattern: 'none' }, 'nose', 1);
+    for (const n of ['nose', 'eyeL', 'eyeR']) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, { ...look, pattern: 'none' }, n, 1);
     const keys = Object.keys(skins); if (keys.length > 24) delete skins[keys[0]];
     skins[key] = L;
     return L;
@@ -180,7 +193,7 @@
     g.stroke();
   }
   function face(g, ch, s, L) {
-    const R = ch.rig, I = L && L.nose ? { ...ch.img, nose: L.nose } : ch.img, K = R.k || 1, MK = R.mk || K;
+    const R = ch.rig, I = L ? { ...ch.img, nose: L.nose || ch.img.nose, eyeL: L.eyeL || ch.img.eyeL, eyeR: L.eyeR || ch.img.eyeR } : ch.img, K = R.k || 1, MK = R.mk || K;
     const lx = (s.look?.[0] || 0) * 7 * K, ly = (s.look?.[1] || 0) * 5 * K;
     g.save();
     g.globalAlpha = clamp(s.faceAlpha ?? 1, 0, 1);
@@ -228,7 +241,8 @@
       const X = R.mouth[0] + lx * 0.5 + (m.side || 0) * 1.5 * MK, Y = R.mouth[1] + ly * 0.5 - 2;
       g.save(); g.translate(X, Y); g.scale(MK, MK); g.lineWidth = 3.4; g.strokeStyle = INK;
       if (o < 0.08) {
-        if (cu > 0.3) { g.save(); g.scale(clamp(w, 0.6, 1.3), 1); g.beginPath(); g.arc(-5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.beginPath(); g.arc(5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.restore(); }
+        if (R.calm && cu < 0.8) { g.beginPath(); g.moveTo(-5, 2); g.quadraticCurveTo(0, 2 + cu * 3, 5, 2); g.stroke(); }   // the wolf keeps it cool
+        else if (cu > 0.3) { g.save(); g.scale(clamp(w, 0.6, 1.3), 1); g.beginPath(); g.arc(-5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.beginPath(); g.arc(5.5, 0, 5.5, 0.15, Math.PI - 0.15); g.stroke(); g.restore(); }
         else { const hw = 6 * w; g.beginPath(); g.moveTo(-hw, 2); g.quadraticCurveTo(0, 2 + cu * 9, hw, 2); g.stroke(); }
       } else if (w < 0.72 && cu < 0.4) {
         g.fillStyle = '#5A1F1A'; g.beginPath(); g.ellipse(0, 4, 4 + 3 * w, 3 + 6 * o, 0, 0, 7); g.fill();

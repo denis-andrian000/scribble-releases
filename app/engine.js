@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.7.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.8.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37045,7 +37045,15 @@ Content-Type: application/octet-stream\r
         "Play a sound": "Putar suara",
         "Each buddy has its own voice. Quiet when your phone is on silent.": "Tiap buddy punya suaranya sendiri. Diam saat ponselmu dalam mode senyap.",
         Character: "Karakter",
-        Dog: "Anjing"
+        Dog: "Anjing",
+        Capybara: "Kapibara",
+        Wolf: "Serigala",
+        "Change character automatically": "Ganti karakter otomatis",
+        "Each time Scribble starts": "Setiap kali Scribble dibuka",
+        "Every hour": "Setiap jam",
+        "Every day": "Setiap hari",
+        Off: "Mati",
+        "Poof! Your buddy turns into one of the others in a cloud of smoke.": "Puf! Buddy-mu berubah jadi karakter lain di balik kepulan asap."
       };
     }
   });
@@ -38674,12 +38682,14 @@ Content-Type: application/octet-stream\r
         for (const k of OLD_KEYS) delete a[k];
         return a;
       }
-      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon"];
+      var CLAY_CHARS = ["fox", "cat", "dog", "chicken", "bunny", "dragon", "capybara", "wolf"];
       function clayFor(shape) {
         if (/bunny|rabbit|mouse|hamster/.test(shape || "")) return "bunny";
+        if (/wolf|husky/.test(shape || "")) return "wolf";
+        if (/capybara|bear|panda|koala|tanuki/.test(shape || "")) return "capybara";
         if (/dragon|dino|lizard|frog|axolotl|chameleon|turtle/.test(shape || "")) return "dragon";
         if (/cat|kitty/.test(shape || "")) return "cat";
-        if (/dog|puppy|bear|panda|koala|tanuki/.test(shape || "")) return "dog";
+        if (/dog|puppy/.test(shape || "")) return "dog";
         if (/bird|chick|duck|penguin|owl|egg/.test(shape || "")) return "chicken";
         return "fox";
       }
@@ -39141,6 +39151,22 @@ ${lines.join("\n")}
         if (changed) saveConfig();
       }
       setInterval(routineTick, 30 * 1e3);
+      function rotateBuddy() {
+        const a = avatar();
+        if (a.kind !== "clay") return;
+        const others = CLAY_CHARS.filter((c) => c !== a.clay);
+        config.avatar = { ...a, clay: others[Math.floor(Math.random() * others.length)], color: null, rotatedAt: Date.now() };
+        saveConfig();
+        const b = avatar();
+        sendBuddy("avatar:update", b);
+        sendPanel("avatar:update", b);
+      }
+      function rotateTick() {
+        const a = avatar(), last = a.rotatedAt || 0;
+        if (a.rotate === "hour" && Date.now() - last >= 36e5) rotateBuddy();
+        else if (a.rotate === "day" && new Date(last).toDateString() !== (/* @__PURE__ */ new Date()).toDateString()) rotateBuddy();
+      }
+      setInterval(rotateTick, 60 * 1e3);
       app.on("second-instance", () => showPanel());
       var quitSynced = false;
       app.on("before-quit", (e) => {
@@ -39164,6 +39190,7 @@ ${lines.join("\n")}
         config = loadConfig();
         I18n.setLang(appLang());
         migrateKeys();
+        if (config.avatar && config.avatar.rotate === "launch") setTimeout(rotateBuddy, 4e3);
         if (config.avatar && (config.avatar.kind !== "clay" || !CLAY_CHARS.includes(config.avatar.clay))) {
           config.avatar = migrateAvatar(config.avatar);
           saveConfig();

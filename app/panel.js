@@ -2103,6 +2103,15 @@ function renderCustomizer() {
   box.append(section('Pattern', pg));
   if (av.pattern && av.pattern !== 'none') box.append(section('Pattern colour', swatchRow('patColor', C.inks)));
   box.append(section('Size', sizeControl()));
+  // change character automatically
+  const rot = el('select', 'rot-sel');
+  for (const [k, l] of [['off', 'Off'], ['launch', 'Each time Scribble starts'], ['hour', 'Every hour'], ['day', 'Every day']]) {
+    const o = el('option'); o.value = k; o.textContent = l; if ((av.rotate || 'off') === k) o.selected = true; rot.append(o);
+  }
+  rot.addEventListener('change', () => setAvatar({ rotate: rot.value, rotatedAt: Date.now() }));
+  const rotNote = el('small'); rotNote.textContent = 'Poof! Your buddy turns into one of the others in a cloud of smoke.';
+  const rotBox = el('div'); rotBox.append(rot, rotNote);
+  box.append(section('Change character automatically', rotBox));
 
   const tp = el('div', 'temper-grid');
   for (const [k, l, d] of TEMPERS) {
