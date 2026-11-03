@@ -87,8 +87,8 @@
       if (gf) {
         // grey fur (the wolf): it has almost no colour, so it's picked out by being dark and cool, not by its hue;
         // a new colour takes the picked colour's own brightness, shaded like the clay
-        if (mx > gf[1] + 0.08 || mx < gf[0] - 0.08 || (s > 0.12 && dh > 0.12)) continue;
-        w = clamp((gf[1] + 0.08 - mx) / 0.08, 0, 1) * clamp((mx - gf[0] + 0.08) / 0.08, 0, 1) * (s > 0.04 ? clamp((0.2 - dh) / 0.08, 0, 1) : 1);
+        if (mx > gf[1] + 0.08 || mx < gf[0] - 0.08 || (s > 0.12 && dh > 0.12) ) continue;   // greySat: white/black fur only, not the tan face or lilac hooves
+        w = (rig.greySat ? clamp((rig.greySat - s) / 0.06, 0, 1) : 1) * clamp((gf[1] + 0.08 - mx) / 0.08, 0, 1) * clamp((mx - gf[0] + 0.08) / 0.08, 0, 1) * (s > 0.04 ? clamp((0.2 - dh) / 0.08, 0, 1) : 1);
         if (!w) continue;
         shade = mx / fv;
         [R, G, Bc] = recolor ? hsvRgb(th, clamp(ts * 0.85, 0, 1), clamp(tv * (0.55 + 0.45 * shade), 0, 1)) : [r, g, b];
@@ -138,7 +138,7 @@
     const L = {};
     for (const n of ['body', ...Object.keys(rig.parts)]) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, look, n, k);
     // the nose picture was cut with a little fur round it: that fur follows the colour too (never the pattern)
-    for (const n of ['nose', 'eyeL', 'eyeR']) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, { ...look, pattern: 'none' }, n, 1);
+    for (const n of rig.keepEyes ? ['nose'] : ['nose', 'eyeL', 'eyeR']) if (ch.img[n]) L[n] = skinLayer(ch.img[n], rig, { ...look, pattern: 'none' }, n, 1);
     const keys = Object.keys(skins); if (keys.length > 24) delete skins[keys[0]];
     skins[key] = L;
     return L;
@@ -207,7 +207,7 @@
       g.globalAlpha = a;
     }
     // eyes
-    g.strokeStyle = INK; g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 4.2 * K;
+    g.strokeStyle = R.eyeInk || INK; g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 4.2 * K;   // light lines on dark eye patches (panda)
     const es = s.eyeScale ?? 1, opens = s.open || [1, 1];
     [[I.eyeL, R.eyeL, R.eyes[0], opens[0], -1], [I.eyeR, R.eyeR, R.eyes[1], opens[1], 1]].forEach(([img, box, c, open, side]) => {
       const cx = c[0] + lx, cy = c[1] + ly, rr = box[2] * 0.28;
@@ -317,18 +317,30 @@
   const NEUTRAL = { look: [0, 0], open: [1, 1], eyeScale: 1, blush: 0.55, mouth: { o: 0, c: 0.55, w: 1 }, arms: [0, 0], tail: 0 };
   // a still picture (settings, onboarding, header)
   // previews are painted one at a time with a breather in between, so a page full of them never freezes the app
-  let queue = Promise.resolve();
-  const breathe = () => new Promise((r) => setTimeout(r, 0));
+  // the header buddy and the big preview first, then the chooser tiles, one at a time with a breather in
+  // between, so a page full of previews never freezes the app
+  const jobs = []; let busy = false;
+  const urgent = (c) => !!(c.closest && c.closest('header, .logo, .av-stage, .ob-bd-preview, .ob-buddy'));
+  function pump() {
+    if (busy || !jobs.length) return;
+    busy = true;
+    jobs.sort((a, b) => a.pri - b.pri);
+    const job = jobs.shift();
+    setTimeout(() => job.run().finally(() => { busy = false; pump(); }), 0);
+  }
   function paint(canvas, cfg, pose) {
     const name = DATA()[cfg.clay] ? cfg.clay : Object.keys(DATA())[0];
     if (!name) return Promise.resolve();
-    return (queue = queue.then(breathe).then(() => load(name)).then((ch) => {
-      if (!canvas.isConnected) return;
-      fit(canvas, 256, 1.5);
-      const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
-      drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
-      canvas.dataset.painted = '1';
-    }).catch(() => {}));
+    return new Promise((done) => {
+      jobs.push({ pri: urgent(canvas) ? 0 : 1, run: () => load(name).then((ch) => {
+        if (!canvas.isConnected) return;
+        fit(canvas, 256, 1.5);
+        const s = { ...NEUTRAL, ...(pose || {}), blush: cfg.cheeks === false ? 0 : 0.55, blushColor: cfg.blushColor };
+        drawRig(canvas, ch, skin(ch, cfg, canvas.width), s);
+        canvas.dataset.painted = '1';
+      }).catch(() => {}).finally(done) });
+      pump();
+    });
   }
   // the live buddy: buddy.js calls update(state) every frame
   function player(canvas, cfg) {
