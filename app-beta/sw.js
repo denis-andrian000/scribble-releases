@@ -1,10 +1,11 @@
 // Scribble on the web: keeps the app's files on the device so it opens instantly, also offline.
 // Only the app's own files are cached; Google, Drive and the AI services are never touched here.
-const VERSION = '1.11.0-94c24c48';
+const VERSION = '1.11.1-e9bac3ab';
 const CACHE = 'scribble-' + VERSION;
 const FILES = ["./","avatar.js","buddy-bridge.js","buddy-life.js","buddy.js","chars.js","engine.js","i18n-id.js","i18n.js","icon-180.png","icon-192.png","icon-32.png","icon-512.png","icon-maskable.png","index.html","keyboard.js","manifest.webmanifest","markdown.js","mobile.css","page-buddy.html","panel.css","panel.js","pwa.js","reconnect.js","rig.js","sounds.js","theme.js","today.css","today.js","brand/omniz.png","brand/omniz-dark.png"];
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)));
+  // straight from the website, never the browser's own short-lived copy, so a new version is never mixed with the old one
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('scribble-') && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
