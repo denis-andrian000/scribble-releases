@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.11.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.12.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37056,6 +37056,8 @@ Content-Type: application/octet-stream\r
         Owl: "Burung hantu",
         Gecko: "Tokek",
         Skink: "Kadal",
+        Girl: "Cewek",
+        Boy: "Cowok",
         "Change character automatically": "Ganti karakter otomatis",
         "Each time Scribble starts": "Setiap kali Scribble dibuka",
         "Every hour": "Setiap jam",
@@ -38690,7 +38692,7 @@ Content-Type: application/octet-stream\r
         for (const k of OLD_KEYS) delete a[k];
         return a;
       }
-      var CLAY_CHARS = ["fox", "cat", "dog", "bunny", "dragon", "capybara", "wolf", "axolotl", "duck", "penguin", "unicorn", "octopus", "bee", "shark", "frog", "lamb", "panda", "owl", "gecko", "skink"];
+      var CLAY_CHARS = ["fox", "cat", "dog", "bunny", "dragon", "capybara", "wolf", "axolotl", "duck", "penguin", "unicorn", "octopus", "bee", "shark", "frog", "lamb", "panda", "owl", "gecko", "skink", "girl", "boy"];
       function clayFor(shape) {
         if (/bunny|rabbit|mouse|hamster/.test(shape || "")) return "bunny";
         if (/wolf|husky/.test(shape || "")) return "wolf";
