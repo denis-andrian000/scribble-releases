@@ -2516,10 +2516,12 @@ $('#ob-google').addEventListener('click', async () => {
   av = await S.getAvatar(); applyAvatarToHeader(av); renderCustomizer();
   account = { signedIn: true, email: r.email, name: r.name, picture: r.picture };
   applyAccount();
-  if (r.hasAI) {
+  // an account that was set up before (on any device) goes straight to "welcome back", even without an AI key here
+  const known = r.hasAI || (await S.getSettings().catch(() => ({}))).onboarded;
+  if (known) {
     const first = String(r.name || '').split(' ')[0];
     $('#ob-done-title').textContent = 'All set!';
-    $('#ob-done-msg').textContent = `Welcome back${first ? ', ' + first : ''}! Your notes, tasks and settings are synced from your Google Drive.` + (r.setAside ? ` The notes that were on this computer for ${r.setAside} were put aside in a separate folder.` : '');
+    $('#ob-done-msg').textContent = `Welcome back${first ? ', ' + first : ''}! Your notes, tasks and settings are synced from your Google Drive.` + (r.setAside ? ` The notes that were on this computer for ${r.setAside} were put aside in a separate folder.` : '') + (r.hasAI ? '' : ' Add an AI key in Settings → App so I can chat.');
     obPage('done');
   } else {
     $('#ob-who').textContent = `Signed in as ${r.email}` + (r.setAside ? ` · notes from ${r.setAside} were put aside in a separate folder` : '');
@@ -2590,7 +2592,7 @@ async function loadAccount() {
 }
 S.onSyncStatus((st) => {
   applyAccount(st);
-  if (st && st.state !== 'syncing') { $('#ob-sync').hidden = true; $('#acct-bar').hidden = true; }
+  if (st && st.state !== 'syncing') { $('#ob-sync').hidden = true; $('#acct-bar').hidden = true; obRecheck(); }
 });
 // live progress: a slim bar at the top of setup, and in Settings → App → Account
 S.onSyncProgress((p) => {
@@ -2616,7 +2618,8 @@ S.onChatReload(() => { if (!busy) loadChat(); });
 // back to Scribble: pick up what was done on other devices
 window.addEventListener('focus', () => S.syncFocus && S.syncFocus());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.syncFocus) S.syncFocus(); });
-S.onSettingsChanged(() => { if (currentTab === 'settings') loadSettings(); });
+S.onSettingsChanged(() => { obRecheck(); if (currentTab === 'settings') loadSettings(); });
+S.onAIChanged(() => obRecheck());
 $('#acct-sync-now').addEventListener('click', async () => {
   $('#acct-sync').textContent = 'Syncing…';
   const st = await S.syncNow();
@@ -2672,7 +2675,17 @@ async function obConnect() {
 }
 $('#ob-connect').addEventListener('click', obConnect);
 $('#ob-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') obConnect(); });
-$('#ob-start').addEventListener('click', () => { closeOnboarding(); showTab('chat'); });
+$('#ob-start').addEventListener('click', () => { closeOnboarding(); S.setSettings({ onboarded: true }); showTab('chat'); });
+// Setup opened by itself at start (no AI key here yet), but the account's settings then arrive from Drive with a
+// key or "already set up": close it again instead of asking an existing user to set up a new buddy.
+let obAuto = false;
+async function obRecheck() {
+  if (!obAuto || $('#onboard').hidden || !account.signedIn) return;
+  const cur = [...$$('#onboard .ob-page')].find((x) => !x.hidden)?.dataset.ob;
+  if (cur !== 'choose') { obAuto = false; return; }
+  const s = await S.getSettings();
+  if (s.hasKey || s.onboarded) { obAuto = false; closeOnboarding(); }
+}
 function friendlyKeyError(e) {
   const m = String(e || '');
   if (/rejected|invalid|401|403|API key not valid|permission/i.test(m)) return "That key didn't work. Copy it again (the whole key) and paste it here.";
@@ -2687,5 +2700,6 @@ Promise.all([S.account(), S.getSettings()]).then(([a, s]) => {
   account = a;
   applyAccount(a.sync);
   if (!a.signedIn) openOnboarding('signin');
-  else if (!s.hasKey && !s.onboarded) openOnboarding('choose');
+  else if (!s.hasKey && !s.onboarded) { openOnboarding('choose'); obAuto = true; }
+  else if (!s.onboarded) S.setSettings({ onboarded: true });      // set up before this flag was saved: remember it (follows the account)
 });
