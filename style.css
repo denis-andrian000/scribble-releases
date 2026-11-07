@@ -19,8 +19,6 @@ h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.15; margin: 18px 0 10px; 
 .small { font-size: 13.5px; color: var(--ink2); }
 .friends { display: flex; justify-content: center; gap: 2px; max-width: 620px; flex-wrap: wrap; margin: 34px auto 8px; }
 .friends .bd { width: 58px; height: 58px; object-fit: contain; }
-.friends [data-clay-buddy] { display: inline-block; vertical-align: middle; }
-.friends [data-clay-buddy] svg { display: block; width: 58px; height: 58px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; margin: 34px 0; }
 .card { background: var(--bg2); border-radius: 14px; padding: 16px 18px; }
 .card b { display: block; margin-bottom: 4px; }
@@ -61,5 +59,4 @@ footer .by .d { display: none; }
 @media (prefers-color-scheme: dark) { footer .by .l { display: none; } footer .by .d { display: inline; } }
 
 .friends-cap { text-align: center; margin: 0; }
-@media (max-width: 480px) { .friends .bd { width: 52px; height: 52px; }
-  .friends [data-clay-buddy] svg { width: 52px; height: 52px; } .friends { gap: 2px; flex-wrap: wrap; max-width: 280px; margin-left: auto; margin-right: auto; } }
+@media (max-width: 480px) { .friends .bd { width: 52px; height: 52px; } .friends { gap: 2px; flex-wrap: wrap; max-width: 280px; margin-left: auto; margin-right: auto; } }
