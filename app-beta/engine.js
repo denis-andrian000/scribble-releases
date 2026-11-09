@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.12.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.13.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -5195,8 +5195,21 @@ ${groups[n].map(fmt).join("\n")}
             wallets: this.wallets().map((w) => this.walletView(w)),
             categories: this.categories().map((c) => ({ ...c, spent: byCat.get(c.id) || 0 })),
             records: rows.map((r) => this.recordView(r)),
-            shops: this.live("shops").map((s) => ({ id: s.id, match: s.match, category: (this.category(s.category) || {}).name, categoryId: s.category }))
+            shops: this.live("shops").map((s) => ({ id: s.id, match: s.match, category: (this.category(s.category) || {}).name, categoryId: s.category })),
+            trend: this.trend(ym),
+            outlook: ym === today().slice(0, 7) ? this.outlook() : null
           };
+        }
+        // money in and out for the 6 months up to ym
+        trend(ym) {
+          const out = [];
+          let [y, m] = ym.split("-").map(Number);
+          for (let i = 5; i >= 0; i--) {
+            const d = new Date(y, m - 1 - i, 1), k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+            const rs = this.records().filter((r) => !r.planned && r.date.startsWith(k));
+            out.push({ month: k, in: rs.filter((r) => r.kind === "in").reduce((a, r) => a + r.amount, 0), out: rs.filter((r) => r.kind === "out").reduce((a, r) => a + r.amount, 0) });
+          }
+          return out;
         }
         // What's left to spend: all wallets now, minus payments planned from today to the end of the month
         outlook() {
@@ -37841,7 +37854,21 @@ Content-Type: application/octet-stream\r
         "From wallet": "Dari dompet",
         "Counts when it happens": "Dihitung saat terjadi",
         Removed: "Dihapus",
-        Undo: "Urungkan"
+        Undo: "Urungkan",
+        spent: "terpakai",
+        "No spending yet.": "Belum ada pengeluaran.",
+        "Spending by category": "Pengeluaran per kategori",
+        Budgets: "Anggaran",
+        "Group by": "Kelompokkan",
+        Day: "Hari",
+        In: "Masuk",
+        Out: "Keluar",
+        "In vs out, last 6 months": "Masuk vs keluar, 6 bulan terakhir",
+        "Free to spend": "Bisa dipakai",
+        day: "hari",
+        "Set a monthly budget on a category to see it here.": "Atur anggaran bulanan di kategori untuk melihatnya di sini.",
+        Export: "Ekspor",
+        "Download this month as a CSV file (Excel, Google Sheets)": "Unduh bulan ini sebagai file CSV (Excel, Google Sheets)"
       };
     }
   });

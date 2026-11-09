@@ -806,3 +806,28 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .mn-err { color: var(--red); font-size: 12.5px; }
 .mn-shops { display: flex; flex-wrap: wrap; gap: 4px; }
 .link.danger { color: var(--red); }
+
+/* ---- Money reports ---- */
+.mn-reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.mn-card { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 10px 12px; min-width: 0; }
+.mn-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.mn-card-head h4 { margin: 0; font-size: 13px; }
+.mn-card-head select { font: inherit; font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); }
+.mn-donut-wrap { display: flex; align-items: center; gap: 12px; }
+#mn-donut { width: 120px; height: 120px; flex: none; }
+.mn-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
+.mn-legend li { display: flex; align-items: center; gap: 6px; }
+.mn-legend i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.mn-legend span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-legend .muted { color: var(--ink-2); }
+.mn-budgets { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mn-bud-top { display: flex; justify-content: space-between; gap: 8px; }
+.mn-bud.over .mn-bud-top span:last-child { color: var(--red); font-weight: 700; }
+.mn-bar { height: 7px; border-radius: 4px; background: var(--bg-2); margin-top: 3px; overflow: hidden; }
+.mn-bar > div { height: 100%; border-radius: 4px; }
+.mn-pivot { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mn-pivot th { font-size: 11px; color: var(--ink-2); font-weight: 600; text-align: left; padding: 3px 4px; }
+.mn-pivot td { padding: 4px; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.mn-pivot .r { text-align: right; }
+.mn-pivot td.in { color: var(--green); } .mn-pivot td.out { color: var(--red); }
+#mn-trend { width: 100%; height: auto; max-height: 180px; }

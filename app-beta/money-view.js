@@ -75,8 +75,73 @@
     tb.textContent = '';
     for (const r of rows) tb.append(row(r));
     $('#mn-empty').hidden = rows.length > 0;
+    reports(d);
     $('#mn-empty').querySelector('p').textContent = d.records.length ? t('Nothing matches these filters.') : t('No records this month yet.');
   }
+
+  // ---- reports: donut by category, budgets, group-by table, 6-month trend
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const short = (n) => (n >= 1e6 ? (n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : n >= 1e3 ? Math.round(n / 1e3) + ' rb' : String(n));
+  function reports(d) {
+    const cats = d.categories.filter((c) => c.kind === 'out' && c.spent > 0).sort((a, b) => b.spent - a.spent);
+    const total = cats.reduce((a, c) => a + c.spent, 0);
+    const donut = $('#mn-donut'); donut.textContent = '';
+    const C = 2 * Math.PI * 60; let off = 0;
+    const g = sv('g', { transform: 'rotate(-90 75 75)', fill: 'none', 'stroke-width': 22 });
+    g.append(sv('circle', { cx: 75, cy: 75, r: 60, stroke: 'var(--bg-2)' }));
+    for (const c of cats) { const len = (c.spent / total) * C; g.append(sv('circle', { cx: 75, cy: 75, r: 60, stroke: c.color, 'stroke-dasharray': `${len} ${C}`, 'stroke-dashoffset': -off })); off += len; }
+    donut.append(g);
+    const t1 = sv('text', { x: 75, y: 72, 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--ink-2)' }); t1.textContent = t('spent');
+    const t2 = sv('text', { x: 75, y: 90, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: 'var(--ink)' }); t2.textContent = short(total);
+    donut.append(t1, t2);
+    const lg = $('#mn-legend'); lg.textContent = '';
+    for (const c of cats.slice(0, 7)) { const li = h('li'); const i = h('i'); i.style.background = c.color; li.append(i, h('span', '', c.name), h('b', '', Math.round(c.spent / total * 100) + '%')); lg.append(li); }
+    if (!cats.length) lg.append(h('li', 'muted', t('No spending yet.')));
+    // budgets
+    const bb = $('#mn-budgets'); bb.textContent = '';
+    const withB = d.categories.filter((c) => c.kind === 'out' && c.budget != null && !c.hidden);
+    for (const c of withB) {
+      const pct = Math.min(100, c.budget ? c.spent / c.budget * 100 : 0);
+      const it = h('div', 'mn-bud' + (c.spent > c.budget ? ' over' : ''));
+      const top = h('div', 'mn-bud-top'); top.append(h('span', '', c.name), h('span', '', `${rp(c.spent).replace('Rp ', '')} / ${rp(c.budget).replace('Rp ', '')}`));
+      const bar = h('div', 'mn-bar'); const fill = h('div'); fill.style.width = pct + '%'; fill.style.background = c.spent > c.budget ? 'var(--red)' : c.color; bar.append(fill);
+      it.append(top, bar); bb.append(it);
+    }
+    if (!withB.length) { const p = h('p', 'mn-hint', t('Set a monthly budget on a category to see it here.')); const b = h('button', 'link', t('Categories')); b.addEventListener('click', openCategories); bb.append(p, b); }
+    // group by
+    const by = $('#mn-pivot').value, rows = new Map();
+    for (const r of d.records.filter((r) => !r.planned && r.kind !== 'transfer')) {
+      const k = by === 'wallet' ? r.wallet : by === 'day' ? r.date : (r.category || '?');
+      const o = rows.get(k) || { in: 0, out: 0, n: 0 }; o[r.kind] += r.amount; o.n++; rows.set(k, o);
+    }
+    const pt = $('#mn-pivot-t'); pt.textContent = '';
+    const hr = h('tr'); for (const x of [by === 'wallet' ? t('Wallet') : by === 'day' ? t('Date') : t('Category'), '#', t('In'), t('Out')]) hr.append(h('th', x === t('In') || x === t('Out') || x === '#' ? 'r' : '', x)); pt.append(hr);
+    const keys = [...rows.keys()].sort((a, b) => (by === 'day' ? b.localeCompare(a) : rows.get(b).out - rows.get(a).out));
+    for (const k of keys) { const o = rows.get(k); const tr = h('tr'); tr.append(h('td', '', by === 'day' ? dayLabel(k) : k), h('td', 'r', String(o.n)), h('td', 'r in', o.in ? short(o.in) : ''), h('td', 'r out', o.out ? short(o.out) : '')); pt.append(tr); }
+    // trend
+    const tr = $('#mn-trend'); tr.textContent = '';
+    const max = Math.max(1, ...d.trend.map((m) => Math.max(m.in, m.out)));
+    tr.append(sv('line', { x1: 10, y1: 140, x2: 430, y2: 140, stroke: 'var(--line)' }));
+    d.trend.forEach((m, i) => {
+      const x = 24 + i * 70, hi = (m.in / max) * 125, ho = (m.out / max) * 125;
+      tr.append(sv('rect', { x, y: 140 - hi, width: 22, height: hi, rx: 3, fill: 'var(--green)' }), sv('rect', { x: x + 26, y: 140 - ho, width: 22, height: ho, rx: 3, fill: m.out > m.in ? 'var(--red)' : '#E07B39' }));
+      const lb = sv('text', { x: x + 24, y: 158, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--ink-2)' }); lb.textContent = new Date(m.month + '-15').toLocaleDateString(loc(), { month: 'short' }); tr.append(lb);
+    });
+    // what's left to spend (this month)
+    if (d.outlook) $('#mn-left-n').textContent = `${t('Free to spend')} ${d.outlook.free_to_spend} · ≈ ${d.outlook.per_day}/${t('day')}`;
+  }
+  $('#mn-pivot').addEventListener('change', () => reports(state.data));
+
+  // ---- export this month as CSV (opens in Excel / Google Sheets)
+  $('#mn-export').addEventListener('click', () => {
+    const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const lines = [['Date', 'Kind', 'Description', 'Category', 'Wallet', 'To wallet', 'Amount', 'Planned'].join(',')];
+    for (const r of state.data.records) lines.push([r.date, r.kind, q(r.description), q(r.category), q(r.wallet), q(r.toWallet), r.kind === 'out' ? -r.amount : r.amount, r.planned ? 'yes' : ''].join(','));
+    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Scribble money ${state.month}.csv`; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
 
   function row(r) {
     const tr = h('tr', r.kind + (r.planned ? ' planned' : '') + (state.editing === r.id ? ' hl' : ''));

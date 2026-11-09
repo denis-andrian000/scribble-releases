@@ -154,6 +154,7 @@
       <span class="spacer"></span>
       <button class="link" id="mn-wallets-btn">Wallets</button>
       <button class="link" id="mn-cats-btn">Categories</button>
+      <button class="link" id="mn-export" title="Download this month as a CSV file (Excel, Google Sheets)">Export</button>
       <button class="btn" id="mn-add">+ Record</button>
     </div>
     <div class="mn-body" id="mn-body">
@@ -164,6 +165,12 @@
         <div class="mn-tot dark"><span>All wallets</span><b id="mn-all">Rp 0</b><small id="mn-all-n"></small></div>
       </div>
       <div class="mn-wallets" id="mn-wallets"></div>
+      <div class="mn-reports" id="mn-reports">
+        <div class="mn-card"><div class="mn-card-head"><h4>Spending by category</h4></div><div class="mn-donut-wrap"><svg id="mn-donut" viewBox="0 0 150 150" role="img" aria-label="Spending by category"></svg><ul id="mn-legend" class="mn-legend"></ul></div></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>Budgets</h4></div><div id="mn-budgets" class="mn-budgets"></div></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>Group by</h4><select id="mn-pivot"><option value="category">Category</option><option value="wallet">Wallet</option><option value="day">Day</option></select></div><table class="mn-pivot" id="mn-pivot-t"></table></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>In vs out, last 6 months</h4></div><svg id="mn-trend" viewBox="0 0 440 170" role="img" aria-label="Money in and out per month"></svg></div>
+      </div>
       <div class="mn-table-box">
         <div class="mn-filters" id="mn-filters">
           <div class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input id="mn-q" type="search" placeholder="Search records" autocomplete="off"></div>
