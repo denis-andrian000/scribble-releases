@@ -690,7 +690,7 @@ em.beta { font-style: normal; font-size: 10.5px; font-weight: 700; text-transfor
 .mn-mlabel { font-weight: 600; font-size: 13px; padding: 3px 8px; border-radius: 7px; }
 .mn-mlabel:hover { background: var(--bg-2); }
 .mn-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 12px 14px; }
-.mn-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mn-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
 .mn-tot { display: flex; flex-direction: column; padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); min-width: 0; }
 .mn-tot span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
 .mn-tot b { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -725,13 +725,13 @@ em.beta { font-style: normal; font-size: 10.5px; font-weight: 700; text-transfor
 .mn-empty p { margin: 4px 0; }
 .mn-table:has(tbody:not(:empty)) ~ .mn-empty, .mn-table-box:has(tbody:not(:empty)) .mn-empty { display: none; }
 @media (max-width: 699px) { .mn-table th:nth-child(4), .mn-table td:nth-child(4) { display: none; } }   /* narrow: wallet shows under the description */
-@media (min-width: 700px) { .mn-table .mn-sub { display: none; } .mn-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 700px) { .mn-table .mn-sub { display: none; } }
 .mn-sub { display: block; font-size: 11px; color: var(--ink-2); }
 
 body.wide #view-money .mn-head { padding: 18px 24px 8px; }
 body.wide .mn-title { font-size: 22px; }
 body.wide .mn-body { padding: 6px 24px 28px; gap: 14px; }
-body.wide .mn-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+body.wide .mn-totals { gap: 12px; }
 body.wide .mn-tot { padding: 14px 16px; }
 body.wide .mn-tot b { font-size: 22px; }
 body.wide .mn-table { font-size: 13.5px; }
