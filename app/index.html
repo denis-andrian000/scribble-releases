@@ -32,8 +32,8 @@
     <div class="brand"><span class="logo"></span><span class="bname">Scribble</span></div>
     <nav>
       <button data-tab="chat" class="on">Chat</button>
-      <button data-tab="notebook">Notebook</button>
-      <button data-tab="tasks">Tasks</button>
+      <button data-tab="tasks" data-area="work">Tasks</button>
+      <button data-tab="money" id="nav-money" hidden>Money</button>
     </nav>
     <div class="hdr-actions">
       <button class="icon" id="btn-theme" title="Switch light / dark">
@@ -102,6 +102,7 @@
   <!-- NOTEBOOK -->
   <section id="view-notebook" class="view">
     <div id="nb-list">
+      <div class="seg area-seg" role="tablist" aria-label="Tasks or notebook"><button type="button" data-sub="tasks">Tasks</button><button type="button" data-sub="notebook">Notebook</button></div>
       <div class="list-head">
         <span>Your notebook</span>
         <span class="spacer"></span>
@@ -140,9 +141,53 @@
     </div>
   </section>
 
+
+  <!-- MONEY -->
+  <section id="view-money" class="view">
+    <div class="mn-head">
+      <h2 class="mn-title">Money</h2>
+      <div class="mn-month">
+        <button class="icon mn-prev" id="mn-prev" title="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button class="mn-mlabel" id="mn-mlabel"></button>
+        <button class="icon mn-next" id="mn-next" title="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <span class="spacer"></span>
+      <button class="link" id="mn-wallets-btn">Wallets</button>
+      <button class="link" id="mn-cats-btn">Categories</button>
+      <button class="link" id="mn-export" title="Download this month as a CSV file (Excel, Google Sheets)">Export</button>
+      <button class="btn" id="mn-add">+ Record</button>
+    </div>
+    <div class="mn-body" id="mn-body">
+      <div class="mn-totals" id="mn-totals">
+        <div class="mn-tot"><span>Money in</span><b class="in" id="mn-in">Rp 0</b><small id="mn-in-n"></small></div>
+        <div class="mn-tot"><span>Money out</span><b class="out" id="mn-out">Rp 0</b><small id="mn-out-n"></small></div>
+        <div class="mn-tot"><span>Left this month</span><b id="mn-left">Rp 0</b><small id="mn-left-n"></small></div>
+        <div class="mn-tot dark"><span>All wallets</span><b id="mn-all">Rp 0</b><small id="mn-all-n"></small></div>
+      </div>
+      <div class="mn-wallets" id="mn-wallets"></div>
+      <div class="mn-reports" id="mn-reports">
+        <div class="mn-card"><div class="mn-card-head"><h4>Spending by category</h4></div><div class="mn-donut-wrap"><svg id="mn-donut" viewBox="0 0 150 150" role="img" aria-label="Spending by category"></svg><ul id="mn-legend" class="mn-legend"></ul></div></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>Budgets</h4></div><div id="mn-budgets" class="mn-budgets"></div></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>Group by</h4><select id="mn-pivot"><option value="category">Category</option><option value="wallet">Wallet</option><option value="day">Day</option></select></div><table class="mn-pivot" id="mn-pivot-t"></table></div>
+        <div class="mn-card"><div class="mn-card-head"><h4>In vs out, last 6 months</h4></div><svg id="mn-trend" viewBox="0 0 440 170" role="img" aria-label="Money in and out per month"></svg></div>
+      </div>
+      <div class="mn-table-box">
+        <div class="mn-filters" id="mn-filters">
+          <div class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input id="mn-q" type="search" placeholder="Search records" autocomplete="off"></div>
+          <select id="mn-f-kind"><option value="">In &amp; out</option><option value="in">Money in</option><option value="out">Money out</option><option value="transfer">Transfers</option></select>
+          <select id="mn-f-cat"><option value="">All categories</option></select>
+          <select id="mn-f-wallet"><option value="">All wallets</option></select>
+        </div>
+        <div class="mn-scroll"><table class="mn-table" id="mn-table"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Wallet</th><th class="r">Amount</th><th class="act"></th></tr></thead><tbody id="mn-rows"></tbody></table></div>
+        <div class="mn-empty" id="mn-empty"><p>No records this month yet.</p><p>Tell your buddy what you spent or earned, like <i>“makan siang 45rb pake GoPay”</i> or <i>“gajian masuk 8,5 juta”</i>.</p></div>
+      </div>
+    </div>
+  </section>
+
   <!-- TASKS -->
   <section id="view-tasks" class="view">
     <div class="task-toolbar">
+      <div class="seg area-seg" role="tablist" aria-label="Tasks or notebook"><button type="button" data-sub="tasks">Tasks</button><button type="button" data-sub="notebook">Notebook</button></div>
       <div class="seg">
         <button data-filter="open" class="on">Open</button>
         <button data-filter="done">Done</button>
@@ -262,6 +307,7 @@
       <label class="toggle"><input type="checkbox" id="s-confirm"><span>Ask me before saving anything (polished preview + where it goes)</span></label>
       <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
       <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
+      <label class="toggle"><input type="checkbox" id="s-money"><span>Money: keep track of what you spend and earn, by chatting <em class="beta">new</em></span></label>
       <div class="field"><span>Routine</span>
         <div class="sync-box routine">
           <label class="toggle"><input type="checkbox" id="r-brief"><span>Morning brief when I start the day <button class="link" id="r-brief-now" type="button">show now</button></span></label>
@@ -381,6 +427,7 @@
 <script src="chars.js"></script>
 <script src="rig.js"></script>
 <script src="sounds.js"></script>
+<script src="money-view.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>
