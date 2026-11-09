@@ -28,18 +28,35 @@ async function updTask(id, fields) {
 // ---------------- tabs ----------------
 let wideMode = false;
 let lastLeft = 'tasks';                 // in wide mode the chat is always docked; this is the main view
+let lastWork = 'tasks';                                  // the Tasks area holds Tasks and Notebook; remember which one
 function showTab(tab) {
+  if (tab === 'work') tab = lastWork;
+  if (tab === 'money' && !moneyOn) tab = lastWork;
   if (wideMode && tab === 'chat') { setTimeout(() => $('#input').focus(), 30); tab = lastLeft; }
+  if (tab === 'tasks' || tab === 'notebook') lastWork = tab;
   if (tab !== 'chat' && tab !== 'settings') lastLeft = tab;
   currentTab = tab;
-  $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  $$('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab || (b.dataset.area === 'work' && tab === 'notebook')));
+  $$('.area-seg button').forEach((b) => b.classList.toggle('on', b.dataset.sub === tab));
   $$('.view').forEach((v) => v.classList.toggle('on', v.id === `view-${tab}`));
   if (tab === 'chat') setTimeout(() => $('#input').focus(), 30);
   if (tab === 'notebook') loadTree();
   if (tab === 'tasks') loadTasks();
   if (tab === 'settings') loadSettings();
+  if (tab === 'money' && window.Money) Money.show();
 }
-$$('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$$('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.area === 'work' ? 'work' : b.dataset.tab)));
+$$('.area-seg button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.sub)));
+// Money is its own area, shown once it's turned on in Settings (off for accounts made before it existed)
+let moneyOn = false;
+function applyMoney(on) {
+  moneyOn = !!on;
+  $('#nav-money').hidden = !moneyOn;
+  document.body.classList.toggle('money-on', moneyOn);
+  if (!moneyOn && currentTab === 'money') showTab(lastWork);
+}
+S.getSettings().then((s) => applyMoney(s.money)).catch(() => {});
+if (S.onMoneyChanged) S.onMoneyChanged(() => { if (currentTab === 'money' && window.Money) Money.show(); });
 $('#btn-settings').addEventListener('click', () => showTab(currentTab === 'settings' ? (wideMode ? lastLeft : 'chat') : 'settings'));
 $('#btn-close').addEventListener('click', () => S.hide());
 document.addEventListener('keydown', (e) => {
@@ -83,6 +100,7 @@ function renderMessages(list) {
   msgsEl.innerHTML = '';
   if (currentBrief && !viewingOld) msgsEl.append(briefCard(currentBrief));
   for (const m of list) addMessage(m);
+  markOldOptions();
   if (currentSuggestion && !viewingOld) msgsEl.append(suggestionCard(currentSuggestion));
   $('#empty').hidden = list.length > 0 || viewingOld || !!currentBrief || !!currentSuggestion;
   scrollDown();
@@ -150,18 +168,71 @@ function userBubble(m) {
   return n;
 }
 
+// "[[options: A | B | C]]" at the end of a reply: choices the user can tap (which wallet, which category…)
+const OPT_RE = /\n?\s*\[\[\s*options?\s*:\s*([^\]]*)\]\]\s*$/i;
+function splitOptions(text) {
+  const m = String(text || '').match(OPT_RE);
+  if (!m) return { text, options: [] };
+  return { text: text.slice(0, m.index).trim(), options: m[1].split('|').map((x) => x.trim()).filter(Boolean).slice(0, 8) };
+}
+function optionRow(options) {
+  const row = el('div', 'opt-row');
+  for (const o of options) {
+    const b = el('button', 'opt' + (/^\+/.test(o) ? ' new' : ''));
+    b.textContent = o;
+    b.addEventListener('click', () => { if (row.classList.contains('old') || busy) return; row.classList.add('old'); b.classList.add('picked'); send(o); });
+    row.append(b);
+  }
+  return row;
+}
+// only the latest question's choices can be tapped
+function markOldOptions() {
+  const rows = $$('#messages .opt-row');
+  rows.forEach((r, i) => { let n = r.nextElementSibling, answered = false; while (n) { if (n.classList.contains('user')) answered = true; n = n.nextElementSibling; } r.classList.toggle('old', answered || i < rows.length - 1); });
+}
+// a money record the buddy saved: what, category, wallet, amount, the wallet's new balance; Edit and Undo
+const rpFmt = (n) => (n < 0 ? '−' : '') + 'Rp ' + Math.abs(Math.round(n || 0)).toLocaleString('id-ID');
+function moneyCard(r) {
+  const c = el('div', 'mcard' + (r.kind === 'transfer' ? ' transfer' : ''));
+  const top = el('div', 'mcard-top');
+  const info = el('div', 'mcard-info');
+  const d = el('div', 'mcard-desc'); d.textContent = r.description;
+  const chips = el('div', 'mcard-chips');
+  if (r.category) { const ch = el('span', 'mchip cat'); ch.textContent = r.category; if (r.color) ch.style.setProperty('--c', r.color); chips.append(ch); }
+  const wc = el('span', 'mchip'); wc.textContent = r.kind === 'transfer' ? `${r.wallet} → ${r.toWallet}` : r.wallet; chips.append(wc);
+  if (r.planned) { const pl = el('span', 'mchip planned'); pl.textContent = `${t('planned')} · ${new Date(r.date + 'T12:00').toLocaleDateString(window.I18n ? I18n.locale() : undefined, { day: 'numeric', month: 'short' })}`; chips.append(pl); }
+  info.append(d, chips);
+  const amt = el('div', 'mcard-amt ' + r.kind); amt.textContent = (r.kind === 'in' ? '+' : r.kind === 'out' ? '−' : '') + rpFmt(r.amount).replace('−', '');
+  top.append(info, amt);
+  const foot = el('div', 'mcard-foot');
+  const bal = el('span', 'mcard-bal'); bal.textContent = r.planned ? t('Counts when it happens') : r.balance ? `${r.wallet}: ${r.balance}${r.toBalance ? ` · ${r.toWallet}: ${r.toBalance}` : ''}` : '';
+  const edit = el('button', 'link'); edit.textContent = t('Edit');
+  edit.addEventListener('click', () => { showTab('money'); window.Money && Money.edit(r.id, r.date); });
+  const undo = el('button', 'link'); undo.textContent = t('Undo');
+  undo.addEventListener('click', async () => {
+    const res = await S.moneyDeleteRecord(r.id);
+    if (res && res.ok) { c.classList.add('undone'); bal.textContent = t('Removed'); undo.remove(); edit.remove(); }
+  });
+  foot.append(bal, el('span', 'spacer'), edit, undo);
+  c.append(top, foot);
+  return c;
+}
+
 function addMessage(m) {
   $('#empty').hidden = true;
   if (m.role === 'user') {
     msgsEl.append(userBubble(m));
   } else {
-    if (m.text) {
-      const bubble = el('div', 'msg assistant md', renderMarkdown(m.text));
-      bubble.dataset.raw = m.text;
+    const { text: shown, options } = splitOptions(m.text);
+    if (shown) {
+      const bubble = el('div', 'msg assistant md', renderMarkdown(shown));
+      bubble.dataset.raw = shown;
       const cp = el('button', 'copy-btn', '⧉'); cp.title = 'Copy';
       bubble.append(cp);
       msgsEl.append(bubble);
     }
+    if (m.money && m.money.length) for (const r of m.money) msgsEl.append(moneyCard(r));
+    if (options.length) msgsEl.append(optionRow(options));
     if (m.tools && m.tools.length) {
       const t = el('div', 'tools');
       for (const label of m.tools) {
@@ -200,7 +271,7 @@ S.onDelta((d) => {
   if (!busy || viewingOld) return;
   if (!live) { live = { el: el('div', 'msg assistant md'), text: '' }; insertLive(live.el); }
   live.text += d;
-  live.el.innerHTML = renderMarkdown(live.text);
+  live.el.innerHTML = renderMarkdown(live.text.replace(/\n?\s*\[\[[^\]]*\]?\]?\s*$/, ''));
   showTyping(false);
   scrollDown();
 });
@@ -827,6 +898,7 @@ function loadSet(key, fallback) {
 function saveSet(key, set) { try { localStorage.setItem(key, JSON.stringify([...set])); } catch {} }
 const nbCollapsed = loadSet('nbCollapsed', ['Daily']);
 
+window.toast = toast;
 function toast(msg) {
   const t = el('div', 'toast'); t.textContent = msg;
   document.body.append(t);
@@ -1242,9 +1314,9 @@ S.onNotebookChanged(() => {
 // ---------------- tasks (tree: Area > Project > Task, drag and drop) ----------------
 let taskFilter = 'open';
 const taskCollapsed = loadSet('taskCollapsed', []);
-$$('#view-tasks .seg button').forEach((b) => b.addEventListener('click', () => {
+$$('#view-tasks .seg button[data-filter]').forEach((b) => b.addEventListener('click', () => {
   taskFilter = b.dataset.filter;
-  $$('.seg button').forEach((x) => x.classList.toggle('on', x === b));
+  $$('#view-tasks .seg button[data-filter]').forEach((x) => x.classList.toggle('on', x === b));
   loadTasks();
 }));
 
@@ -1734,6 +1806,7 @@ async function loadSettings() {
   $('#s-confirm').checked = s.confirmSaves;
   $('#s-fallback').checked = s.autoFallback;
   $('#s-login').checked = s.openAtLogin;
+  $('#s-money').checked = !!s.money;
   platform = s.platform;
   $('#k-panel').textContent = prettyAccel(s.shortcut);
   $('#k-panel').dataset.accel = s.shortcut;
@@ -1747,8 +1820,9 @@ async function loadSettings() {
 $('#s-pick').addEventListener('click', async () => { const p = await S.pickFolder(); if (p) $('#s-folder').textContent = p; });
 $('#s-open').addEventListener('click', () => S.openFolder());
 $('#s-save').addEventListener('click', async () => {
-  const patch = { gravity: $('#s-gravity').checked, confirmSaves: $('#s-confirm').checked, openAtLogin: $('#s-login').checked };
+  const patch = { gravity: $('#s-gravity').checked, confirmSaves: $('#s-confirm').checked, openAtLogin: $('#s-login').checked, money: $('#s-money').checked };
   await S.setSettings(patch);
+  applyMoney(patch.money);
   await loadSettings();
   $('#s-saved').textContent = 'Saved ✓';
 });
@@ -2475,7 +2549,8 @@ function openBuddyStep() {
 $('#ob-bd-name').addEventListener('input', () => setAvatar({ name: $('#ob-bd-name').value.trim() || 'Scribble' }, { debounce: true, light: true }));
 $('#ob-bd-next').addEventListener('click', async () => {
   clearTimeout(avSaveTimer); await S.setAvatar(av);
-  await S.setSettings({ onboarded: true });
+  await S.setSettings({ onboarded: true, money: true });
+  applyMoney(true);
   const nm = av.name || 'Scribble';
   $('#ob-done-title').textContent = `Say hi to ${nm}!`;
   obPage('done');
@@ -2618,7 +2693,7 @@ S.onChatReload(() => { if (!busy) loadChat(); });
 // back to Scribble: pick up what was done on other devices
 window.addEventListener('focus', () => S.syncFocus && S.syncFocus());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.syncFocus) S.syncFocus(); });
-S.onSettingsChanged(() => { obRecheck(); if (currentTab === 'settings') loadSettings(); });
+S.onSettingsChanged(() => { obRecheck(); S.getSettings().then((s) => applyMoney(s.money)).catch(() => {}); if (currentTab === 'settings') loadSettings(); });
 S.onAIChanged(() => obRecheck());
 $('#acct-sync-now').addEventListener('click', async () => {
   $('#acct-sync').textContent = 'Syncing…';

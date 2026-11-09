@@ -4672,6 +4672,570 @@ ${groups[n].map(fmt).join("\n")}
     }
   });
 
+  // ../src/money.js
+  var require_money = __commonJS({
+    "../src/money.js"(exports, module) {
+      init_buffer_inject();
+      var fs2 = require_vfs();
+      var path = require_path_browserify();
+      var crypto2 = require_crypto_shim();
+      var newId = () => crypto2.randomBytes(5).toString("hex");
+      var now = () => Date.now();
+      var today = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA");
+      var norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
+      var WALLET_TYPES = ["cash", "bank", "ewallet", "card"];
+      var WALLET_COLORS = { cash: "#2E9E6A", bank: "#3F6FD8", ewallet: "#00AA5B", card: "#6E3FC9" };
+      var CAT_COLORS = ["#9C7BD9", "#F2B21F", "#E07B39", "#3F6FD8", "#2B2A4C", "#D94F8C", "#BDB9CF", "#2E9E6A", "#F28C6B", "#8FB3C4", "#C9A227", "#5FB3A1"];
+      var STARTER = [
+        ["Food", "out"],
+        ["Groceries", "out"],
+        ["Transport", "out"],
+        ["Bills", "out"],
+        ["Housing", "out"],
+        ["Shopping", "out"],
+        ["Health", "out"],
+        ["Fun", "out"],
+        ["Subscriptions", "out"],
+        ["Family", "out"],
+        ["Salary", "in"],
+        ["Other income", "in"]
+      ];
+      var SAME = [
+        ["food", "makan", "makanan", "kuliner", "jajan", "snack", "minum", "kopi", "coffee", "meal", "meals", "resto", "restaurant"],
+        ["groceries", "grocery", "belanja", "belanjabulanan", "belanjadapur", "sembako", "supermarket", "dapur"],
+        ["transport", "transportasi", "bensin", "fuel", "gas", "ojek", "ojol", "parkir", "tol", "travel", "commute"],
+        ["bills", "bill", "tagihan", "utilities", "listrik", "air", "internet", "pulsa", "paketdata", "wifi"],
+        ["housing", "rumah", "kos", "kost", "sewa", "rent", "kontrakan", "cicilanrumah", "kpr"],
+        ["shopping", "belanjaonline", "fashion", "baju", "pakaian", "clothes", "gadget"],
+        ["health", "kesehatan", "obat", "medicine", "dokter", "doctor", "rumahsakit", "hospital", "apotek"],
+        ["fun", "hiburan", "entertainment", "hobby", "hobi", "nonton", "game", "games", "liburan", "holiday"],
+        ["subscriptions", "subscription", "langganan", "streaming"],
+        ["family", "keluarga", "anak", "orangtua", "ortu", "kids"],
+        ["salary", "gaji", "gajian", "payroll", "wage", "wages", "income", "pendapatan"],
+        ["otherincome", "bonus", "pemasukanlain", "freelance", "sampingan", "thr"]
+      ];
+      function sameGroup(a, b) {
+        const x = norm(a), y = norm(b);
+        return SAME.some((g) => g.includes(x) && g.includes(y));
+      }
+      function lev(a, b) {
+        if (a === b) return 0;
+        const m = a.length, n = b.length;
+        if (!m || !n) return m || n;
+        let prev = Array.from({ length: n + 1 }, (_, j) => j);
+        for (let i = 1; i <= m; i++) {
+          const cur = [i];
+          for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+          prev = cur;
+        }
+        return prev[n];
+      }
+      function looksSame(name, other) {
+        const a = norm(name), b = norm(other);
+        if (!a || !b) return false;
+        if (a === b) return true;
+        if (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return true;
+        if (Math.min(a.length, b.length) >= 4 && lev(a, b) <= (Math.max(a.length, b.length) >= 8 ? 2 : 1)) return true;
+        return sameGroup(name, other);
+      }
+      function parseAmount(v) {
+        if (typeof v === "number") return Number.isFinite(v) ? Math.round(v) : NaN;
+        let s = String(v || "").toLowerCase().replace(/rp\.?/g, "").replace(/idr/g, "").replace(/\s+/g, "");
+        const m = s.match(/^(-?[\d.,]+)(rb|ribu|k|jt|juta|m|miliar|mio)?$/);
+        if (!m) return NaN;
+        let num = m[1], unit = m[2] || "";
+        const mult = { rb: 1e3, ribu: 1e3, k: 1e3, jt: 1e6, juta: 1e6, mio: 1e6, m: 1e6, miliar: 1e9 }[unit] || 1;
+        if (mult > 1) num = num.replace(",", ".");
+        else if (/^\d{1,3}([.,]\d{3})+$/.test(num)) num = num.replace(/[.,]/g, "");
+        else num = num.replace(",", ".");
+        const n = parseFloat(num) * mult;
+        return Number.isFinite(n) ? Math.round(n) : NaN;
+      }
+      var rp = (n) => (n < 0 ? "-" : "") + "Rp " + Math.abs(Math.round(n || 0)).toLocaleString("id-ID");
+      var Money = class _Money {
+        constructor(file) {
+          this.file = file;
+          this.data = null;
+        }
+        load() {
+          let d = null;
+          try {
+            d = JSON.parse(fs2.readFileSync(this.file, "utf8"));
+          } catch {
+          }
+          this.data = _Money.clean(d);
+          return this.data;
+        }
+        get d() {
+          return this.data || this.load();
+        }
+        save() {
+          fs2.mkdirSync(path.dirname(this.file), { recursive: true });
+          const tmp = this.file + ".tmp";
+          fs2.writeFileSync(tmp, JSON.stringify(this.data, null, 1));
+          fs2.renameSync(tmp, this.file);
+        }
+        static clean(d) {
+          d = d && typeof d === "object" ? d : {};
+          const arr = (x) => Array.isArray(x) ? x.filter((i) => i && typeof i === "object" && i.id) : [];
+          const out = { v: 1, wallets: arr(d.wallets), categories: arr(d.categories), records: arr(d.records), shops: arr(d.shops) };
+          if (!out.categories.length) {
+            const t = 1;
+            out.categories = STARTER.map(([name, kind], i) => ({ id: "c" + norm(name), name, kind, color: CAT_COLORS[i % CAT_COLORS.length], budget: null, updated: t }));
+          }
+          return out;
+        }
+        // Two versions of the file (this device, Drive): every item from both, the newer edit of each item wins
+        static merge(a, b) {
+          a = _Money.clean(a);
+          b = _Money.clean(b);
+          const out = { v: 1 };
+          for (const k of ["wallets", "categories", "records", "shops"]) {
+            const m = /* @__PURE__ */ new Map();
+            for (const it of [...a[k], ...b[k]]) {
+              const o = m.get(it.id);
+              if (!o || (it.updated || 0) >= (o.updated || 0)) m.set(it.id, it);
+            }
+            out[k] = [...m.values()];
+          }
+          return out;
+        }
+        live(k) {
+          return this.d[k].filter((x) => !x.deleted);
+        }
+        wallets() {
+          return this.live("wallets");
+        }
+        categories() {
+          return this.live("categories");
+        }
+        records() {
+          return this.live("records");
+        }
+        // ---- lookups
+        wallet(ref) {
+          if (!ref) return null;
+          const ws = this.wallets();
+          return ws.find((w) => w.id === ref) || ws.find((w) => norm(w.name) === norm(ref)) || null;
+        }
+        category(ref) {
+          if (!ref) return null;
+          const cs = this.categories();
+          return cs.find((c) => c.id === ref) || cs.find((c) => norm(c.name) === norm(ref)) || null;
+        }
+        similarWallets(name) {
+          return this.wallets().filter((w) => looksSame(name, w.name));
+        }
+        similarCategories(name) {
+          return this.categories().filter((c) => looksSame(name, c.name));
+        }
+        shopCategory(text) {
+          const t = norm(text);
+          const hit = this.live("shops").find((s) => s.match && t.includes(norm(s.match)));
+          return hit ? this.category(hit.category) : null;
+        }
+        salaryWallet() {
+          return this.wallets().find((w) => w.salary) || null;
+        }
+        // ---- balances (planned payments don't count until they happen)
+        balance(walletId, upTo = null) {
+          const w = this.wallet(walletId);
+          if (!w) return 0;
+          let b = w.start || 0;
+          for (const r of this.records()) {
+            if (r.planned) continue;
+            if (upTo && r.date > upTo) continue;
+            if (r.kind === "in" && r.wallet === w.id) b += r.amount;
+            else if (r.kind === "out" && r.wallet === w.id) b -= r.amount;
+            else if (r.kind === "transfer") {
+              if (r.wallet === w.id) b -= r.amount;
+              if (r.toWallet === w.id) b += r.amount;
+            }
+          }
+          return b;
+        }
+        walletView(w) {
+          const balance = this.balance(w.id);
+          return { id: w.id, name: w.name, type: w.type, color: w.color, start: w.start || 0, low: w.low ?? null, salary: !!w.salary, balance, isLow: w.low != null && balance < w.low };
+        }
+        // ---- changes
+        touch(it) {
+          it.updated = now();
+          return it;
+        }
+        addWallet({ name, type = "cash", start = 0, low = null, salary = false, force = false }) {
+          name = String(name || "").trim().slice(0, 40);
+          if (!name) throw new Error("A wallet needs a name.");
+          const exact = this.wallet(name);
+          if (exact) return { ok: false, exists: this.walletView(exact) };
+          const similar = force ? [] : this.similarWallets(name);
+          if (similar.length) return { ok: false, similar: similar.map((w2) => this.walletView(w2)) };
+          type = WALLET_TYPES.includes(type) ? type : "cash";
+          const amount = parseAmount(start || 0);
+          if (!Number.isFinite(amount)) throw new Error("The starting balance is not a number.");
+          if (salary) {
+            for (const w2 of this.wallets()) if (w2.salary) {
+              w2.salary = false;
+              this.touch(w2);
+            }
+          }
+          const w = this.touch({ id: "w" + newId(), name, type, start: amount, low: low == null || low === "" ? null : parseAmount(low), salary: !!salary, color: WALLET_COLORS[type] });
+          this.d.wallets.push(w);
+          this.save();
+          return { ok: true, wallet: this.walletView(w) };
+        }
+        updateWallet(id, fields) {
+          const w = this.wallet(id);
+          if (!w) throw new Error("No such wallet.");
+          if (fields.name !== void 0) {
+            const name = String(fields.name).trim().slice(0, 40);
+            const other = this.wallet(name);
+            if (!name) throw new Error("A wallet needs a name.");
+            if (other && other.id !== w.id) throw new Error(`You already have a wallet called ${other.name}.`);
+            w.name = name;
+          }
+          if (fields.type !== void 0 && WALLET_TYPES.includes(fields.type)) {
+            w.type = fields.type;
+            w.color = WALLET_COLORS[w.type];
+          }
+          if (fields.start !== void 0) {
+            const n = parseAmount(fields.start);
+            if (!Number.isFinite(n)) throw new Error("The starting balance is not a number.");
+            w.start = n;
+          }
+          if (fields.low !== void 0) w.low = fields.low === null || fields.low === "" ? null : parseAmount(fields.low);
+          if (fields.salary !== void 0) {
+            if (fields.salary) {
+              for (const o of this.wallets()) if (o.salary && o.id !== w.id) {
+                o.salary = false;
+                this.touch(o);
+              }
+            }
+            w.salary = !!fields.salary;
+          }
+          this.touch(w);
+          this.save();
+          return this.walletView(w);
+        }
+        // Fix a wallet's balance to what the user says it really is (moves its starting balance)
+        setBalance(id, actual) {
+          const w = this.wallet(id);
+          if (!w) throw new Error("No such wallet.");
+          const n = parseAmount(actual);
+          if (!Number.isFinite(n)) throw new Error("That balance is not a number.");
+          w.start = (w.start || 0) + (n - this.balance(w.id));
+          this.touch(w);
+          this.save();
+          return this.walletView(w);
+        }
+        deleteWallet(id) {
+          const w = this.wallet(id);
+          if (!w) return false;
+          if (this.records().some((r) => r.wallet === w.id || r.toWallet === w.id)) throw new Error(`${w.name} still has records. Move or delete them first.`);
+          w.deleted = true;
+          this.touch(w);
+          this.save();
+          return true;
+        }
+        addCategory({ name, kind = "out", budget = null, force = false }) {
+          name = String(name || "").trim().slice(0, 40);
+          if (!name) throw new Error("A category needs a name.");
+          const exact = this.category(name);
+          if (exact) return { ok: false, exists: exact };
+          const similar = force ? [] : this.similarCategories(name);
+          if (similar.length) return { ok: false, similar };
+          const c = this.touch({ id: "c" + newId(), name, kind: kind === "in" ? "in" : "out", color: CAT_COLORS[this.d.categories.length % CAT_COLORS.length], budget: budget == null || budget === "" ? null : parseAmount(budget) });
+          this.d.categories.push(c);
+          this.save();
+          return { ok: true, category: c };
+        }
+        updateCategory(id, fields) {
+          const c = this.category(id);
+          if (!c) throw new Error("No such category.");
+          if (fields.name !== void 0) {
+            const name = String(fields.name).trim().slice(0, 40);
+            const other = this.category(name);
+            if (!name) throw new Error("A category needs a name.");
+            if (other && other.id !== c.id) throw new Error(`You already have a category called ${other.name}.`);
+            c.name = name;
+          }
+          if (fields.budget !== void 0) c.budget = fields.budget === null || fields.budget === "" ? null : parseAmount(fields.budget);
+          if (fields.hidden !== void 0) c.hidden = !!fields.hidden;
+          if (fields.color) c.color = fields.color;
+          this.touch(c);
+          this.save();
+          return c;
+        }
+        // Merge one category into another: every record (and shop rule) moves along
+        mergeCategory(fromId, intoId) {
+          const a = this.category(fromId), b = this.category(intoId);
+          if (!a || !b || a.id === b.id) throw new Error("Pick two different categories.");
+          let moved = 0;
+          for (const r of this.records()) if (r.category === a.id) {
+            r.category = b.id;
+            this.touch(r);
+            moved++;
+          }
+          for (const s of this.live("shops")) if (s.category === a.id) {
+            s.category = b.id;
+            this.touch(s);
+          }
+          if (b.budget == null && a.budget != null) b.budget = a.budget;
+          a.deleted = true;
+          this.touch(a);
+          this.touch(b);
+          this.save();
+          return { moved, into: b };
+        }
+        rememberShop(match, categoryId) {
+          match = String(match || "").trim().slice(0, 40);
+          const c = this.category(categoryId);
+          if (!match || !c) return null;
+          let s = this.live("shops").find((x) => norm(x.match) === norm(match));
+          if (s) {
+            s.category = c.id;
+            this.touch(s);
+          } else {
+            s = this.touch({ id: "s" + newId(), match, category: c.id });
+            this.d.shops.push(s);
+          }
+          this.save();
+          return s;
+        }
+        forgetShop(id) {
+          const s = this.live("shops").find((x) => x.id === id);
+          if (!s) return false;
+          s.deleted = true;
+          this.touch(s);
+          this.save();
+          return true;
+        }
+        // Add a record. Checks everything the buddy must get right before anything is saved; when something is missing or
+        // would overdraw a wallet, nothing is saved and the answer says what to ask the user.
+        addRecord(input) {
+          const kind = ["in", "out", "transfer"].includes(input.kind) ? input.kind : "out";
+          const amount = parseAmount(input.amount);
+          if (!Number.isFinite(amount) || amount <= 0) return { saved: false, ask: "amount", note: "Ask the user how much it was." };
+          const date = /^\d{4}-\d{2}-\d{2}$/.test(input.date || "") ? input.date : today();
+          const planned = !!input.planned || date > today();
+          const desc = String(input.description || "").trim().slice(0, 120) || (kind === "in" ? "Money in" : kind === "transfer" ? "Transfer" : "Spending");
+          let w = this.wallet(input.wallet);
+          if (!w && !input.wallet && kind === "in" && input.category && /salary|gaji/i.test(input.category) && this.salaryWallet()) w = this.salaryWallet();
+          const walletOptions = () => this.wallets().map((x) => `${x.name} (${rp(this.balance(x.id))})`);
+          if (!w) {
+            const similar = input.wallet ? this.similarWallets(input.wallet) : [];
+            return {
+              saved: false,
+              ask: "wallet",
+              said: input.wallet || null,
+              similar: similar.map((x) => x.name),
+              wallets: walletOptions(),
+              note: this.wallets().length ? input.wallet ? `"${input.wallet}" is not one of the user's wallets.` + (similar.length ? ` It may be ${similar.map((x) => x.name).join(" or ")}.` : "") + ' Ask which wallet, with the wallets as options plus "+ New wallet".' : 'Ask which wallet, with the wallets as options plus "+ New wallet".' : "The user has no wallets yet. Ask what to call their first wallet (for example Cash, BCA, GoPay) and its current balance, then add_wallet."
+            };
+          }
+          let to = null;
+          if (kind === "transfer") {
+            to = this.wallet(input.to_wallet);
+            if (!to) return { saved: false, ask: "to_wallet", wallets: walletOptions(), note: "Ask which wallet the money went into." };
+            if (to.id === w.id) return { saved: false, ask: "to_wallet", note: "From and to are the same wallet. Ask again." };
+          }
+          let c = null;
+          if (kind !== "transfer") {
+            c = this.category(input.category) || (!input.category ? this.shopCategory(desc) : null);
+            if (!c) {
+              const similar = input.category ? this.similarCategories(input.category) : [];
+              const pool = this.categories().filter((x) => !x.hidden && x.kind === (kind === "in" ? "in" : "out")).map((x) => x.name);
+              return {
+                saved: false,
+                ask: "category",
+                said: input.category || null,
+                similar: similar.map((x) => x.name),
+                categories: pool,
+                note: (input.category ? `"${input.category}" is not one of the user's categories.` + (similar.length ? ` It is probably ${similar.map((x) => x.name).join(" or ")}: use that.` : "") : "") + ' Use an existing category when one fits. If you are unsure, ask with your best 2-3 guesses as options plus "All categories" and "+ New category".'
+              };
+            }
+          }
+          if (!planned && kind !== "in" && !input.allow_negative) {
+            const bal = this.balance(w.id);
+            if (bal - amount < 0) {
+              const short = amount - bal;
+              const others = this.wallets().filter((x) => x.id !== w.id).map((x) => ({ name: x.name, balance: this.balance(x.id) }));
+              return {
+                saved: false,
+                ask: "not_enough",
+                wallet: w.name,
+                balance: rp(bal),
+                amount: rp(amount),
+                would_be: rp(bal - amount),
+                short_by: rp(short),
+                options: [
+                  ...others.filter((o) => o.balance >= short).slice(0, 2).map((o) => `Split: ${w.name} ${rp(bal)} + ${o.name} ${rp(short)}`),
+                  ...others.filter((o) => o.balance >= short).slice(0, 1).map((o) => `Topped up first: ${o.name} \u2192 ${w.name} ${rp(short)}, then paid`),
+                  ...others.filter((o) => o.balance >= amount).slice(0, 2).map((o) => `Paid from ${o.name} instead (${rp(o.balance)})`),
+                  `My ${w.name} balance is wrong, let me fix it`
+                ],
+                note: `Not saved: ${w.name} only has ${rp(bal)}, so this would make it ${rp(bal - amount)}. Tell the user and ask how they paid, with these options. For a split, save two records; for a top-up, save the transfer first, then the payment; if the balance is wrong, ask for the real balance and use set_wallet_balance. Use allow_negative only if the user insists.`
+              };
+            }
+          }
+          const r = this.touch({
+            id: "r" + newId(),
+            date,
+            kind,
+            amount,
+            description: desc,
+            wallet: w.id,
+            toWallet: to ? to.id : void 0,
+            category: c ? c.id : void 0,
+            planned: planned || void 0,
+            source: input.source || "chat",
+            created: now()
+          });
+          this.d.records.push(r);
+          if (input.remember_shop && c) this.rememberShop(input.remember_shop, c.id);
+          if (input.salary_wallet && kind === "in") {
+            for (const o of this.wallets()) if (o.salary && o.id !== w.id) {
+              o.salary = false;
+              this.touch(o);
+            }
+            w.salary = true;
+            this.touch(w);
+          }
+          this.save();
+          return { saved: true, record: this.recordView(r), wallet_balance: rp(this.balance(w.id)), ...to ? { to_wallet_balance: rp(this.balance(to.id)) } : {}, ...this.budgetNote(c, date) };
+        }
+        budgetNote(c, date) {
+          if (!c || c.budget == null || c.kind !== "out") return {};
+          const ym = String(date).slice(0, 7);
+          const spent = this.records().filter((r) => !r.planned && r.kind === "out" && r.category === c.id && r.date.startsWith(ym)).reduce((a, r) => a + r.amount, 0);
+          if (spent > c.budget) return { budget_note: `${c.name} is over its ${rp(c.budget)} budget this month (${rp(spent)}). Mention it briefly.` };
+          if (spent > c.budget * 0.8) return { budget_note: `${c.name} has used ${Math.round(spent / c.budget * 100)}% of its ${rp(c.budget)} budget this month. Mention it briefly.` };
+          return {};
+        }
+        updateRecord(id, fields) {
+          const r = this.records().find((x) => x.id === id);
+          if (!r) throw new Error("No such record.");
+          if (fields.amount !== void 0) {
+            const n = parseAmount(fields.amount);
+            if (!Number.isFinite(n) || n <= 0) throw new Error("The amount is not a number.");
+            r.amount = n;
+          }
+          if (fields.date !== void 0) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.date)) throw new Error("Dates look like 2026-11-09.");
+            r.date = fields.date;
+          }
+          if (fields.description !== void 0) r.description = String(fields.description).trim().slice(0, 120) || r.description;
+          if (fields.wallet !== void 0) {
+            const w = this.wallet(fields.wallet);
+            if (!w) throw new Error("No such wallet.");
+            r.wallet = w.id;
+          }
+          if (fields.to_wallet !== void 0 && r.kind === "transfer") {
+            const w = this.wallet(fields.to_wallet);
+            if (!w) throw new Error("No such wallet.");
+            r.toWallet = w.id;
+          }
+          if (fields.category !== void 0 && r.kind !== "transfer") {
+            const c = this.category(fields.category);
+            if (!c) throw new Error("No such category.");
+            r.category = c.id;
+          }
+          if (fields.planned !== void 0) r.planned = fields.planned ? true : void 0;
+          this.touch(r);
+          this.save();
+          return this.recordView(r);
+        }
+        deleteRecord(id) {
+          const r = this.records().find((x) => x.id === id);
+          if (!r) return false;
+          r.deleted = true;
+          this.touch(r);
+          this.save();
+          return true;
+        }
+        recordView(r) {
+          const w = this.d.wallets.find((x) => x.id === r.wallet), to = r.toWallet && this.d.wallets.find((x) => x.id === r.toWallet);
+          const c = r.category && this.d.categories.find((x) => x.id === r.category);
+          return {
+            id: r.id,
+            date: r.date,
+            kind: r.kind,
+            amount: r.amount,
+            description: r.description,
+            wallet: w ? w.name : "?",
+            walletId: r.wallet,
+            toWallet: to ? to.name : void 0,
+            toWalletId: r.toWallet,
+            category: c ? c.name : void 0,
+            categoryId: r.category,
+            color: c ? c.color : void 0,
+            planned: !!r.planned,
+            source: r.source
+          };
+        }
+        // Everything the Money screen shows for one month (YYYY-MM)
+        month(ym, filter = {}) {
+          const recs = this.records().filter((r) => r.date.startsWith(ym));
+          const real = recs.filter((r) => !r.planned);
+          const sum = (k) => real.filter((r) => r.kind === k).reduce((a, r) => a + r.amount, 0);
+          let rows = recs;
+          if (filter.wallet) rows = rows.filter((r) => r.wallet === filter.wallet || r.toWallet === filter.wallet);
+          rows = rows.slice().sort((a, b) => b.date.localeCompare(a.date) || (b.created || 0) - (a.created || 0));
+          const byCat = /* @__PURE__ */ new Map();
+          for (const r of real) if (r.kind === "out") byCat.set(r.category, (byCat.get(r.category) || 0) + r.amount);
+          return {
+            month: ym,
+            totals: {
+              in: sum("in"),
+              out: sum("out"),
+              nIn: real.filter((r) => r.kind === "in").length,
+              nOut: real.filter((r) => r.kind === "out").length,
+              planned: recs.filter((r) => r.planned && r.kind === "out").reduce((a, r) => a + r.amount, 0)
+            },
+            wallets: this.wallets().map((w) => this.walletView(w)),
+            categories: this.categories().map((c) => ({ ...c, spent: byCat.get(c.id) || 0 })),
+            records: rows.map((r) => this.recordView(r)),
+            shops: this.live("shops").map((s) => ({ id: s.id, match: s.match, category: (this.category(s.category) || {}).name, categoryId: s.category }))
+          };
+        }
+        // What's left to spend: all wallets now, minus payments planned from today to the end of the month
+        outlook() {
+          const t = today(), end = t.slice(0, 7) + "-31";
+          const total = this.wallets().reduce((a, w) => a + this.balance(w.id), 0);
+          const planned = this.records().filter((r) => r.planned && r.kind === "out" && r.date >= t && r.date <= end);
+          const plannedSum = planned.reduce((a, r) => a + r.amount, 0);
+          const [y, m, dd] = t.split("-").map(Number);
+          const daysLeft = new Date(y, m, 0).getDate() - dd + 1;
+          const free = total - plannedSum;
+          return {
+            all_wallets: rp(total),
+            planned_this_month: planned.map((r) => `${r.date} ${r.description} ${rp(r.amount)}`),
+            free_to_spend: rp(free),
+            days_left: daysLeft,
+            per_day: rp(Math.floor(free / Math.max(1, daysLeft))),
+            tight: free < 0
+          };
+        }
+        // For the AI: a compact summary (wallets, categories, recent records) so it can answer questions and pick names
+        summary(ym = today().slice(0, 7)) {
+          const m = this.month(ym);
+          return {
+            month: ym,
+            money_in: rp(m.totals.in),
+            money_out: rp(m.totals.out),
+            wallets: m.wallets.map((w) => `${w.name}: ${rp(w.balance)}${w.salary ? " (salary goes here)" : ""}${w.isLow ? " (low)" : ""}`),
+            spending_categories: m.categories.filter((c) => !c.hidden && c.kind === "out").map((c) => `${c.name}${c.spent ? ": " + rp(c.spent) : ""}${c.budget != null ? " of " + rp(c.budget) + " budget" : ""}`),
+            income_categories: m.categories.filter((c) => !c.hidden && c.kind === "in").map((c) => c.name),
+            shops: m.shops.map((s) => `${s.match} \u2192 ${s.category}`),
+            recent: m.records.slice(0, 15).map((r) => `${r.id} ${r.date} ${r.kind}${r.planned ? " (planned)" : ""} ${r.description} ${rp(r.amount)} ${r.wallet}${r.toWallet ? "\u2192" + r.toWallet : ""}${r.category ? " [" + r.category + "]" : ""}`),
+            outlook: this.outlook()
+          };
+        }
+      };
+      module.exports = { Money, parseAmount, looksSame, rp };
+    }
+  });
+
   // ../node_modules/@anthropic-ai/sdk/internal/tslib.js
   var require_tslib = __commonJS({
     "../node_modules/@anthropic-ai/sdk/internal/tslib.js"(exports) {
@@ -35336,12 +35900,85 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           input_schema: { type: "object", properties: {} }
         }
       ];
+      var MONEY_TOOLS = [
+        {
+          name: "money_overview",
+          description: "The user's wallets with balances, spending and income categories (with this month's spending and budgets), shop rules, recent records with their ids, and what's left to spend this month. Call it before your first money action in a conversation, and to answer questions about their money.",
+          input_schema: { type: "object", properties: { month: { type: "string", description: "YYYY-MM, default this month" } } }
+        },
+        {
+          name: "add_money_record",
+          description: "Record money going out (spending), coming in (income) or moving between two of the user's own wallets (transfer). Saves immediately unless something is missing or a wallet would go below zero; then nothing is saved and the result says what to ask.",
+          input_schema: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["out", "in", "transfer"] },
+              amount: { type: "string", description: 'As the user said it or as on the receipt, e.g. "45rb", "8,5 juta", "186500".' },
+              description: { type: "string", description: 'Short: what it was or the shop, e.g. "Makan siang warteg", "Indomaret", "Gaji November".' },
+              wallet: { type: "string", description: "Name of one of the user's wallets, the one the money came from (for income: went into). Only if the user said it or picked it." },
+              to_wallet: { type: "string", description: "Transfers only: the wallet the money went into." },
+              category: { type: "string", description: "Name of one of the user's categories (not for transfers)." },
+              date: { type: "string", description: "YYYY-MM-DD. Default today. A future date makes it a planned payment." },
+              planned: { type: "boolean", description: 'A payment the user will make later ("besok bayar internet"). Not counted in balances until it happens.' },
+              allow_negative: { type: "boolean", description: "Only when the user insists on recording it although the wallet would go below zero." },
+              remember_shop: { type: "string", description: "When the user picked a category for a shop or app, the shop name, so it goes there automatically next time." },
+              salary_wallet: { type: "boolean", description: "Income only: the user said salary should always go into this wallet." },
+              source: { type: "string", enum: ["chat", "receipt", "notification"] }
+            },
+            required: ["kind", "amount", "description"]
+          }
+        },
+        {
+          name: "update_money_record",
+          description: "Change a saved record (amount, date, description, wallet, to_wallet, category, planned). Use the id from the record or money_overview.",
+          input_schema: { type: "object", properties: { id: { type: "string" }, amount: { type: "string" }, date: { type: "string" }, description: { type: "string" }, wallet: { type: "string" }, to_wallet: { type: "string" }, category: { type: "string" }, planned: { type: "boolean" } }, required: ["id"] }
+        },
+        {
+          name: "delete_money_record",
+          description: 'Delete a saved money record (for "undo", "hapus", "that was wrong").',
+          input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+        },
+        {
+          name: "add_wallet",
+          description: "Add a wallet: where the user keeps money (Cash, a bank account, an e-wallet like GoPay or OVO, a credit card). If the name looks like an existing wallet, nothing is added and the result says which; ask the user whether they meant that one, and pass force only if they say it is really new.",
+          input_schema: { type: "object", properties: { name: { type: "string" }, type: { type: "string", enum: ["cash", "bank", "ewallet", "card"] }, balance: { type: "string", description: "What is in it right now, as the user said it." }, low: { type: "string", description: "Optional: warn when it goes below this." }, salary: { type: "boolean" }, force: { type: "boolean" } }, required: ["name", "type", "balance"] }
+        },
+        {
+          name: "set_wallet_balance",
+          description: "The user says a wallet really has a different amount: set its current balance.",
+          input_schema: { type: "object", properties: { wallet: { type: "string" }, balance: { type: "string" } }, required: ["wallet", "balance"] }
+        },
+        {
+          name: "add_category",
+          description: 'Add a category. If it looks like an existing one ("Belanja bulanan" and Groceries), nothing is added and the result says which; ask whether to use that one, and pass force only if the user says it is really new.',
+          input_schema: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["out", "in"] }, budget: { type: "string", description: "Optional monthly budget." }, force: { type: "boolean" } }, required: ["name", "kind"] }
+        },
+        {
+          name: "remember_shop",
+          description: "Always put a shop or app into a category from now on (e.g. Shopee \u2192 Shopping).",
+          input_schema: { type: "object", properties: { shop: { type: "string" }, category: { type: "string" } }, required: ["shop", "category"] }
+        }
+      ];
+      var MONEY_NAMES = new Set(MONEY_TOOLS.map((t) => t.name));
+      var MONEY_WRITES = /* @__PURE__ */ new Set(["add_money_record", "update_money_record", "delete_money_record", "add_wallet", "set_wallet_balance", "add_category", "remember_shop"]);
+      var MONEY_PROMPT = `
+
+Money: you also keep track of the user's money (spending, income, transfers between their own wallets, planned payments), with the money tools.
+- Wallets are where money is (Cash, BCA, GoPay\u2026). Every record needs one of the user's wallets. Never guess it: use the wallet the user named ("pake GoPay", "dari BCA"), or ask. For income, ask which wallet it went into (salary may go to the wallet they set for salary).
+- Categories: pick one of the user's existing categories yourself when it's obvious ("makan siang" is Food). Only ask when you're unsure, offering your best 2\u20133 guesses. Never make a new category or wallet without asking, and reuse existing names so nothing is duplicated.
+- Amounts: pass them as the user wrote them ("45rb", "8,5 juta"). Never do the arithmetic yourself: balances, totals and what's left all come from the tools.
+- If add_money_record says it was not saved, follow its note: ask exactly what it says, with its options. When a wallet would go below zero, tell the user plainly and give the options from the result.
+- Moving money between their own wallets (top up GoPay from BCA, tarik tunai) is a transfer, not spending.
+- A payment for later ("besok bayar internet 350rb") is a planned record with its date. Also offer to add a task for it.
+- Receipts and bank/e-wallet notifications: read the total, the shop and the date, then record it (source "receipt" or "notification"). Ask for the wallet unless the receipt shows it.
+- To offer choices the user can tap, end your message with one line: [[options: First | Second | Third]]. Use it whenever you ask which wallet or category (add "+ New wallet" or "+ New category" as the last option) and for the options a result gives you.
+- After saving, reply in one short line (the chat shows the record as a card with its new wallet balance). Mention a budget_note if there is one.`;
       var TONES = {
         friendly: "Keep replies short and friendly",
         concise: "Be crisp and professional: no small talk, no emoji, just the essentials",
         playful: "Be warm and playful (a light joke or emoji now and then is welcome), but still brief"
       };
-      function systemPrompt(nb, date = localDate(), persona = {}) {
+      function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
         const tone = TONES[persona.tone] || TONES.friendly;
         const pretty = (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -35383,27 +36020,60 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
 - Refer to tasks by title (add the #id only when it helps).
 - The user may attach screenshots, PDFs or text files. Read them carefully, quote exact error messages, IDs, names and numbers, and propose notes or tasks from what matters (through the normal confirmation cards).
 - If the user asks to undo, use undo_last_save (it doesn't need a confirmation card).
-- Reply in the language the user writes in.`;
+- Reply in the language the user writes in.` + (withMoney ? MONEY_PROMPT : "");
       }
       var Agent = class {
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
         // onLimit(active, error, tried) -> another active model to retry with, or null (rate limits, no credit, overload)
-        constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}) }) {
+        constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null }) {
+          this.getMoney = getMoney;
           this.onLimit = onLimit;
           this.nb = notebook;
           this.getPersona = getPersona;
           this.getActive = getActive;
         }
         // one model call, whatever the provider; always returns an Anthropic-shaped message
-        async complete(active, client, { system, tools, messages }, onText) {
+        async complete(active, client, { system, tools, messages, plainTools }, onText) {
           if (client) {
             const stream = client.messages.stream({ model: active.model, max_tokens: 4096, system, tools, messages });
             stream.on("text", onText);
             return stream.finalMessage();
           }
-          return chatOpenAI(active.conn, { model: active.model, system, tools: TOOLS, messages, onText });
+          return chatOpenAI(active.conn, { model: active.model, system, tools: plainTools || TOOLS, messages, onText });
+        }
+        runMoney(name, input) {
+          const m = this.money;
+          if (!m) throw new Error("Money is turned off. Tell the user they can turn it on in Settings.");
+          switch (name) {
+            case "money_overview":
+              return m.summary(input.month);
+            case "add_money_record":
+              return m.addRecord(input);
+            case "update_money_record": {
+              const { id, ...rest } = input;
+              return { saved: true, record: m.updateRecord(id, rest) };
+            }
+            case "delete_money_record":
+              return { deleted: m.deleteRecord(input.id) };
+            case "add_wallet":
+              return m.addWallet({ ...input, start: input.balance });
+            case "set_wallet_balance": {
+              const w = m.wallet(input.wallet);
+              if (!w) return { saved: false, note: "No such wallet. Ask which one.", wallets: m.wallets().map((x) => x.name) };
+              return { saved: true, wallet: m.setBalance(w.id, input.balance) };
+            }
+            case "add_category":
+              return m.addCategory(input);
+            case "remember_shop": {
+              const s = m.rememberShop(input.shop, input.category);
+              return s ? { saved: true } : { saved: false, note: "Unknown category." };
+            }
+            default:
+              throw new Error(`Unknown tool ${name}`);
+          }
         }
         runTool(name, input) {
+          if (MONEY_NAMES.has(name)) return this.runMoney(name, input);
           const nb = this.nb;
           switch (name) {
             case "capture_note": {
@@ -35483,16 +36153,18 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
           }) : null;
           let client = makeClient(active);
           const tried = /* @__PURE__ */ new Set([`${active.conn.id}::${active.model}`]);
-          const tools = TOOLS.map((t, i) => i === TOOLS.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t);
-          let changed = false;
-          const system = systemPrompt(this.nb, localDate(), this.getPersona());
+          this.money = this.getMoney();
+          const plainTools = this.money ? [...TOOLS, ...MONEY_TOOLS] : TOOLS;
+          const tools = plainTools.map((t, i) => i === plainTools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t);
+          let changed = false, moneyChanged = false;
+          const system = systemPrompt(this.nb, localDate(), this.getPersona(), !!this.money);
           for (let step = 0; step < 12; step++) {
             const model = active.model;
             onEvent({ type: "step" });
             let resp;
             for (; ; ) {
               try {
-                resp = await this.complete(active, client, { system, tools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
+                resp = await this.complete(active, client, { system, tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
                 break;
               } catch (e) {
                 const next = this.onLimit(active, e, tried);
@@ -35508,7 +36180,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             messages.push({ role: "assistant", content: resp.content });
             if (resp.stop_reason !== "tool_use") {
               const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-              return { text, changed };
+              return { text, changed, moneyChanged };
             }
             const calls = resp.content.filter((b) => b.type === "tool_use");
             const decisions = await Promise.all(calls.map(
@@ -35532,6 +36204,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               onEvent({ type: "tool", name: block.name, input });
               const writes = WRITE_TOOLS.has(block.name) || block.name === "undo_last_save";
               if (writes) changed = true;
+              if (MONEY_WRITES.has(block.name)) moneyChanged = true;
               try {
                 if (WRITE_TOOLS.has(block.name)) this.nb.begin(describe(block.name, input));
                 const out = this.runTool(block.name, input);
@@ -35546,7 +36219,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             if (reply) results.push({ type: "text", text: reply });
             messages.push({ role: "user", content: results });
           }
-          return { text: "I got a bit lost in my notebook there. Could you ask again?", changed };
+          return { text: "I got a bit lost in my notebook there. Could you ask again?", changed, moneyChanged };
         }
       };
       function describe(name, input = {}) {
@@ -35588,7 +36261,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
           return { ...m, content: content.length ? content : [{ type: "text", text: "(ok)" }] };
         });
       }
-      module.exports = { Agent, TOOLS, WRITE_TOOLS, describe };
+      module.exports = { Agent, TOOLS, WRITE_TOOLS, MONEY_TOOLS, describe };
     }
   });
 
@@ -35942,7 +36615,7 @@ Content-Type: application/octet-stream\r
                 walk(full, r);
               } else if (e.isFile()) {
                 if (r === "Tasks.md" || r === ".scribble/undo.json") continue;
-                if (r.startsWith(".scribble/") && r !== ".scribble/tasks.json") continue;
+                if (r.startsWith(".scribble/") && r !== ".scribble/tasks.json" && r !== ".scribble/money.json") continue;
                 if (e.name.startsWith(".") || /^~\$|\.tmp$|desktop\.ini$|Thumbs\.db$/i.test(e.name)) continue;
                 let st;
                 try {
@@ -36040,6 +36713,22 @@ Content-Type: application/octet-stream\r
             const merged = import_buffer.Buffer.from(JSON.stringify([...byId.values()].sort((a, b) => a.id - b.id), null, 2));
             return { upload: merged, writeLocal: merged };
           }
+          if (name === "nb/.scribble/money.json") {
+            const { Money } = require_money();
+            let l = null, r = null;
+            try {
+              l = JSON.parse(local.data.toString("utf8"));
+            } catch {
+            }
+            try {
+              r = JSON.parse(remoteData.toString("utf8"));
+            } catch {
+            }
+            if (!l) return { download: true };
+            if (!r) return { upload: local.data };
+            const merged = import_buffer.Buffer.from(JSON.stringify(Money.merge(l, r), null, 1));
+            return { upload: merged, writeLocal: merged };
+          }
           if (name.startsWith("chats/")) {
             let l = null, r = null;
             try {
@@ -36079,15 +36768,16 @@ Content-Type: application/octet-stream\r
           const nbLocal = [...local.keys()].filter((n2) => n2.startsWith("nb/")).length;
           const fresh = remote.size === 0 && Object.keys(known).length > 0 || nbKnown > 5 && nbLocal === 0;
           if (fresh) for (const k of Object.keys(known)) delete known[k];
-          const rank = (nm) => nm === "app/settings.json" ? 0 : nm.startsWith("chats/") ? 1 : nm === "nb/.scribble/tasks.json" ? 2 : 3;
+          const rank = (nm) => nm === "app/settings.json" ? 0 : nm.startsWith("chats/") ? 1 : nm === "nb/.scribble/tasks.json" || nm === "nb/.scribble/money.json" ? 2 : 3;
           const names = [.../* @__PURE__ */ new Set([...local.keys(), ...remote.keys(), ...Object.keys(known)])].filter((nm) => !opts.only || opts.only(nm)).sort((a, b) => rank(a) - rank(b) || (local.get(a)?.data.length || 0) - (local.get(b)?.data.length || 0));
-          const changed = { notebook: false, chats: false, settings: false, tasks: false };
+          const changed = { notebook: false, chats: false, settings: false, tasks: false, money: false };
           const mark = (name) => {
             if (name === "app/settings.json") changed.settings = true;
             else if (name.startsWith("chats/")) changed.chats = true;
             else {
               changed.notebook = true;
               if (name === "nb/.scribble/tasks.json") changed.tasks = true;
+              if (name === "nb/.scribble/money.json") changed.money = true;
             }
           };
           const put = async (name, data, id) => {
@@ -37063,7 +37753,95 @@ Content-Type: application/octet-stream\r
         "Every hour": "Setiap jam",
         "Every day": "Setiap hari",
         Off: "Mati",
-        "Poof! Your buddy turns into one of the others in a cloud of smoke.": "Puf! Buddy-mu berubah jadi karakter lain di balik kepulan asap."
+        "Poof! Your buddy turns into one of the others in a cloud of smoke.": "Puf! Buddy-mu berubah jadi karakter lain di balik kepulan asap.",
+        Money: "Keuangan",
+        "Tasks or notebook": "Tugas atau buku catatan",
+        "Money: keep track of what you spend and earn, by chatting": "Keuangan: catat pengeluaran dan pemasukan sambil mengobrol",
+        new: "baru",
+        "Previous month": "Bulan sebelumnya",
+        "Next month": "Bulan berikutnya",
+        Wallets: "Dompet",
+        Categories: "Kategori",
+        "+ Record": "+ Catatan",
+        "Money in": "Uang masuk",
+        "Money out": "Uang keluar",
+        "Left this month": "Sisa bulan ini",
+        "All wallets": "Semua dompet",
+        "Search records": "Cari catatan",
+        "In & out": "Masuk & keluar",
+        Transfers: "Transfer",
+        Transfer: "Transfer",
+        Date: "Tanggal",
+        Description: "Keterangan",
+        Wallet: "Dompet",
+        Amount: "Jumlah",
+        "No records this month yet.": "Belum ada catatan bulan ini.",
+        "Nothing matches these filters.": "Tidak ada yang cocok dengan filter ini.",
+        "Tell your buddy what you spent or earned, like": "Ceritakan ke buddy-mu apa yang kamu belanjakan atau dapatkan, misalnya",
+        or: "atau",
+        record: "catatan",
+        records: "catatan",
+        wallet: "dompet",
+        wallets: "dompet",
+        "No wallets yet": "Belum ada dompet",
+        planned: "direncanakan",
+        "running low": "menipis",
+        "Show only this wallet": "Tampilkan dompet ini saja",
+        "Click to change": "Klik untuk mengubah",
+        "from receipt": "dari struk",
+        Deleted: "Dihapus",
+        "Where your money is. Your buddy only offers these, so the same money is never recorded twice under two names.": "Tempat uangmu berada. Buddy-mu hanya menawarkan ini, jadi uang yang sama tidak tercatat dua kali dengan nama berbeda.",
+        Cash: "Tunai",
+        "Bank account": "Rekening bank",
+        Bank: "Bank",
+        "E-wallet": "E-wallet",
+        "Credit card": "Kartu kredit",
+        salary: "gaji",
+        "warn below": "ingatkan di bawah",
+        "New wallet": "Dompet baru",
+        Type: "Jenis",
+        "Balance now": "Saldo sekarang",
+        "Starting balance": "Saldo awal",
+        "Warn me below": "Ingatkan aku di bawah",
+        "optional, e.g. 100.000": "opsional, mis. 100.000",
+        "My salary goes here": "Gajiku masuk ke sini",
+        "Add wallet": "Tambah dompet",
+        "Give it a name.": "Beri nama dulu.",
+        "You already have": "Kamu sudah punya",
+        "Add anyway": "Tetap tambahkan",
+        "This looks like": "Ini mirip",
+        "Is it really a new wallet?": "Benar dompet baru?",
+        Spending: "Pengeluaran",
+        Income: "Pemasukan",
+        Shops: "Toko",
+        "Shops and apps that always go into the same category. Your buddy adds them when you pick a category for a shop.": "Toko dan aplikasi yang selalu masuk ke kategori yang sama. Buddy-mu menambahkannya saat kamu memilih kategori untuk sebuah toko.",
+        "None yet.": "Belum ada.",
+        Budget: "Anggaran",
+        hidden: "disembunyikan",
+        none: "tidak ada",
+        "+ Category": "+ Kategori",
+        "New category": "Kategori baru",
+        "Monthly budget": "Anggaran bulanan",
+        "optional, e.g. 1.500.000": "opsional, mis. 1.500.000",
+        "Shops that always go here": "Toko yang selalu masuk ke sini",
+        "Merge into\u2026": "Gabungkan ke\u2026",
+        Moved: "Memindahkan",
+        "records to": "catatan ke",
+        "Renaming or merging moves every past record too, so old reports stay clean.": "Mengganti nama atau menggabungkan juga memindahkan semua catatan lama, jadi laporan lama tetap rapi.",
+        "Show again": "Tampilkan lagi",
+        Hide: "Sembunyikan",
+        "Add category": "Tambah kategori",
+        "which sounds like the same thing. Use that, or add this anyway.": "yang sepertinya sama. Pakai itu, atau tetap tambahkan yang ini.",
+        "New record": "Catatan baru",
+        "Salary, bonus\u2026": "Gaji, bonus\u2026",
+        "Top up GoPay": "Isi saldo GoPay",
+        "Lunch, Indomaret\u2026": "Makan siang, Indomaret\u2026",
+        What: "Untuk apa",
+        "Into wallet": "Ke dompet",
+        "From wallet": "Dari dompet",
+        "Counts when it happens": "Dihitung saat terjadi",
+        Removed: "Dihapus",
+        Undo: "Urungkan"
       };
     }
   });
@@ -37209,6 +37987,7 @@ Content-Type: application/octet-stream\r
       var path = require_path_browserify();
       var crypto2 = require_crypto_shim();
       var { Notebook, localDate, localTime, missingFields } = require_notebook();
+      var { Money } = require_money();
       var { Agent } = require_agent();
       var AI = require_providers();
       var G = require_google();
@@ -37331,7 +38110,7 @@ Content-Type: application/octet-stream\r
       var syncEvery = null;
       var signedIn = () => !!(config.google && config.google.refresh);
       var syncStateFile = () => path.join(userDir(), "sync-state.json");
-      var SYNC_KEYS = ["avatar", "theme", "gravity", "confirmSaves", "autoFallback", "routine", "model", "onboarded", "shortcut", "captureShortcut", "captureEnabled"];
+      var SYNC_KEYS = ["avatar", "theme", "gravity", "confirmSaves", "autoFallback", "routine", "model", "onboarded", "shortcut", "captureShortcut", "captureEnabled", "money"];
       function settingsCore() {
         const core = {};
         for (const k of SYNC_KEYS) if (config[k] !== void 0) core[k] = config[k];
@@ -37429,6 +38208,7 @@ Content-Type: application/octet-stream\r
           },
           onChange: (c) => {
             if (c.notebook) sendPanel("notebook:changed", { external: true });
+            if (c.money) sendPanel("money:changed");
             if (c.chats && !busy) {
               const cur = loadCurrentChat();
               if (cur.id === chat.id) chat = cur;
@@ -37680,20 +38460,42 @@ Content-Type: application/octet-stream\r
         create_project: "Started project",
         log_project: "Logged progress on",
         get_today: "Checked today",
-        undo_last_save: "Undid the last save"
+        undo_last_save: "Undid the last save",
+        money_overview: "Checked your money",
+        add_money_record: "Recorded",
+        update_money_record: "Changed record",
+        delete_money_record: "Deleted record",
+        add_wallet: "Added wallet",
+        set_wallet_balance: "Set the balance of",
+        add_category: "Added category",
+        remember_shop: "Remembered shop"
       };
       function toolLabel(name, input = {}) {
         const base = TOOL_LABELS[name] || name;
+        if (name === "money_overview" || name === "delete_money_record" || name === "update_money_record") return base;
+        if (name === "add_money_record") return `${base} ${input.description || ""}`.trim();
+        if (name === "set_wallet_balance") return `${base} ${input.wallet || ""}`.trim();
+        if (name === "remember_shop") return `${base} ${input.shop || ""}`.trim();
         const detail = input.path || input.page || input.query || input.title || input.name || (input.id ? `#${input.id}` : "");
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
       }
       var ATTACH_NOTE = "[Attached ";
       function displayMessages(messages, meta = {}, labels = {}) {
         const notSaved = /* @__PURE__ */ new Set();
+        const moneyCards = /* @__PURE__ */ new Map();
+        const asked = /* @__PURE__ */ new Set();
         for (const m of messages) {
           if (m.role === "user" && Array.isArray(m.content)) {
             for (const b of m.content) {
               if (b.type === "tool_result" && typeof b.content === "string" && b.content.startsWith("Not saved")) notSaved.add(b.tool_use_id);
+              if (b.type === "tool_result" && typeof b.content === "string" && /^\{"(saved|ok)":false/.test(b.content)) asked.add(b.tool_use_id);
+              if (b.type === "tool_result" && typeof b.content === "string" && b.content.startsWith('{"saved":true,"record"')) {
+                try {
+                  const r = JSON.parse(b.content);
+                  moneyCards.set(b.tool_use_id, { ...r.record, balance: r.wallet_balance, toBalance: r.to_wallet_balance });
+                } catch {
+                }
+              }
             }
           }
         }
@@ -37712,15 +38514,18 @@ Content-Type: application/octet-stream\r
             }
           } else {
             const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-            const tools = m.content.filter((b) => b.type === "tool_use").map((b) => notSaved.has(b.id) ? `${toolLabel(b.name, b.input)} (not saved)` : toolLabel(b.name, b.input));
+            const uses = m.content.filter((b) => b.type === "tool_use");
+            const tools = uses.filter((b) => !moneyCards.has(b.id) && !asked.has(b.id)).map((b) => notSaved.has(b.id) ? `${toolLabel(b.name, b.input)} (not saved)` : toolLabel(b.name, b.input));
+            const money2 = uses.filter((b) => moneyCards.has(b.id)).map((b) => moneyCards.get(b.id));
             const last = out[out.length - 1];
             if (last && last.role === "assistant" && !last.text) {
               last.tools.push(...tools);
+              if (money2.length) last.money = [...last.money || [], ...money2];
               last.text = text;
-            } else out.push({ role: "assistant", text, tools });
+            } else out.push({ role: "assistant", text, tools, ...money2.length ? { money: money2 } : {} });
           }
         });
-        return out.filter((m) => m.text || m.tools && m.tools.length);
+        return out.filter((m) => m.text || m.tools && m.tools.length || m.money && m.money.length);
       }
       function moveWin(win, x, y, why = "") {
         if (!win || win.isDestroyed()) return false;
@@ -38476,7 +39281,7 @@ Content-Type: application/octet-stream\r
           chat.labels[before] = String(label).slice(0, 120);
         }
         try {
-          const { text: reply, changed } = await agent.run(chat.messages, (ev) => {
+          const { text: reply, changed, moneyChanged } = await agent.run(chat.messages, (ev) => {
             if (ev.type === "tool") sendPanel("chat:tool", toolLabel(ev.name, ev.input));
             else if (ev.type === "text") sendPanel("chat:delta", ev.delta);
             else if (ev.type === "step") sendPanel("chat:step");
@@ -38489,6 +39294,10 @@ Content-Type: application/octet-stream\r
           scheduleSync(3e3);
           sendBuddy("buddy:state", changed ? "happy" : "idle");
           if (changed) sendPanel("notebook:changed");
+          if (moneyChanged) {
+            sendPanel("money:changed");
+            scheduleSync(3e3);
+          }
           return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels) };
         } catch (e) {
           chat.messages.length = before;
@@ -38510,6 +39319,38 @@ Content-Type: application/octet-stream\r
           for (const id of [...pending.keys()]) settle(id, { decision: "skip" });
         }
       });
+      function money() {
+        const m = new Money(path.join(notebook.root, ".scribble", "money.json"));
+        m.load();
+        return m;
+      }
+      var moneyOp = (fn) => async (_e, ...args) => {
+        try {
+          const r = await fn(money(), ...args);
+          sendPanel("money:changed");
+          scheduleSync(3e3);
+          return { ok: true, result: r };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      };
+      ipcMain.handle("money:month", (_e, ym, filter) => money().month(String(ym || localDate().slice(0, 7)), filter || {}));
+      ipcMain.handle("money:addRecord", moneyOp((m, r) => {
+        const out = m.addRecord({ ...r, source: "manual" });
+        if (!out.saved) throw new Error(out.note || "Not saved.");
+        return out;
+      }));
+      ipcMain.handle("money:updateRecord", moneyOp((m, id, f) => m.updateRecord(id, f)));
+      ipcMain.handle("money:deleteRecord", moneyOp((m, id) => m.deleteRecord(id)));
+      ipcMain.handle("money:addWallet", moneyOp((m, w) => m.addWallet(w)));
+      ipcMain.handle("money:updateWallet", moneyOp((m, id, f) => m.updateWallet(id, f)));
+      ipcMain.handle("money:setBalance", moneyOp((m, id, v) => m.setBalance(id, v)));
+      ipcMain.handle("money:deleteWallet", moneyOp((m, id) => m.deleteWallet(id)));
+      ipcMain.handle("money:addCategory", moneyOp((m, c) => m.addCategory(c)));
+      ipcMain.handle("money:updateCategory", moneyOp((m, id, f) => m.updateCategory(id, f)));
+      ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b)));
+      ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat)));
+      ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id)));
       ipcMain.handle("nb:tree", () => notebook.tree());
       ipcMain.handle("nb:nested", () => notebook.nestedTree());
       var nbOp = (fn) => async (_e, ...args) => {
@@ -38609,6 +39450,7 @@ Content-Type: application/octet-stream\r
         confirmSaves: config.confirmSaves !== false,
         autoFallback: config.autoFallback !== false,
         onboarded: !!config.onboarded,
+        money: config.money === true,
         lang: appLang(),
         shortcut: config.shortcut || DEFAULT_SHORTCUT,
         captureShortcut: config.captureShortcut || DEFAULT_CAPTURE,
@@ -38625,6 +39467,7 @@ Content-Type: application/octet-stream\r
         if (s.confirmSaves !== void 0) config.confirmSaves = !!s.confirmSaves;
         if (s.autoFallback !== void 0) config.autoFallback = !!s.autoFallback;
         if (s.onboarded !== void 0) config.onboarded = !!s.onboarded;
+        if (s.money !== void 0) config.money = !!s.money;
         if (s.lang && s.lang !== appLang()) {
           config.lang = s.lang === "id" ? "id" : "en";
           I18n.setLang(config.lang);
@@ -39220,7 +40063,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
@@ -39374,7 +40217,21 @@ ${lines.join("\n")}
         getSettings: () => ipcRenderer.invoke("settings:get"),
         setSettings: (s) => ipcRenderer.invoke("settings:set", s),
         pickFolder: () => ipcRenderer.invoke("settings:pickFolder"),
-        openExternal: (u) => ipcRenderer.invoke("app:openExternal", u)
+        openExternal: (u) => ipcRenderer.invoke("app:openExternal", u),
+        moneyMonth: (ym, f) => ipcRenderer.invoke("money:month", ym, f),
+        moneyAddRecord: (r) => ipcRenderer.invoke("money:addRecord", r),
+        moneyUpdateRecord: (id, f) => ipcRenderer.invoke("money:updateRecord", id, f),
+        moneyDeleteRecord: (id) => ipcRenderer.invoke("money:deleteRecord", id),
+        moneyAddWallet: (w) => ipcRenderer.invoke("money:addWallet", w),
+        moneyUpdateWallet: (id, f) => ipcRenderer.invoke("money:updateWallet", id, f),
+        moneySetBalance: (id, v) => ipcRenderer.invoke("money:setBalance", id, v),
+        moneyDeleteWallet: (id) => ipcRenderer.invoke("money:deleteWallet", id),
+        moneyAddCategory: (c) => ipcRenderer.invoke("money:addCategory", c),
+        moneyUpdateCategory: (id, f) => ipcRenderer.invoke("money:updateCategory", id, f),
+        moneyMergeCategory: (a, b) => ipcRenderer.invoke("money:mergeCategory", a, b),
+        moneyRememberShop: (s, c) => ipcRenderer.invoke("money:rememberShop", s, c),
+        moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
+        onMoneyChanged: (fn) => on("money:changed", fn)
       });
     }
   });
