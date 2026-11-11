@@ -1800,7 +1800,7 @@ async function loadSettings() {
   loadUsage();
   loadAI();
   const s = await S.getSettings();
-  if (!s.hasKey) showSettingsTab('app');
+  if (!s.hasKey) { showSettingsTab('app'); const d = document.querySelector('details[data-sec="a-ai"]'); if (d) d.open = true; }
   $('#s-folder').textContent = s.notebookDir;
   $('#s-gravity').checked = s.gravity;
   $('#s-confirm').checked = s.confirmSaves;
@@ -1826,6 +1826,27 @@ $('#s-save').addEventListener('click', async () => {
   await loadSettings();
   $('#s-saved').textContent = 'Saved ✓';
 });
+// the toggles save as soon as they change (they live in different sections now)
+for (const id of ['s-gravity', 's-confirm', 's-login', 's-money']) $('#' + id).addEventListener('change', () => $('#s-save').click());
+
+// ---------------- settings sections: each opens and closes, and stays the way you left it ----------------
+const openSecs = (() => { try { return new Set(JSON.parse(localStorage.getItem('scribble.openSecs') || '["a-acct","b-look"]')); } catch { return new Set(['a-acct', 'b-look']); } })();
+function wireSec(d) {
+  if (d.dataset.wired) return; d.dataset.wired = '1';
+  d.open = openSecs.has(d.dataset.sec);
+  d.addEventListener('toggle', () => {
+    if (d.open) openSecs.add(d.dataset.sec); else openSecs.delete(d.dataset.sec);
+    try { localStorage.setItem('scribble.openSecs', JSON.stringify([...openSecs])); } catch {}
+  });
+}
+function secGroup(key, title, hint) {
+  const d = el('details', 'set-sec'); d.dataset.sec = key;
+  const s = el('summary'); const b = el('b'); b.textContent = title; s.append(b);
+  if (hint) { const h = el('small', 'set-sum-hint'); h.textContent = hint; s.append(h); }
+  const body = el('div', 'set-body'); d.append(s, body); wireSec(d);
+  return { d, body };
+}
+document.querySelectorAll('details.set-sec[data-sec]').forEach(wireSec);
 
 // ---------------- AI connections ----------------
 let aiState = null;
@@ -2167,8 +2188,9 @@ function renderCustomizer() {
     b.addEventListener('click', () => { if (cur !== k) setAvatar({ kind: 'clay', clay: k, color: null }); });
     chars.append(b);
   }
-  box.append(section('Character', chars));
-  box.append(section('Colour', swatchRow('color', C.chars[cur].palette)));
+  const G = { look: secGroup('b-look', 'Look', 'Character, colour, pattern, size'), move: secGroup('b-move', 'Movement & personality', 'How it moves and changes'), sound: secGroup('b-sound', 'Sounds', 'Little sounds for what it does') };
+  G.look.body.append(section('Character', chars));
+  G.look.body.append(section('Colour', swatchRow('color', C.chars[cur].palette)));
   const pg = el('div', 'av-grid pat-grid');
   for (const p of C.patterns) {
     const on = (av.pattern || 'none') === p;
@@ -2179,9 +2201,9 @@ function renderCustomizer() {
     b.addEventListener('click', () => setAvatar({ pattern: p }));
     pg.append(b);
   }
-  box.append(section('Pattern', pg));
-  if (av.pattern && av.pattern !== 'none') box.append(section('Pattern colour', swatchRow('patColor', C.inks)));
-  box.append(section('Size', sizeControl()));
+  G.look.body.append(section('Pattern', pg));
+  if (av.pattern && av.pattern !== 'none') G.look.body.append(section('Pattern colour', swatchRow('patColor', C.inks)));
+  G.look.body.append(section('Size', sizeControl()));
   // change character automatically
   const rot = el('select', 'rot-sel');
   for (const [k, l] of [['off', 'Off'], ['launch', 'Each time Scribble starts'], ['hour', 'Every hour'], ['day', 'Every day']]) {
@@ -2190,7 +2212,7 @@ function renderCustomizer() {
   rot.addEventListener('change', () => setAvatar({ rotate: rot.value, rotatedAt: Date.now() }));
   const rotNote = el('small'); rotNote.textContent = 'Poof! Your buddy turns into one of the others in a cloud of smoke.';
   const rotBox = el('div'); rotBox.append(rot, rotNote);
-  box.append(section('Change character automatically', rotBox));
+  G.move.body.append(section('Change character automatically', rotBox));
 
   const tp = el('div', 'temper-grid');
   for (const [k, l, d] of TEMPERS) {
@@ -2200,7 +2222,7 @@ function renderCustomizer() {
     b.addEventListener('click', () => setAvatar({ temperament: k }));
     tp.append(b);
   }
-  box.append(section('Personality', tp));
+  G.move.body.append(section('Personality', tp));
 
   // sounds: little tones for what the buddy does (sounds.js)
   {
@@ -2225,7 +2247,7 @@ function renderCustomizer() {
     row.append(vl, vol, test);
     const note = el('small'); note.textContent = 'Each buddy has its own voice. Quiet when your phone is on silent.';
     sec.append(h, main, idle, row, note);
-    box.append(sec);
+    G.sound.body.append(sec);
   }
 
   const extra = el('div', 'av-sec');
@@ -2242,7 +2264,8 @@ function renderCustomizer() {
   const reset = el('button', 'link'); reset.textContent = 'Reset to default buddy';
   reset.addEventListener('click', async () => { const d = await S.avatarDefaults(); setAvatar({ ...d, kind: 'clay', clay: 'fox', color: null, pattern: 'none', name: av.name }); });
   extra.append(reset);
-  box.append(extra);
+  G.look.body.append(extra);
+  box.append(G.look.d, G.move.d, G.sound.d);
   if (scroll != null) box.closest('.settings').scrollTop = scroll;
 }
 
@@ -2416,24 +2439,54 @@ $('#backup-now').addEventListener('click', async () => { const n = await S.backu
 $('#backup-open').addEventListener('click', () => S.backupOpen());
 
 // ---------------- routine settings ----------------
+// each field: element id → [routine key, kind]
+const RFIELDS = {
+  'r-brief': ['morningBrief', 'check'], 'r-btime': ['briefTime', 'time'], 'r-midday': ['midday', 'check'], 'r-mtime': ['middayTime', 'time'],
+  'r-recap': ['recap', 'check'], 'r-time': ['recapTime', 'time'], 'r-weekly': ['weekly', 'check'], 'r-wday': ['weeklyDay', 'num'], 'r-to': ['reportTo', 'text'],
+  'r-wstart': ['workStart', 'time'], 'r-wend': ['workEnd', 'time'], 'r-workonly': ['workOnly', 'check'],
+  'r-quiet': ['quiet', 'check'], 'r-qfrom': ['quietFrom', 'time'], 'r-qto': ['quietTo', 'time'], 'r-daystart': ['dayStart', 'time'],
+  'r-mevening': ['moneyEvening', 'check'], 'r-metime': ['moneyEveningTime', 'time'], 'r-mmonthly': ['moneyMonthly', 'check'],
+  'r-dueahead': ['dueAhead', 'num'], 'r-billsahead': ['billsAhead', 'num'], 'r-budgetwarn': ['budgetWarn', 'num'],
+};
+const CHATTY_HINT = { quiet: 'Only the check-ins above, nothing in between.', normal: 'The check-ins, plus useful nudges: tasks due, bills coming up, budgets running out.', chatty: 'All of that, plus a friendly check-in on quiet afternoons.' };
+let routineNow = null;
+function paintChatty(v) {
+  $$('#r-chatty button').forEach((b) => b.classList.toggle('on', b.dataset.chatty === v));
+  $('#r-chatty-hint').textContent = (window.I18n ? I18n.t(CHATTY_HINT[v] || '') : CHATTY_HINT[v]) || '';
+}
+function paintDays(days) {
+  const box = $('#r-daychips'); box.innerHTML = '';
+  const loc = (window.I18n && I18n.locale && I18n.locale()) || undefined;
+  for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+    const b = el('button', 'day-chip' + (days.includes(d) ? ' on' : '')); b.type = 'button'; b.dataset.noI18n = '';
+    b.textContent = new Date(2026, 0, 4 + d).toLocaleDateString(loc, { weekday: 'short' });   // 4 Jan 2026 is a Sunday
+    b.addEventListener('click', async () => {
+      const set = new Set(routineNow.days); if (set.has(d)) set.delete(d); else set.add(d);
+      if (!set.size) return;
+      routineNow = await S.setRoutine({ days: [...set].sort() }); paintDays(routineNow.days);
+    });
+    box.append(b);
+  }
+}
 async function loadRoutine() {
-  const r = await S.getRoutine();
-  $('#r-nudges').checked = r.nudges;
-  $('#r-brief').checked = r.morningBrief;
-  $('#r-recap').checked = r.recap;
-  $('#r-time').value = r.recapTime;
-  $('#r-days').value = r.workdays;
-  $('#r-weekly').checked = r.weekly;
-  $('#r-wday').value = String(r.weeklyDay);
-  $('#r-to').value = r.reportTo;
+  const r = routineNow = await S.getRoutine();
+  for (const [id, [k, kind]] of Object.entries(RFIELDS)) {
+    const e = $('#' + id); if (!e) continue;
+    if (kind === 'check') e.checked = !!r[k]; else e.value = String(r[k] ?? '');
+  }
+  paintDays(r.days); paintChatty(r.chatty);
+  const money = !!(await S.getSettings()).money;
+  $$('.r-money').forEach((x) => { x.hidden = !money; });
 }
-for (const id of ['r-nudges', 'r-brief', 'r-recap', 'r-time', 'r-days', 'r-weekly', 'r-wday', 'r-to']) {
-  $('#' + id).addEventListener('change', () => S.setRoutine({
-    nudges: $('#r-nudges').checked, morningBrief: $('#r-brief').checked,
-    recap: $('#r-recap').checked, recapTime: $('#r-time').value || '17:30', workdays: $('#r-days').value,
-    weekly: $('#r-weekly').checked, weeklyDay: Number($('#r-wday').value), reportTo: $('#r-to').value.trim(),
-  }));
+for (const [id, [k, kind]] of Object.entries(RFIELDS)) {
+  const e = $('#' + id); if (!e) continue;
+  e.addEventListener('change', async () => {
+    let v = kind === 'check' ? e.checked : kind === 'num' ? Number(e.value) : kind === 'time' ? (e.value || ROUTINE_FALLBACK[k]) : e.value.trim();
+    routineNow = await S.setRoutine({ [k]: v });
+  });
 }
+const ROUTINE_FALLBACK = { briefTime: '05:00', middayTime: '14:00', recapTime: '17:30', workStart: '09:00', workEnd: '17:00', quietFrom: '22:00', quietTo: '07:00', dayStart: '00:00', moneyEveningTime: '21:00' };
+$$('#r-chatty button').forEach((b) => b.addEventListener('click', async () => { routineNow = await S.setRoutine({ chatty: b.dataset.chatty }); paintChatty(routineNow.chatty); }));
 $('#r-brief-now').addEventListener('click', async () => { currentBrief = await S.briefNow(); showTab('chat'); loadChat(); });
 
 // ---------------- import ----------------

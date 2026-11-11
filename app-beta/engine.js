@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.15.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.16.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4062,7 +4062,8 @@ var __dirname = '/app/src', __filename = '/app/src/main.js';
       var fs2 = require_vfs();
       var path = require_path_browserify();
       var SECTIONS = ["Daily", "Projects", "Notes"];
-      function localDate(d = /* @__PURE__ */ new Date()) {
+      function localDate(d) {
+        if (!d) d = new Date(Date.now() - (globalThis.__scribbleDayStartMs || 0));
         return d.toLocaleDateString("en-CA");
       }
       function localTime(d = /* @__PURE__ */ new Date()) {
@@ -4681,7 +4682,7 @@ ${groups[n].map(fmt).join("\n")}
       var crypto2 = require_crypto_shim();
       var newId = () => crypto2.randomBytes(5).toString("hex");
       var now = () => Date.now();
-      var today = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA");
+      var today = () => new Date(Date.now() - (globalThis.__scribbleDayStartMs || 0)).toLocaleDateString("en-CA");
       var norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
       var WALLET_TYPES = ["cash", "bank", "ewallet", "card"];
       var WALLET_COLORS = { cash: "#2E9E6A", bank: "#3F6FD8", ewallet: "#00AA5B", card: "#6E3FC9" };
@@ -5109,7 +5110,8 @@ ${groups[n].map(fmt).join("\n")}
           const ym = String(date).slice(0, 7);
           const spent = this.records().filter((r) => !r.planned && r.kind === "out" && r.category === c.id && r.date.startsWith(ym)).reduce((a, r) => a + r.amount, 0);
           if (spent > c.budget) return { budget_note: `${c.name} is over its ${rp(c.budget)} budget this month (${rp(spent)}). Mention it briefly.` };
-          if (spent > c.budget * 0.8) return { budget_note: `${c.name} has used ${Math.round(spent / c.budget * 100)}% of its ${rp(c.budget)} budget this month. Mention it briefly.` };
+          const warn = (globalThis.__scribbleBudgetWarn || 80) / 100;
+          if (spent > c.budget * warn) return { budget_note: `${c.name} has used ${Math.round(spent / c.budget * 100)}% of its ${rp(c.budget)} budget this month. Mention it briefly.` };
           return {};
         }
         updateRecord(id, fields) {
@@ -37096,7 +37098,7 @@ Content-Type: application/octet-stream\r
         "Morning brief when I start the day": "Ringkasan pagi saat aku memulai hari",
         "show now": "tampilkan sekarang",
         "Nudge me about due and overdue tasks": "Ingatkan aku soal tugas yang jatuh tempo dan terlambat",
-        "End-of-day recap at": "Rekap akhir hari pukul",
+        "End-of-day recap at": "Rekap akhir hari jam",
         on: "pada",
         for: "untuk",
         "Mon\u2013Fri": "Sen\u2013Jum",
@@ -37906,7 +37908,68 @@ Content-Type: application/octet-stream\r
         "Your buddy copies how you write, right now: formal when you are, relaxed when you are.": "Buddy-mu ikutin cara kamu nulis: formal kalau kamu formal, santai kalau kamu santai.",
         "Neat and polite, no slang or emoji.": "Rapi dan sopan, tanpa bahasa gaul atau emoji.",
         "Relaxed, like chatting with a friend.": "Santai, kayak ngobrol sama teman.",
-        "Playful, like a fun friend online. It picks up the words you use, so it never sounds forced.": "Seru, kayak teman asyik di medsos. Ikutin kata-kata yang kamu pakai, jadi nggak maksa."
+        "Playful, like a fun friend online. It picks up the words you use, so it never sounds forced.": "Seru, kayak teman asyik di medsos. Ikutin kata-kata yang kamu pakai, jadi nggak maksa.",
+        "Account & updates": "Akun & pembaruan",
+        "Google account, sync status, new versions": "Akun Google, status sinkron, versi baru",
+        "API keys, model, usage": "Kunci API, model, pemakaian",
+        "Language, look, shortcuts": "Bahasa, tampilan, pintasan",
+        "Time & reminders": "Waktu & pengingat",
+        "Working hours, quiet hours, recaps": "Jam kerja, jam tenang, rekap",
+        "Track spending and income by chatting": "Catat pengeluaran dan pemasukan sambil mengobrol",
+        "Notebook, sync & backup": "Buku catatan, sinkron & cadangan",
+        "Folder, backups, import": "Folder, cadangan, impor",
+        Voice: "Suara",
+        "Your buddy speaks its replies": "Buddy-mu membacakan balasannya",
+        Look: "Tampilan",
+        "Character, colour, pattern, size": "Karakter, warna, motif, ukuran",
+        "Movement & personality": "Gerakan & kepribadian",
+        "How it moves and changes": "Cara bergerak dan berganti",
+        "Little sounds for what it does": "Suara kecil untuk tiap gerakannya",
+        "When your buddy works with you, when it stays quiet, and when it checks in.": "Kapan buddy-mu menemanimu bekerja, kapan diam, dan kapan menyapa.",
+        "Working hours": "Jam kerja",
+        From: "Dari",
+        to: "sampai",
+        "Only nudge me about tasks during working hours": "Ingatkan soal tugas hanya di jam kerja",
+        "Do not disturb": "Jangan ganggu",
+        "Quiet hours from": "Jam tenang dari",
+        "Your buddy keeps anything that comes up and tells you when quiet hours end.": "Buddy-mu menyimpan semua yang muncul dan memberi tahu setelah jam tenang selesai.",
+        "My day": "Hariku",
+        "A new day starts at": "Hari baru dimulai jam",
+        'Notes and spending after midnight still count as "today" until then. Handy for late nights.': 'Catatan dan pengeluaran lewat tengah malam tetap dihitung "hari ini" sampai jam itu. Cocok buat yang suka begadang.',
+        "Your buddy checks in": "Buddy-mu menyapa",
+        "Morning brief from": "Ringkasan pagi mulai jam",
+        "Midday check at": "Cek siang jam",
+        "Evening money recap at": "Rekap keuangan malam jam",
+        "Monthly money report on the 1st": "Laporan keuangan bulanan tiap tanggal 1",
+        "Tasks due": "Tugas jatuh tempo",
+        "On the day": "Di hari itu",
+        "1 day before": "1 hari sebelumnya",
+        "2 days before": "2 hari sebelumnya",
+        "3 days before": "3 hari sebelumnya",
+        "A week before": "Seminggu sebelumnya",
+        "Bills and planned payments": "Tagihan dan pembayaran terencana",
+        "Budget warning at": "Peringatan anggaran di",
+        "How chatty": "Seberapa cerewet",
+        Quiet: "Pendiam",
+        Normal: "Biasa",
+        Chatty: "Cerewet",
+        "Only the check-ins above, nothing in between.": "Hanya sapaan di atas, tidak ada yang lain.",
+        "The check-ins, plus useful nudges: tasks due, bills coming up, budgets running out.": "Sapaan di atas, plus pengingat penting: tugas jatuh tempo, tagihan mendekat, anggaran menipis.",
+        "All of that, plus a friendly check-in on quiet afternoons.": "Semua itu, plus sapaan ramah di sore yang sepi.",
+        "Briefs, nudges and reminders are built on this device, so they're free. The recaps and reports use your AI model, and only run when you click them.": "Ringkasan, sapaan, dan pengingat dibuat di perangkat ini, jadi gratis. Rekap dan laporan memakai model AI-mu, dan hanya berjalan saat kamu mengekliknya.",
+        "{#0} tasks coming up": "{0} tugas mendekat",
+        "Payment coming up": "Pembayaran mendekat",
+        "{0} payments coming up": "{0} pembayaran mendekat",
+        "{0}: {1}% of the budget used": "{0}: {1}% anggaran terpakai",
+        "{0} of {1} this month": "{0} dari {1} bulan ini",
+        "Today: {0} spent": "Hari ini: {0} terpakai",
+        "Free to spend: {0} ({1} a day for {2} days)": "Bisa dipakai: {0} ({1} sehari untuk {2} hari)",
+        "New month! Want a look back at {0}?": "Bulan baru! Mau lihat lagi {0}?",
+        "My money report for {0}": "Laporan keuanganku untuk {0}",
+        "New month!": "Bulan baru!",
+        "Want a look back at {0}?": "Mau lihat lagi {0}?",
+        "How's it going?": "Gimana hari ini?",
+        "Anything to note down or tick off? Just tell me.": "Ada yang mau dicatat atau dicentang? Bilang aja."
       };
     }
   });
@@ -38052,7 +38115,7 @@ Content-Type: application/octet-stream\r
       var path = require_path_browserify();
       var crypto2 = require_crypto_shim();
       var { Notebook, localDate, localTime, missingFields } = require_notebook();
-      var { Money } = require_money();
+      var { Money, rp } = require_money();
       var { Agent } = require_agent();
       var AI = require_providers();
       var G = require_google();
@@ -39320,6 +39383,7 @@ Content-Type: application/octet-stream\r
         }
       });
       ipcMain.handle("chat:send", async (_e, text, attachments = [], label = null) => {
+        rstate().lastChatDay = localDate();
         text = String(text || "").trim();
         attachments = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
         if (text && busy && pending.size) {
@@ -39960,23 +40024,47 @@ X-GNOME-Autostart-enabled=true
       var ROUTINE_DEFAULT = {
         nudges: true,
         morningBrief: true,
+        briefTime: "05:00",
         recap: true,
         recapTime: "17:30",
         workdays: "mon-fri",
         weekly: true,
         weeklyDay: 5,
-        reportTo: ""
+        reportTo: "",
+        // Time & reminders
+        workStart: "09:00",
+        workEnd: "17:00",
+        workOnly: true,
+        quiet: true,
+        quietFrom: "22:00",
+        quietTo: "07:00",
+        dayStart: "00:00",
+        midday: true,
+        middayTime: "14:00",
+        moneyEvening: true,
+        moneyEveningTime: "21:00",
+        moneyMonthly: true,
+        dueAhead: 1,
+        billsAhead: 3,
+        budgetWarn: 80
       };
-      var routine = () => ({ ...ROUTINE_DEFAULT, ...config.routine || {} });
+      var routine = () => {
+        const r = { ...ROUTINE_DEFAULT, ...config.routine || {} };
+        if (!Array.isArray(r.days)) r.days = r.workdays === "every" ? [0, 1, 2, 3, 4, 5, 6] : r.workdays === "mon-sat" ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
+        if (!r.chatty) r.chatty = r.nudges ? "normal" : "quiet";
+        return r;
+      };
+      function applyDayStart() {
+        const r = routine(), [h, m] = String(r.dayStart || "00:00").split(":").map(Number);
+        globalThis.__scribbleDayStartMs = ((h || 0) * 60 + (m || 0)) * 6e4;
+        globalThis.__scribbleBudgetWarn = Number(r.budgetWarn) || 80;
+      }
+      var inRange = (hhmm, from, to) => from <= to ? hhmm >= from && hhmm < to : hhmm >= from || hhmm < to;
       var rstate = () => config.routineState ||= { notified: {} };
       var alertTab = null;
       var suggestion = null;
       function isWorkday(d = /* @__PURE__ */ new Date()) {
-        const day = d.getDay();
-        const w = routine().workdays;
-        if (w === "every") return true;
-        if (w === "mon-sat") return day >= 1 && day <= 6;
-        return day >= 1 && day <= 5;
+        return routine().days.includes(d.getDay());
       }
       function addDays(dateStr, n) {
         const d = /* @__PURE__ */ new Date(dateStr + "T12:00:00");
@@ -40135,7 +40223,9 @@ ${lines.join("\n")}
       ipcMain.handle("routine:get", () => routine());
       ipcMain.handle("routine:set", (_e, patch) => {
         config.routine = { ...routine(), ...patch };
+        if (patch.chatty) config.routine.nudges = patch.chatty !== "quiet";
         saveConfig();
+        applyDayStart();
         return routine();
       });
       function routineTick() {
@@ -40145,12 +40235,16 @@ ${lines.join("\n")}
         const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
         const activeRecently = Date.now() - lastUserActivity < 5 * 60 * 1e3;
         let changed = false;
-        if (r.morningBrief && isWorkday(now) && now.getHours() >= 5 && st.lastBrief !== today && activeRecently) {
+        applyDayStart();
+        if (r.quiet && inRange(hhmm, r.quietFrom, r.quietTo)) return;
+        const atWork = isWorkday(now) && inRange(hhmm, r.workStart, r.workEnd);
+        const nudgesOn = r.chatty !== "quiet" && (!r.workOnly || atWork);
+        if (r.morningBrief && isWorkday(now) && hhmm >= r.briefTime && st.lastBrief !== today && activeRecently) {
           showBrief();
           st.notified = { [today]: notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today).map((t2) => t2.id) };
           changed = true;
         }
-        if (r.nudges) {
+        if (nudgesOn) {
           const due = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today);
           const seen = new Set(st.notified && st.notified[today] || []);
           const fresh = due.filter((t2) => !seen.has(t2.id));
@@ -40160,7 +40254,7 @@ ${lines.join("\n")}
             st.notified = { [today]: [...seen, ...fresh.map((t2) => t2.id)] };
             changed = true;
           }
-          if (due.length && hhmm >= "14:00" && st.afternoonNudge !== today && st.lastBrief === today && activeRecently) {
+          if (r.midday && due.length && hhmm >= r.middayTime && st.afternoonNudge !== today && st.lastBrief === today && activeRecently) {
             const over = due.filter((t2) => t2.due < today).length;
             notify(I18n.t("Still open today"), `${I18n.t(due.length > 1 ? "{0} tasks due" : "{0} task due", due.length)}${over ? ` (${I18n.t("{0} overdue", over)})` : ""}: ${due.map((x) => x.title).slice(0, 2).join(" \xB7 ")}`, "tasks");
             alertBuddy("tasks");
@@ -40174,6 +40268,73 @@ ${lines.join("\n")}
           notify(I18n.t(weekly ? "Wrap up the week?" : "Wrap up the day?"), weekly ? I18n.t("I can draft your weekly report for {0}.", r.reportTo || I18n.t("your manager")) : I18n.t("I can draft today's recap for your daily page."), "chat");
           alertBuddy("chat");
           st.lastRecap = today;
+          changed = true;
+        }
+        if (nudgesOn && Number(r.dueAhead) > 0 && st.lastBrief === today) {
+          const until = addDays(today, Number(r.dueAhead));
+          const ahead = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due > today && t2.due <= until);
+          const told = new Set(st.aheadTold || []);
+          const fresh = ahead.filter((t2) => !told.has(t2.id + "@" + t2.due));
+          if (fresh.length) {
+            notify(fresh.length === 1 ? I18n.t("Coming up") : I18n.t("{0} tasks coming up", fresh.length), fresh.map((t2) => `${t2.title} (${(/* @__PURE__ */ new Date(t2.due + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).slice(0, 3).join(" \xB7 "), "tasks");
+            alertBuddy("tasks");
+            st.aheadTold = [...told, ...fresh.map((t2) => t2.id + "@" + t2.due)].slice(-300);
+            changed = true;
+          }
+        }
+        if (config.money === true) {
+          const m = money(), T = I18n.t;
+          if (r.chatty !== "quiet") {
+            const until = addDays(today, Number(r.billsAhead) || 0);
+            const told = new Set(st.billsTold || []);
+            const bills = m.records().filter((x) => x.planned && x.kind === "out" && x.date >= today && x.date <= until && !told.has(x.id + "@" + x.date));
+            if (bills.length) {
+              notify(bills.length === 1 ? T("Payment coming up") : T("{0} payments coming up", bills.length), bills.slice(0, 3).map((x) => `${x.description} ${rp(x.amount)} (${x.date === today ? T("today") : (/* @__PURE__ */ new Date(x.date + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).join(" \xB7 "), "money");
+              alertBuddy("money");
+              st.billsTold = [...told, ...bills.map((x) => x.id + "@" + x.date)].slice(-300);
+              changed = true;
+            }
+            const ym = today.slice(0, 7), warn = (Number(r.budgetWarn) || 80) / 100;
+            const bt = new Set(st.budgetTold || []);
+            for (const c of m.categories()) {
+              if (c.budget == null || c.kind !== "out" || c.hidden || bt.has(c.id + "@" + ym)) continue;
+              const spent = m.records().filter((x) => !x.planned && x.kind === "out" && x.category === c.id && x.date.startsWith(ym)).reduce((a, x) => a + x.amount, 0);
+              if (spent >= c.budget * warn) {
+                notify(T("{0}: {1}% of the budget used", c.name, Math.round(spent / c.budget * 100)), T("{0} of {1} this month", rp(spent), rp(c.budget)), "money");
+                alertBuddy("money");
+                bt.add(c.id + "@" + ym);
+                st.budgetTold = [...bt].slice(-200);
+                changed = true;
+              }
+            }
+          }
+          if (r.moneyEvening && hhmm >= r.moneyEveningTime && st.lastMoneyEvening !== today) {
+            const spent = m.records().filter((x) => !x.planned && x.kind === "out" && x.date === today).reduce((a, x) => a + x.amount, 0);
+            const o = m.outlook();
+            notify(T("Today: {0} spent", rp(spent)), T("Free to spend: {0} ({1} a day for {2} days)", o.free_to_spend, o.per_day, o.days_left), "money");
+            st.lastMoneyEvening = today;
+            changed = true;
+          }
+          if (r.moneyMonthly && today.endsWith("-01") && hhmm >= r.briefTime && st.lastMoneyMonth !== today.slice(0, 7) && activeRecently) {
+            const d = /* @__PURE__ */ new Date(today + "T12:00:00");
+            d.setMonth(d.getMonth() - 1);
+            const last = localDate(d).slice(0, 7);
+            const name = d.toLocaleDateString(I18n.locale(), { month: "long", year: "numeric" });
+            suggestion = { kind: "money", title: T("New month! Want a look back at {0}?", name), prompts: [{
+              label: T("My money report for {0}", name),
+              prompt: `Give me my money report for ${last}: money in and out, the biggest spending categories and how they compare with the month before, budgets kept or broken, and one or two simple tips for this month. Keep it short.${I18n.lang() === "id" ? " Write it in Bahasa Indonesia." : ""}`
+            }] };
+            sendPanel("chat:suggest", suggestion);
+            notify(T("New month!"), T("Want a look back at {0}?", name), "chat");
+            alertBuddy("chat");
+            st.lastMoneyMonth = today.slice(0, 7);
+            changed = true;
+          }
+        }
+        if (r.chatty === "chatty" && atWork && hhmm >= "15:30" && st.lastCheckIn !== today && activeRecently && st.lastChatDay !== today) {
+          notify(I18n.t("How's it going?"), I18n.t("Anything to note down or tick off? Just tell me."), "chat");
+          alertBuddy("chat");
+          st.lastCheckIn = today;
           changed = true;
         }
         if (changed) saveConfig();
@@ -40236,6 +40397,7 @@ ${lines.join("\n")}
         watchNotebook();
         if (process.platform === "darwin") app.dock?.hide();
         if (process.platform === "win32") app.setAppUserModelId("id.scribble.buddy");
+        applyDayStart();
         setTimeout(routineTick, 4e3);
         setTimeout(() => {
           if (!ANDROID) createBuddy();
