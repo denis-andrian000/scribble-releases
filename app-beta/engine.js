@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.14.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.15.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -35987,13 +35987,17 @@ Money: you also keep track of the user's money (spending, income, transfers betw
 - To offer choices the user can tap, end your message with one line: [[options: First | Second | Third]]. Use it whenever you ask which wallet or category (add "+ New wallet" or "+ New category" as the last option) and for the options a result gives you.
 - After saving, reply in one short line (the chat shows the record as a card with its new wallet balance). Mention a budget_note if there is one.`;
       var TONES = {
-        friendly: "Keep replies short and friendly",
-        concise: "Be crisp and professional: no small talk, no emoji, just the essentials",
-        playful: "Be warm and playful (a light joke or emoji now and then is welcome), but still brief"
+        mirror: "Match how the user writes in their latest messages: the same language (Indonesian, English or their mix), the same level of formality, the same length, the same kind of slang and emoji. Formal when they are formal, relaxed when they are relaxed. Use only slang the user uses themselves or that is plain everyday chat; never add trendy words they did not use. Emoji only if they use them. Keep replies short",
+        polite: 'Be neat and polite. In Indonesian use clear, standard, friendly language (saya/kamu or Anda as fits the user, no slang, no "wkwk"); in English, polite and plain. No emoji. Keep replies short',
+        casual: "Be relaxed and warm, like chatting with a friend. In Indonesian use everyday casual words (aku/kamu, udah, nggak, kok, ya); in English, plain casual chat. No heavy slang. Emoji only if the user uses them. Keep replies short",
+        gaul: "Be playful and lively, like a fun friend chatting online (the way people talk on Threads or WhatsApp today). Mirror the slang and pronouns the user actually uses (gue/lo only if they do), add light humour, and keep it natural: at most one slang touch per reply, never stack slang, never sound forced or cringe, and never use slang you are unsure is current. Emoji only if the user uses them. Facts, numbers and dates must still be crystal clear. Keep replies short"
       };
+      TONES.friendly = TONES.mirror;
+      TONES.concise = TONES.polite;
+      TONES.playful = TONES.casual;
       function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
-        const tone = TONES[persona.tone] || TONES.friendly;
+        const tone = TONES[persona.tone] || TONES.mirror;
         const pretty = (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
         return `You are ${name}, a tiny note-taking buddy that floats on the user's desktop. The user clicks you, types a line, and goes back to work. ${tone} (1\u20133 sentences unless they ask for a summary or a list).
 
@@ -37893,7 +37897,16 @@ Content-Type: application/octet-stream\r
         "Allow the microphone to talk to your buddy.": "Izinkan mikrofon untuk bicara ke buddy-mu.",
         "To talk, turn on Voice in Settings and add your OpenRouter key.": "Untuk bicara, nyalakan Suara di Pengaturan dan tambahkan kunci OpenRouter-mu.",
         "I didn't catch that. Try again?": "Aku kurang dengar. Coba lagi?",
-        "This phone has no speech recognition. Install or turn on Google voice typing.": "HP ini tidak punya pengenal suara. Pasang atau nyalakan Google Voice Typing."
+        "This phone has no speech recognition. Install or turn on Google voice typing.": "HP ini tidak punya pengenal suara. Pasang atau nyalakan Google Voice Typing.",
+        "Chat style": "Gaya ngobrol",
+        "Match me": "Ikutin aku",
+        Polite: "Sopan",
+        Casual: "Santai",
+        Trendy: "Gaul",
+        "Your buddy copies how you write, right now: formal when you are, relaxed when you are.": "Buddy-mu ikutin cara kamu nulis: formal kalau kamu formal, santai kalau kamu santai.",
+        "Neat and polite, no slang or emoji.": "Rapi dan sopan, tanpa bahasa gaul atau emoji.",
+        "Relaxed, like chatting with a friend.": "Santai, kayak ngobrol sama teman.",
+        "Playful, like a fun friend online. It picks up the words you use, so it never sounds forced.": "Seru, kayak teman asyik di medsos. Ikutin kata-kata yang kamu pakai, jadi nggak maksa."
       };
     }
   });
@@ -39671,7 +39684,7 @@ Content-Type: application/octet-stream\r
         size: "m",
         image: null,
         name: "Scribble",
-        tone: "friendly",
+        tone: "mirror",
         sound: { on: true, idle: false, vol: 0.6 },
         imageW: 0,
         imageH: 0,
