@@ -221,8 +221,28 @@
     <div class="settings" id="set-buddy" hidden>
       <div id="avatar-editor"></div>
       <input type="file" id="av-file" accept="image/*" hidden>
+      <details class="set-sec" data-sec="b-voice"><summary><b>Voice</b><small class="set-sum-hint">Your buddy speaks its replies</small></summary><div class="set-body">
+      <label class="toggle"><input type="checkbox" id="v-on"><span>Voice: your buddy says its replies out loud <em class="beta">new</em></span></label>
+      <div class="sync-box voice-box" id="v-box" hidden>
+        <small>Voice uses OpenRouter's voice models with your own OpenRouter key. Spoken replies are English only for now; Indonesian replies stay in text. Talking to your buddy with the mic works in English and Indonesian.</small>
+        <label class="v-field"><span>OpenRouter API key</span>
+          <span class="v-keyrow"><input type="password" id="v-key" placeholder="sk-or-…" autocomplete="off"><button class="btn ghost" id="v-test" type="button">Test</button></span>
+        </label>
+        <small>Get a free key at <button type="button" class="link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</button>.</small>
+        <div class="v-status" id="v-status"></div>
+        <div id="v-more" hidden>
+          <label class="v-field"><span>Voice model</span><select id="v-model"></select></label>
+          <label class="v-field"><span>Cuteness <b id="v-cute-val"></b></span><input type="range" id="v-cute" min="1" max="1.6" step="0.05"></label>
+          <div class="v-field"><span>Your buddy's voice</span>
+            <span class="v-keyrow"><button class="btn ghost" id="v-try" type="button">Play a sample</button><button class="btn ghost" id="v-keep" type="button" disabled>Keep this voice</button><button class="link" id="v-forget" type="button" hidden>Forget it</button></span>
+          </div>
+          <small id="v-kept-note"></small>
+        </div>
+      </div>
+      </div></details>
     </div>
     <div class="settings" id="set-app">
+      <details class="set-sec" data-sec="a-acct"><summary><b>Account &amp; updates</b><small class="set-sum-hint">Google account, sync status, new versions</small></summary><div class="set-body">
       <div class="field">
         <span>Account</span>
         <div class="acct" id="acct">
@@ -240,6 +260,8 @@
           <button type="button" class="btn" id="upd-install" hidden>Restart to update</button>
         </div>
       </div>
+      </div></details>
+      <details class="set-sec" data-sec="a-ai"><summary><b>AI</b><small class="set-sum-hint">API keys, model, usage</small></summary><div class="set-body">
       <div class="field">
         <span>AI connections</span>
         <div id="ai-list" class="ai-list"></div>
@@ -271,6 +293,75 @@
         <div class="usage" id="usage"></div>
         <small>Token counts on this computer. For costs, check your provider's billing page.</small>
       </div>
+      </div></details>
+      <details class="set-sec" data-sec="a-general"><summary><b>General</b><small class="set-sum-hint">Language, look, shortcuts</small></summary><div class="set-body">
+      <div class="field"><span>Language</span>
+        <div class="seg small lang-seg" id="s-lang" data-no-i18n>
+          <button type="button" data-lang="en">English</button>
+          <button type="button" data-lang="id">Bahasa Indonesia</button>
+        </div>
+      </div>
+      <div class="field"><span>Appearance</span>
+        <div class="seg small" id="s-theme">
+          <button type="button" data-theme="system">System</button>
+          <button type="button" data-theme="light">Light</button>
+          <button type="button" data-theme="dark">Dark</button>
+        </div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="s-confirm"><span>Ask me before saving anything (polished preview + where it goes)</span></label>
+      <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
+      <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
+      <div class="field"><span>Shortcuts</span>
+        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-panel"></button><small>Open / close this panel</small></div>
+        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-capture"></button><small>Save what you copied to Inbox</small></div>
+        <label class="toggle"><input type="checkbox" id="s-capture"><span>Clipboard capture hotkey on</span></label>
+        <small>Click a shortcut, then press the new keys. <span id="k-msg" class="kbd-bad"></span></small>
+      </div>
+      </div></details>
+      <details class="set-sec" data-sec="a-time"><summary><b>Time &amp; reminders</b><small class="set-sum-hint">Working hours, quiet hours, recaps</small></summary><div class="set-body">
+      <small>When your buddy works with you, when it stays quiet, and when it checks in.</small>
+      <div class="field"><span>Working hours</span>
+        <div class="day-chips" id="r-daychips"></div>
+        <div class="t-row">From <input type="time" id="r-wstart" class="mini"> to <input type="time" id="r-wend" class="mini"></div>
+        <label class="toggle"><input type="checkbox" id="r-workonly"><span>Only nudge me about tasks during working hours</span></label>
+      </div>
+      <div class="field"><span>Do not disturb</span>
+        <label class="toggle"><input type="checkbox" id="r-quiet"><span>Quiet hours from <input type="time" id="r-qfrom" class="mini"> to <input type="time" id="r-qto" class="mini"></span></label>
+        <small>Your buddy keeps anything that comes up and tells you when quiet hours end.</small>
+      </div>
+      <div class="field"><span>My day</span>
+        <div class="t-row">A new day starts at <input type="time" id="r-daystart" class="mini"></div>
+        <small>Notes and spending after midnight still count as "today" until then. Handy for late nights.</small>
+      </div>
+      <div class="field"><span>Your buddy checks in</span>
+        <label class="toggle"><input type="checkbox" id="r-brief"><span>Morning brief from <input type="time" id="r-btime" class="mini"> <button class="link" id="r-brief-now" type="button">show now</button></span></label>
+        <label class="toggle"><input type="checkbox" id="r-midday"><span>Midday check at <input type="time" id="r-mtime" class="mini"></span></label>
+        <label class="toggle"><input type="checkbox" id="r-recap"><span>End-of-day recap at <input type="time" id="r-time" class="mini"></span></label>
+        <label class="toggle"><input type="checkbox" id="r-weekly"><span>Weekly report on
+          <select id="r-wday" class="mini"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select>
+          for <input type="text" id="r-to" class="mini" placeholder="your manager" style="width: 100px"></span></label>
+        <label class="toggle r-money"><input type="checkbox" id="r-mevening"><span>Evening money recap at <input type="time" id="r-metime" class="mini"></span></label>
+        <label class="toggle r-money"><input type="checkbox" id="r-mmonthly"><span>Monthly money report on the 1st</span></label>
+      </div>
+      <div class="field"><span>Reminders</span>
+        <div class="t-row"><span>Tasks due</span><select id="r-dueahead" class="mini"><option value="0">On the day</option><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option></select></div>
+        <div class="t-row r-money"><span>Bills and planned payments</span><select id="r-billsahead" class="mini"><option value="0">On the day</option><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option><option value="7">A week before</option></select></div>
+        <div class="t-row r-money"><span>Budget warning at</span><select id="r-budgetwarn" class="mini"><option value="50">50%</option><option value="70">70%</option><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option></select></div>
+      </div>
+      <div class="field"><span>How chatty</span>
+        <div class="seg small" id="r-chatty">
+          <button type="button" data-chatty="quiet">Quiet</button>
+          <button type="button" data-chatty="normal">Normal</button>
+          <button type="button" data-chatty="chatty">Chatty</button>
+        </div>
+        <small id="r-chatty-hint"></small>
+      </div>
+      <small>Briefs, nudges and reminders are built on this device, so they're free. The recaps and reports use your AI model, and only run when you click them.</small>
+      </div></details>
+      <details class="set-sec" data-sec="a-money"><summary><b>Money</b><small class="set-sum-hint">Track spending and income by chatting</small></summary><div class="set-body">
+      <label class="toggle"><input type="checkbox" id="s-money"><span>Money: keep track of what you spend and earn, by chatting <em class="beta">new</em></span></label>
+      </div></details>
+      <details class="set-sec" data-sec="a-data"><summary><b>Notebook, sync &amp; backup</b><small class="set-sum-hint">Folder, backups, import</small></summary><div class="set-body">
       <div class="field">
         <span>Notebook folder</span>
         <div class="folder"><code id="s-folder"></code></div>
@@ -294,58 +385,7 @@
           <div id="import-result" class="import-result" hidden></div>
         </div>
       </div>
-      <div class="field"><span>Language</span>
-        <div class="seg small lang-seg" id="s-lang" data-no-i18n>
-          <button type="button" data-lang="en">English</button>
-          <button type="button" data-lang="id">Bahasa Indonesia</button>
-        </div>
-      </div>
-      <div class="field"><span>Appearance</span>
-        <div class="seg small" id="s-theme">
-          <button type="button" data-theme="system">System</button>
-          <button type="button" data-theme="light">Light</button>
-          <button type="button" data-theme="dark">Dark</button>
-        </div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="s-confirm"><span>Ask me before saving anything (polished preview + where it goes)</span></label>
-      <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
-      <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
-      <label class="toggle"><input type="checkbox" id="s-money"><span>Money: keep track of what you spend and earn, by chatting <em class="beta">new</em></span></label>
-      <label class="toggle"><input type="checkbox" id="v-on"><span>Voice: your buddy says its replies out loud <em class="beta">new</em></span></label>
-      <div class="sync-box voice-box" id="v-box" hidden>
-        <small>Voice uses OpenRouter's voice models with your own OpenRouter key. Spoken replies are English only for now; Indonesian replies stay in text. Talking to your buddy with the mic works in English and Indonesian.</small>
-        <label class="v-field"><span>OpenRouter API key</span>
-          <span class="v-keyrow"><input type="password" id="v-key" placeholder="sk-or-…" autocomplete="off"><button class="btn ghost" id="v-test" type="button">Test</button></span>
-        </label>
-        <small>Get a free key at <button type="button" class="link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</button>.</small>
-        <div class="v-status" id="v-status"></div>
-        <div id="v-more" hidden>
-          <label class="v-field"><span>Voice model</span><select id="v-model"></select></label>
-          <label class="v-field"><span>Cuteness <b id="v-cute-val"></b></span><input type="range" id="v-cute" min="1" max="1.6" step="0.05"></label>
-          <div class="v-field"><span>Your buddy's voice</span>
-            <span class="v-keyrow"><button class="btn ghost" id="v-try" type="button">Play a sample</button><button class="btn ghost" id="v-keep" type="button" disabled>Keep this voice</button><button class="link" id="v-forget" type="button" hidden>Forget it</button></span>
-          </div>
-          <small id="v-kept-note"></small>
-        </div>
-      </div>
-      <div class="field"><span>Routine</span>
-        <div class="sync-box routine">
-          <label class="toggle"><input type="checkbox" id="r-brief"><span>Morning brief when I start the day <button class="link" id="r-brief-now" type="button">show now</button></span></label>
-          <label class="toggle"><input type="checkbox" id="r-nudges"><span>Nudge me about due and overdue tasks</span></label>
-          <label class="toggle"><input type="checkbox" id="r-recap"><span>End-of-day recap at <input type="time" id="r-time" class="mini"> on
-            <select id="r-days" class="mini"><option value="mon-fri">Mon–Fri</option><option value="mon-sat">Mon–Sat</option><option value="every">every day</option></select></span></label>
-          <label class="toggle"><input type="checkbox" id="r-weekly"><span>Weekly report on
-            <select id="r-wday" class="mini"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select>
-            for <input type="text" id="r-to" class="mini" placeholder="your manager" style="width: 100px"></span></label>
-          <small>Briefs and nudges are built on this computer, so they're free. The recap and the report use your AI model, and only run when you click "Write it".</small>
-        </div>
-      </div>
-      <div class="field"><span>Shortcuts</span>
-        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-panel"></button><small>Open / close this panel</small></div>
-        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-capture"></button><small>Save what you copied to Inbox</small></div>
-        <label class="toggle"><input type="checkbox" id="s-capture"><span>Clipboard capture hotkey on</span></label>
-        <small>Click a shortcut, then press the new keys. <span id="k-msg" class="kbd-bad"></span></small>
-      </div>
+      </div></details>
       <div class="row end"><span id="s-saved"></span><button class="btn" id="s-save">Save</button></div>
       <div class="about">
         <span class="about-by">A product of <img src="brand/omniz.png" class="brand-l" alt="Omniz"><img src="brand/omniz-dark.png" class="brand-d" alt="Omniz"></span>
