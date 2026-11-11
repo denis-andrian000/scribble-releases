@@ -845,3 +845,5 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 #btn-mic.rec { color: #fff; background: var(--red); border-radius: 50%; animation: micpulse 1.2s ease-in-out infinite; }
 #btn-mic.busy { opacity: .5; }
 @keyframes micpulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 45%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--red) 0%, transparent); } }
+
+.tone-hint { display: block; margin-top: 4px; color: var(--ink-2, #5B5880); font-size: 12px; line-height: 1.35; }
