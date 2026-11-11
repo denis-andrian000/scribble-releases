@@ -39368,7 +39368,7 @@ Content-Type: application/octet-stream\r
       var voiceCfg = () => config.voice = config.voice || { on: false, model: VOICE_DEFAULT_MODEL, cute: 1.25, refs: {} };
       var voiceKey = () => unseal(voiceCfg());
       async function orFetch(pathname, key, init = {}) {
-        return fetch("https://openrouter.ai/api/v1" + pathname, { ...init, headers: { authorization: "Bearer " + key, "content-type": "application/json", "x-title": "Scribble", "http-referer": "https://denis-andrian000.github.io/scribble-releases/", ...init.headers || {} } });
+        return fetch("https://openrouter.ai/api/v1" + pathname, { ...init, headers: { authorization: "Bearer " + key, "content-type": "application/json", "x-title": "Scribble", ...init.headers || {} } });
       }
       async function speak(text, key = voiceKey()) {
         const v = voiceCfg();
