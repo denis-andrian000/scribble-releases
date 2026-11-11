@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.13.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.14.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37233,8 +37233,8 @@ Content-Type: application/octet-stream\r
         "Couldn't reach the update server. Check your internet connection.": "Tidak bisa menghubungi server pembaruan. Periksa koneksi internetmu.",
         "No release has been published yet.": "Belum ada rilis yang diterbitkan.",
         "No AI connected yet. Add a key below to start chatting.": "Belum ada AI yang terhubung. Tambahkan kunci di bawah untuk mulai mengobrol.",
-        Test: "Uji",
-        "Testing\u2026": "Menguji\u2026",
+        Test: "Tes",
+        "Testing\u2026": "Mengetes\u2026",
         Remove: "Hapus",
         "Click again to remove": "Klik lagi untuk menghapus",
         "{#0} model": "{0} model",
@@ -37868,7 +37868,32 @@ Content-Type: application/octet-stream\r
         day: "hari",
         "Set a monthly budget on a category to see it here.": "Atur anggaran bulanan di kategori untuk melihatnya di sini.",
         Export: "Ekspor",
-        "Download this month as a CSV file (Excel, Google Sheets)": "Unduh bulan ini sebagai file CSV (Excel, Google Sheets)"
+        "Download this month as a CSV file (Excel, Google Sheets)": "Unduh bulan ini sebagai file CSV (Excel, Google Sheets)",
+        "Voice: your buddy says its replies out loud": "Suara: buddy-mu membacakan balasannya",
+        "Voice uses OpenRouter's voice models with your own OpenRouter key. Spoken replies are English only for now; Indonesian replies stay in text. Talking to your buddy with the mic works in English and Indonesian.": "Suara memakai model suara OpenRouter dengan kunci OpenRouter milikmu sendiri. Untuk sekarang balasan suara hanya dalam bahasa Inggris; balasan berbahasa Indonesia tetap berupa teks. Bicara ke buddy-mu lewat mikrofon bisa dalam bahasa Inggris dan Indonesia.",
+        "OpenRouter API key": "Kunci API OpenRouter",
+        "Get a free key at": "Dapatkan kunci gratis di",
+        "Voice model": "Model suara",
+        Cuteness: "Keimutan",
+        "Your buddy's voice": "Suara buddy-mu",
+        "Play a sample": "Putar contoh",
+        "Keep this voice": "Pakai suara ini",
+        "Forget it": "Lupakan",
+        "(saved)": "(tersimpan)",
+        "Keeping this voice for": "Suara ini dipakai untuk",
+        "Play samples until you like one, then keep it, so your buddy always sounds the same.": "Putar contoh sampai kamu suka, lalu simpan, supaya suara buddy-mu selalu sama.",
+        free: "gratis",
+        "That did not work.": "Gagal.",
+        "Connected. You should hear your buddy now.": "Tersambung. Sekarang kamu harusnya mendengar buddy-mu.",
+        "Making a sample\u2026": "Membuat contoh\u2026",
+        "Kept.": "Tersimpan.",
+        "Talk instead of typing": "Bicara, tidak perlu mengetik",
+        "Listening\u2026 click to stop": "Mendengarkan\u2026 klik untuk berhenti",
+        "Turning it into text\u2026": "Mengubah jadi teks\u2026",
+        "Allow the microphone to talk to your buddy.": "Izinkan mikrofon untuk bicara ke buddy-mu.",
+        "To talk, turn on Voice in Settings and add your OpenRouter key.": "Untuk bicara, nyalakan Suara di Pengaturan dan tambahkan kunci OpenRouter-mu.",
+        "I didn't catch that. Try again?": "Aku kurang dengar. Coba lagi?",
+        "This phone has no speech recognition. Install or turn on Google voice typing.": "HP ini tidak punya pengenal suara. Pasang atau nyalakan Google Voice Typing."
       };
     }
   });
@@ -39346,6 +39371,106 @@ Content-Type: application/octet-stream\r
           for (const id of [...pending.keys()]) settle(id, { decision: "skip" });
         }
       });
+      var VOICE_DEFAULT_MODEL = "fish-audio/s2.1-pro-free:free";
+      var voiceCfg = () => config.voice = config.voice || { on: false, model: VOICE_DEFAULT_MODEL, cute: 1.25, refs: {} };
+      var voiceKey = () => unseal(voiceCfg());
+      async function orFetch(pathname, key, init = {}) {
+        return fetch("https://openrouter.ai/api/v1" + pathname, { ...init, headers: { authorization: "Bearer " + key, "content-type": "application/json", "x-title": "Scribble", ...init.headers || {} } });
+      }
+      async function speak(text, key = voiceKey()) {
+        const v = voiceCfg();
+        if (!key) throw new Error("Add your OpenRouter key first.");
+        const clay = avatar().clay || "fox", ref = v.refs && v.refs[clay];
+        const body = (fmt) => JSON.stringify({
+          model: v.model || VOICE_DEFAULT_MODEL,
+          input: text,
+          response_format: fmt,
+          ...ref ? { input_references: [{ type: "input_audio", input_audio: { data: ref.data, format: ref.format } }, { type: "text", text: ref.text }] } : {}
+        });
+        let r = await orFetch("/audio/speech", key, { method: "POST", body: body("mp3") });
+        if (!r.ok) {
+          const t2 = await r.text();
+          if (/format|pcm/i.test(t2)) r = await orFetch("/audio/speech", key, { method: "POST", body: body("pcm") });
+          else throw new Error(orError(t2, r.status));
+        }
+        if (!r.ok) throw new Error(orError(await r.text(), r.status));
+        const mime = (r.headers.get("content-type") || "audio/mpeg").split(";")[0];
+        return { mime, b64: import_buffer.Buffer.from(await r.arrayBuffer()).toString("base64") };
+      }
+      function orError(t2, status) {
+        try {
+          const j = JSON.parse(t2);
+          return j.error && (j.error.message || j.error) || `OpenRouter said ${status}`;
+        } catch {
+          return `OpenRouter said ${status}`;
+        }
+      }
+      ipcMain.handle("voice:get", () => {
+        const v = voiceCfg();
+        return { on: !!v.on, hasKey: !!voiceKey(), model: v.model || VOICE_DEFAULT_MODEL, cute: v.cute || 1.25, kept: !!(v.refs && v.refs[avatar().clay || "fox"]), buddy: avatar().name || "Scribble" };
+      });
+      ipcMain.handle("voice:set", (_e, p = {}) => {
+        const v = voiceCfg();
+        if (p.on !== void 0) v.on = !!p.on;
+        if (p.key !== void 0) Object.assign(v, seal(String(p.key).trim()));
+        if (p.model) v.model = String(p.model);
+        if (p.cute) v.cute = Math.min(1.6, Math.max(1, Number(p.cute) || 1.25));
+        saveConfig();
+        return true;
+      });
+      ipcMain.handle("voice:test", async (_e, key) => {
+        key = String(key || "").trim() || voiceKey();
+        if (!key) return { ok: false, error: "Add your OpenRouter key first." };
+        try {
+          const r = await orFetch("/key", key);
+          if (!r.ok) return { ok: false, error: r.status === 401 ? "That key was not accepted. Check it and try again." : orError(await r.text(), r.status) };
+          const audio = await speak(`Hi! I'm ${avatar().name || "Scribble"}. Can you hear me?`, key);
+          return { ok: true, ...audio };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      });
+      ipcMain.handle("voice:models", async () => {
+        try {
+          const j = await (await fetch("https://openrouter.ai/api/v1/models?output_modalities=speech")).json();
+          return (j.data || []).map((m) => ({ id: m.id, name: m.name || m.id, free: /:free$|-free/.test(m.id) || Number(m.pricing?.prompt || 1) === 0 && Number(m.pricing?.completion || 1) === 0 }));
+        } catch {
+          return [];
+        }
+      });
+      ipcMain.handle("voice:speak", async (_e, text) => {
+        try {
+          return { ok: true, ...await speak(String(text || "").slice(0, 900)) };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      });
+      ipcMain.handle("voice:keep", (_e, clip) => {
+        const v = voiceCfg();
+        v.refs = v.refs || {};
+        if (clip) v.refs[avatar().clay || "fox"] = { data: `data:${clip.mime};base64,${clip.b64}`, format: /wav/.test(clip.mime) ? "wav" : "mp3", text: clip.text };
+        else delete v.refs[avatar().clay || "fox"];
+        saveConfig();
+        return true;
+      });
+      ipcMain.handle("voice:transcribe", async (_e, b64, format, lang) => {
+        const key = voiceKey();
+        if (!key) return { ok: false, error: "nokey" };
+        try {
+          const r = await orFetch("/audio/transcriptions", key, { method: "POST", body: JSON.stringify({ model: voiceCfg().sttModel || "openai/whisper-large-v3", input_audio: { data: b64, format: format || "webm" }, ...lang === "id" ? { language: "id" } : {} }) });
+          const t2 = await r.text();
+          if (!r.ok) return { ok: false, error: orError(t2, r.status) };
+          let j = {};
+          try {
+            j = JSON.parse(t2);
+          } catch {
+          }
+          return { ok: true, text: String(j.text || "").trim() };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      });
+      ipcMain.on("voice:talking", (_e, ms) => sendBuddy("buddy:talk", Number(ms) || 0));
       function money() {
         const m = new Money(path.join(notebook.root, ".scribble", "money.json"));
         m.load();
@@ -40258,7 +40383,16 @@ ${lines.join("\n")}
         moneyMergeCategory: (a, b) => ipcRenderer.invoke("money:mergeCategory", a, b),
         moneyRememberShop: (s, c) => ipcRenderer.invoke("money:rememberShop", s, c),
         moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
-        onMoneyChanged: (fn) => on("money:changed", fn)
+        onMoneyChanged: (fn) => on("money:changed", fn),
+        voiceGet: () => ipcRenderer.invoke("voice:get"),
+        voiceSet: (p) => ipcRenderer.invoke("voice:set", p),
+        voiceTest: (key) => ipcRenderer.invoke("voice:test", key),
+        voiceModels: () => ipcRenderer.invoke("voice:models"),
+        voiceSpeak: (text) => ipcRenderer.invoke("voice:speak", text),
+        voiceKeep: (clip) => ipcRenderer.invoke("voice:keep", clip),
+        voiceTalking: (ms) => ipcRenderer.send("voice:talking", ms),
+        voiceTranscribe: (b64, format, lang) => ipcRenderer.invoke("voice:transcribe", b64, format, lang),
+        onTalk: (fn) => on("buddy:talk", fn)
       });
     }
   });

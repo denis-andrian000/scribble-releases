@@ -42,7 +42,7 @@ function showTab(tab) {
   if (tab === 'chat') setTimeout(() => $('#input').focus(), 30);
   if (tab === 'notebook') loadTree();
   if (tab === 'tasks') loadTasks();
-  if (tab === 'settings') loadSettings();
+  if (tab === 'settings') { loadSettings(); if (window.Voice) Voice.load(); }
   if (tab === 'money' && window.Money) Money.show();
 }
 $$('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.area === 'work' ? 'work' : b.dataset.tab)));
@@ -318,7 +318,7 @@ async function send(text, label) {
   $('#send').disabled = false;
 
   if (r.error) showError(r.error, r.text, files, label);
-  else renderMessages(r.messages);
+  else { renderMessages(r.messages); if (window.Voice && r.reply) Voice.say(r.reply); }
   setComposerHint();
   refreshUndo();
   $('#input').focus();
@@ -569,7 +569,7 @@ function renderAttachRow() {
 
 $('#btn-attach').addEventListener('click', () => $('#file-pick').click());
 $('#btn-pen').addEventListener('click', () => Pad.open());
-document.querySelectorAll('.about [data-url]').forEach((b) => b.addEventListener('click', () => S.openExternal(b.dataset.url)));
+document.querySelectorAll('.about [data-url], .voice-box [data-url]').forEach((b) => b.addEventListener('click', () => S.openExternal(b.dataset.url)));
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#input').addEventListener('paste', (e) => {
   const files = [...(e.clipboardData?.files || [])];

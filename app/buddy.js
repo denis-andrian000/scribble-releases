@@ -145,6 +145,9 @@ const activity = () => {
   st.lastActivity = now();
 };
 
+// while a reply is spoken the mouth opens and closes
+let talkUntil = 0;
+if (S.onTalk) S.onTalk((ms) => { talkUntil = ms > 0 ? now() + ms : 0; activity(); });
 S.onState((s) => {
   const t = now();
   if (s === 'falling') { if (!st.falling) snd('falling'); st.falling = true; return; }
@@ -395,6 +398,7 @@ function setTargets(mood, t) {
     if (k === 'blush' && base.blush === 0) v = mood === 'happy' || mood === 'giggle' || mood === 'pressed' ? 0.5 : 0;
     F[k].t = v;
   }
+  if (t < talkUntil) { F.mOpen.t = 0.15 + 0.5 * Math.abs(Math.sin(t / 95)) * (0.6 + 0.4 * Math.sin(t / 410)); F.mCurve.t = Math.max(F.mCurve.t, 0.5); }
 
   // eyelids: blinking, drowsiness, sleep
   let open = 1;

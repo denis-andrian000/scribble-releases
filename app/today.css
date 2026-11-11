@@ -1,7 +1,7 @@
 /* Scribble on the web: the Today page, the buddy in the corner and the chat next to it */
 body.web nav button[data-tab="chat"] { display: none; }
 #view-today { overflow-y: auto; }
-.today { padding: 22px clamp(14px, 3vw, 34px) 150px; display: flex; flex-direction: column; gap: 18px; max-width: 1240px; width: 100%; box-sizing: border-box; margin: 0 auto; }
+.today:not(.pill) { padding: 22px clamp(14px, 3vw, 34px) 150px; display: flex; flex-direction: column; gap: 18px; max-width: 1240px; width: 100%; box-sizing: border-box; margin: 0 auto; }
 .td-hello { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 0 4px; }
 .td-hello h1 { margin: 0; font-size: clamp(22px, 3vw, 28px); letter-spacing: -.01em; }
 .td-hello p { margin: 4px 0 0; color: var(--ink-2); font-size: 15px; }
@@ -55,7 +55,7 @@ body.chat-full .page-buddy, body.chat-full .page-say { display: none; }
 @media (max-width: 760px) {
   .td-grid { grid-template-columns: 1fr; gap: 14px; }
   .td-col { gap: 14px; }
-  .today { padding-top: 16px; padding-bottom: 130px; gap: 14px; }
+  .today:not(.pill) { padding-top: 16px; padding-bottom: 130px; gap: 14px; }
   .page-buddy { width: 96px; height: 96px; right: 8px; }
   .page-say { right: 100px; bottom: calc(80px + env(safe-area-inset-bottom)); max-width: 200px; font-size: 13px; }
   body.chat-pop .pop-dim { display: block; position: fixed; inset: 0; z-index: 44; background: rgba(30, 26, 60, .25); }
