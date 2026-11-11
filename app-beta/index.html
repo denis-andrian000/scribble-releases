@@ -93,6 +93,9 @@
       </button>
       <input type="file" id="file-pick" multiple hidden accept="image/*,.pdf,.txt,.md,.csv,.log,.json,.xml,.yml,.yaml,.ini,.conf,.cfg,.sql,.js,.ts,.py,.sh,.ps1,.html,.css,.toml">
       <textarea id="input" rows="1" placeholder="Note it, ask it, plan it…"></textarea>
+      <button id="btn-mic" type="button" class="icon" title="Talk instead of typing">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+      </button>
       <button id="send" type="submit" title="Send (Enter)">
         <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
       </button>
@@ -310,7 +313,7 @@
       <label class="toggle"><input type="checkbox" id="s-money"><span>Money: keep track of what you spend and earn, by chatting <em class="beta">new</em></span></label>
       <label class="toggle"><input type="checkbox" id="v-on"><span>Voice: your buddy says its replies out loud <em class="beta">new</em></span></label>
       <div class="sync-box voice-box" id="v-box" hidden>
-        <small>Voice uses OpenRouter's voice models with your own OpenRouter key. English replies only for now; Indonesian replies stay in text.</small>
+        <small>Voice uses OpenRouter's voice models with your own OpenRouter key. Spoken replies are English only for now; Indonesian replies stay in text. Talking to your buddy with the mic works in English and Indonesian.</small>
         <label class="v-field"><span>OpenRouter API key</span>
           <span class="v-keyrow"><input type="password" id="v-key" placeholder="sk-or-…" autocomplete="off"><button class="btn ghost" id="v-test" type="button">Test</button></span>
         </label>

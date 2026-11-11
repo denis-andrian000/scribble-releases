@@ -102,6 +102,46 @@
   $('#v-keep').addEventListener('click', async () => { if (!lastClip) return; await S.voiceKeep(lastClip); $('#v-keep').disabled = true; await load(); status(t('Kept.'), true); });
   $('#v-forget').addEventListener('click', async () => { await S.voiceKeep(null); await load(); });
 
+  // ---- mic button: talk instead of typing. The browser's own speech recognition when it has one (Chrome),
+  // otherwise record and let OpenRouter's transcription turn it into text. The words land in the box to check first.
+  const mic = $('#btn-mic'), input = $('#input');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const nativeSR = SR && !/Electron|; wv\)/.test(navigator.userAgent);
+  let rec = null, chunks = [], stream = null, before = '';
+  const setInput = (v) => { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); };
+  const lang = () => ((window.I18n && I18n.lang && I18n.lang()) === 'id' ? 'id-ID' : (navigator.language || 'en-US'));
+  function micOff() { mic.classList.remove('rec', 'busy'); mic.title = t('Talk instead of typing'); }
+  mic.addEventListener('click', async () => {
+    stop();
+    if (rec) { rec.stop(); return; }
+    before = input.value ? input.value.trimEnd() + ' ' : '';
+    if (nativeSR) {
+      rec = new SR(); rec.lang = lang(); rec.interimResults = true; rec.continuous = false;
+      rec.onresult = (e) => { let s = ''; for (const r of e.results) s += r[0].transcript; setInput(before + s); };
+      rec.onerror = (e) => { if (e.error === 'not-allowed') window.toast && toast(t('Allow the microphone to talk to your buddy.')); };
+      rec.onend = () => { rec = null; micOff(); input.focus(); };
+      rec.start(); mic.classList.add('rec'); mic.title = t('Listening… click to stop');
+      return;
+    }
+    if (!cfg.hasKey) { window.toast && toast(t('To talk, turn on Voice in Settings and add your OpenRouter key.')); return; }
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { window.toast && toast(t('Allow the microphone to talk to your buddy.')); return; }
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((x) => window.MediaRecorder && MediaRecorder.isTypeSupported(x)) || '';
+    rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined); chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach((x) => x.stop()); rec = null;
+      mic.classList.remove('rec'); mic.classList.add('busy'); mic.title = t('Turning it into text…');
+      const blob = new Blob(chunks, { type: type || 'audio/webm' });
+      const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
+      const r = await S.voiceTranscribe(b64, /mp4/.test(type) ? 'mp4' : /ogg/.test(type) ? 'ogg' : 'webm', lang().slice(0, 2));
+      micOff();
+      if (r.ok && r.text) { setInput(before + r.text); input.focus(); }
+      else window.toast && toast(r.error === 'nokey' ? t('To talk, turn on Voice in Settings and add your OpenRouter key.') : (r.error || t("I didn't catch that. Try again?")));
+    };
+    rec.start(); mic.classList.add('rec'); mic.title = t('Listening… click to stop');
+  });
+
   window.Voice = { say, stop, load };
   load();
 })();

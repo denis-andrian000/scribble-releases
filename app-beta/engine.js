@@ -37870,7 +37870,7 @@ Content-Type: application/octet-stream\r
         Export: "Ekspor",
         "Download this month as a CSV file (Excel, Google Sheets)": "Unduh bulan ini sebagai file CSV (Excel, Google Sheets)",
         "Voice: your buddy says its replies out loud": "Suara: buddy-mu membacakan balasannya",
-        "Voice uses OpenRouter's voice models with your own OpenRouter key. English replies only for now; Indonesian replies stay in text.": "Suara memakai model suara OpenRouter dengan kunci OpenRouter milikmu sendiri. Untuk sekarang hanya balasan berbahasa Inggris; balasan berbahasa Indonesia tetap berupa teks.",
+        "Voice uses OpenRouter's voice models with your own OpenRouter key. Spoken replies are English only for now; Indonesian replies stay in text. Talking to your buddy with the mic works in English and Indonesian.": "Suara memakai model suara OpenRouter dengan kunci OpenRouter milikmu sendiri. Untuk sekarang balasan suara hanya dalam bahasa Inggris; balasan berbahasa Indonesia tetap berupa teks. Bicara ke buddy-mu lewat mikrofon bisa dalam bahasa Inggris dan Indonesia.",
         "OpenRouter API key": "Kunci API OpenRouter",
         "Get a free key at": "Dapatkan kunci gratis di",
         "Voice model": "Model suara",
@@ -37886,7 +37886,13 @@ Content-Type: application/octet-stream\r
         "That did not work.": "Gagal.",
         "Connected. You should hear your buddy now.": "Tersambung. Sekarang kamu harusnya mendengar buddy-mu.",
         "Making a sample\u2026": "Membuat contoh\u2026",
-        "Kept.": "Tersimpan."
+        "Kept.": "Tersimpan.",
+        "Talk instead of typing": "Bicara, tidak perlu mengetik",
+        "Listening\u2026 click to stop": "Mendengarkan\u2026 klik untuk berhenti",
+        "Turning it into text\u2026": "Mengubah jadi teks\u2026",
+        "Allow the microphone to talk to your buddy.": "Izinkan mikrofon untuk bicara ke buddy-mu.",
+        "To talk, turn on Voice in Settings and add your OpenRouter key.": "Untuk bicara, nyalakan Suara di Pengaturan dan tambahkan kunci OpenRouter-mu.",
+        "I didn't catch that. Try again?": "Aku kurang dengar. Coba lagi?"
       };
     }
   });
@@ -39446,6 +39452,23 @@ Content-Type: application/octet-stream\r
         saveConfig();
         return true;
       });
+      ipcMain.handle("voice:transcribe", async (_e, b64, format, lang) => {
+        const key = voiceKey();
+        if (!key) return { ok: false, error: "nokey" };
+        try {
+          const r = await orFetch("/audio/transcriptions", key, { method: "POST", body: JSON.stringify({ model: voiceCfg().sttModel || "openai/whisper-large-v3", input_audio: { data: b64, format: format || "webm" }, ...lang === "id" ? { language: "id" } : {} }) });
+          const t2 = await r.text();
+          if (!r.ok) return { ok: false, error: orError(t2, r.status) };
+          let j = {};
+          try {
+            j = JSON.parse(t2);
+          } catch {
+          }
+          return { ok: true, text: String(j.text || "").trim() };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      });
       ipcMain.on("voice:talking", (_e, ms) => sendBuddy("buddy:talk", Number(ms) || 0));
       function money() {
         const m = new Money(path.join(notebook.root, ".scribble", "money.json"));
@@ -40367,6 +40390,7 @@ ${lines.join("\n")}
         voiceSpeak: (text) => ipcRenderer.invoke("voice:speak", text),
         voiceKeep: (clip) => ipcRenderer.invoke("voice:keep", clip),
         voiceTalking: (ms) => ipcRenderer.send("voice:talking", ms),
+        voiceTranscribe: (b64, format, lang) => ipcRenderer.invoke("voice:transcribe", b64, format, lang),
         onTalk: (fn) => on("buddy:talk", fn)
       });
     }

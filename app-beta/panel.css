@@ -283,8 +283,8 @@ nav button { padding: 3px 8px; }
 .hist-meta { font-size: 11.5px; color: var(--ink-2); }
 #composer { align-items: flex-end; }
 #composer.disabled { opacity: .55; pointer-events: none; }
-#btn-attach, #btn-pen { flex: none; width: 34px; height: 36px; }
-#btn-attach svg, #btn-pen svg { width: 18px; height: 18px; }
+#btn-attach, #btn-pen, #btn-mic { flex: none; width: 34px; height: 36px; }
+#btn-attach svg, #btn-pen svg, #btn-mic svg { width: 18px; height: 18px; }
 #btn-pen { margin-left: -6px; }
 .att-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .att-row.in-msg { padding: 0 0 6px; }
@@ -841,3 +841,7 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .v-status { font-size: 12.5px; min-height: 1em; }
 .v-status.ok { color: var(--green); }
 .v-status.bad { color: var(--red); }
+
+#btn-mic.rec { color: #fff; background: var(--red); border-radius: 50%; animation: micpulse 1.2s ease-in-out infinite; }
+#btn-mic.busy { opacity: .5; }
+@keyframes micpulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 45%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--red) 0%, transparent); } }
