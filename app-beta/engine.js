@@ -37892,7 +37892,8 @@ Content-Type: application/octet-stream\r
         "Turning it into text\u2026": "Mengubah jadi teks\u2026",
         "Allow the microphone to talk to your buddy.": "Izinkan mikrofon untuk bicara ke buddy-mu.",
         "To talk, turn on Voice in Settings and add your OpenRouter key.": "Untuk bicara, nyalakan Suara di Pengaturan dan tambahkan kunci OpenRouter-mu.",
-        "I didn't catch that. Try again?": "Aku kurang dengar. Coba lagi?"
+        "I didn't catch that. Try again?": "Aku kurang dengar. Coba lagi?",
+        "This phone has no speech recognition. Install or turn on Google voice typing.": "HP ini tidak punya pengenal suara. Pasang atau nyalakan Google Voice Typing."
       };
     }
   });

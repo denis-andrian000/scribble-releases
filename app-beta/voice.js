@@ -115,6 +115,22 @@
     stop();
     if (rec) { rec.stop(); return; }
     before = input.value ? input.value.trimEnd() + ' ' : '';
+    const NS = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.ScribbleSpeech;
+    if (NS) {
+      // Android: the phone's own speech recognition (free, no key)
+      const sub = await NS.addListener('partial', (e) => setInput(before + e.text));
+      rec = { stop: () => NS.stop() };
+      mic.classList.add('rec'); mic.title = t('Listening… click to stop');
+      try { const r = await NS.start({ lang: lang() }); if (r.text) setInput(before + r.text); }
+      catch (e) {
+        const m = String((e && e.message) || e);
+        if (/not-allowed/.test(m)) window.toast && toast(t('Allow the microphone to talk to your buddy.'));
+        else if (/no-speech/.test(m)) window.toast && toast(t("I didn't catch that. Try again?"));
+        else if (/unavailable/.test(m)) window.toast && toast(t('This phone has no speech recognition. Install or turn on Google voice typing.'));
+      }
+      sub.remove(); rec = null; micOff(); input.focus();
+      return;
+    }
     if (nativeSR) {
       rec = new SR(); rec.lang = lang(); rec.interimResults = true; rec.continuous = false;
       rec.onresult = (e) => { let s = ''; for (const r of e.results) s += r[0].transcript; setInput(before + s); };
