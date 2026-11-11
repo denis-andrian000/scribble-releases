@@ -831,3 +831,13 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .mn-pivot .r { text-align: right; }
 .mn-pivot td.in { color: var(--green); } .mn-pivot td.out { color: var(--red); }
 #mn-trend { width: 100%; height: auto; max-height: 180px; }
+
+/* ---- voice settings ---- */
+.voice-box { display: flex; flex-direction: column; gap: 8px; }
+.v-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; }
+.v-field select, .v-field input[type=password] { font: inherit; font-weight: 400; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); min-width: 0; }
+.v-keyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.v-keyrow input { flex: 1 1 180px; }
+.v-status { font-size: 12.5px; min-height: 1em; }
+.v-status.ok { color: var(--green); }
+.v-status.bad { color: var(--red); }

@@ -308,6 +308,23 @@
       <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
       <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
       <label class="toggle"><input type="checkbox" id="s-money"><span>Money: keep track of what you spend and earn, by chatting <em class="beta">new</em></span></label>
+      <label class="toggle"><input type="checkbox" id="v-on"><span>Voice: your buddy says its replies out loud <em class="beta">new</em></span></label>
+      <div class="sync-box voice-box" id="v-box" hidden>
+        <small>Voice uses OpenRouter's voice models with your own OpenRouter key. English replies only for now; Indonesian replies stay in text.</small>
+        <label class="v-field"><span>OpenRouter API key</span>
+          <span class="v-keyrow"><input type="password" id="v-key" placeholder="sk-or-…" autocomplete="off"><button class="btn ghost" id="v-test" type="button">Test</button></span>
+        </label>
+        <small>Get a free key at <button type="button" class="link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</button>.</small>
+        <div class="v-status" id="v-status"></div>
+        <div id="v-more" hidden>
+          <label class="v-field"><span>Voice model</span><select id="v-model"></select></label>
+          <label class="v-field"><span>Cuteness <b id="v-cute-val"></b></span><input type="range" id="v-cute" min="1" max="1.6" step="0.05"></label>
+          <div class="v-field"><span>Your buddy's voice</span>
+            <span class="v-keyrow"><button class="btn ghost" id="v-try" type="button">Play a sample</button><button class="btn ghost" id="v-keep" type="button" disabled>Keep this voice</button><button class="link" id="v-forget" type="button" hidden>Forget it</button></span>
+          </div>
+          <small id="v-kept-note"></small>
+        </div>
+      </div>
       <div class="field"><span>Routine</span>
         <div class="sync-box routine">
           <label class="toggle"><input type="checkbox" id="r-brief"><span>Morning brief when I start the day <button class="link" id="r-brief-now" type="button">show now</button></span></label>
@@ -428,6 +445,7 @@
 <script src="rig.js"></script>
 <script src="sounds.js"></script>
 <script src="money-view.js"></script>
+<script src="voice.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>
