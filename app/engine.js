@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.23.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.24.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36487,6 +36487,29 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
         }
       ];
       var MONEY_NAMES = new Set(MONEY_TOOLS.map((t) => t.name));
+      var MEMORY_TOOLS = [
+        {
+          name: "remember",
+          description: "Keep one lasting fact about the user in their memory page, in one short line in the user's language: who they are and their work (about), how they like things done (prefs), people in their life or work and their role (people), ongoing work and plans (work). Use it when the user tells you something that will still be true next week. Not for one-off things (today's lunch, a task: tasks have their own tool). Never for passwords, PINs, card or ID numbers. Health details only if the user asks you to remember them.",
+          input_schema: { type: "object", properties: { section: { type: "string", enum: ["about", "prefs", "people", "work"] }, text: { type: "string" }, replaces: { type: "string", description: "An old line this one updates (e.g. a new role)" } }, required: ["section", "text"] }
+        },
+        {
+          name: "forget",
+          description: `Remove something from the user's memory page ("lupakan soal itu", "forget that"). match = words from the line to remove.`,
+          input_schema: { type: "object", properties: { match: { type: "string" } }, required: ["match"] }
+        },
+        {
+          name: "search_chats",
+          description: `Look back through past chats with the user ("waktu itu kita ngobrolin\u2026", "what did I say about\u2026", "last month we talked about\u2026"). Returns matching bits with the chat's date. Answer from them and link the chat as [the 28 Oct chat](chat:ID).`,
+          input_schema: { type: "object", properties: { keywords: { type: "array", items: { type: "string" }, description: "2\u20136 words, include other spellings and the other language" } }, required: ["keywords"] }
+        }
+      ];
+      var MEMORY_PROMPT = `
+
+Memory: you remember the user across chats. What you know is given at the start of the chat ("What you know about the user"). Use it without being asked: their people, how they like things, their ongoing work. Don't recite it back.
+- When they tell you something lasting about themselves, their people, their preferences or their ongoing work, keep it with remember (one short line). When something changes, remember the new line with replaces. Mention it in a few words ("Noted.").
+- "Forget that / lupakan" means forget.
+- For "what did we talk about\u2026" questions, use search_chats, then answer and link the chat.`;
       var MONEY_WRITES = /* @__PURE__ */ new Set(["add_money_record", "update_money_record", "delete_money_record", "add_wallet", "set_wallet_balance", "add_category", "remember_shop", "add_recurring", "update_recurring", "mark_paid", "split_bill", "add_debt", "settle_debt", "add_goal", "update_goal"]);
       var MONEY_PROMPT = `
 
@@ -36512,7 +36535,7 @@ Money: you also keep track of the user's money (spending, income, transfers betw
       TONES.friendly = TONES.mirror;
       TONES.concise = TONES.polite;
       TONES.playful = TONES.casual;
-      function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false) {
+      function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false, withMemory = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
         const tone = TONES[persona.tone] || TONES.mirror;
         const pretty = (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -36554,13 +36577,15 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
 - Refer to tasks by title (add the #id only when it helps).
 - The user may attach screenshots, PDFs or text files. Read them carefully, quote exact error messages, IDs, names and numbers, and propose notes or tasks from what matters (through the normal confirmation cards).
 - If the user asks to undo, use undo_last_save (it doesn't need a confirmation card).
-- Reply in the language the user writes in.` + (withMoney ? MONEY_PROMPT : "");
+- Reply in the language the user writes in.` + (withMoney ? MONEY_PROMPT : "") + (withMemory ? MEMORY_PROMPT : "");
       }
       var Agent = class {
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
         // onLimit(active, error, tried) -> another active model to retry with, or null (rate limits, no credit, overload)
         constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null, onShow = () => {
-        }, getRoutine = () => ({}) }) {
+        }, getRoutine = () => ({}), getMemory = () => null, searchChats = null }) {
+          this.getMemory = getMemory;
+          this.searchChats = searchChats;
           this.onShow = onShow;
           this.getRoutine = getRoutine;
           this.getMoney = getMoney;
@@ -36719,6 +36744,19 @@ A project template. Each line: task (day it starts, how many days, priority). Te
               const made = rows.map((m) => nb.addTask({ title: m[1], project: input.project, area: input.area || null, start: add(input.start, +m[2]), due: add(input.start, +m[2] + Math.max(1, +m[3]) - 1), priority: (m[4] || "medium").toLowerCase() }));
               return { project: input.project, from_template: hit, tasks: made.map((t) => `${t.title}: ${t.start} \u2192 ${t.due}`) };
             }
+            case "remember": {
+              const m = this.getMemory();
+              if (!m) return { saved: false, note: "Memory is off in Settings." };
+              if (input.replaces) m.remove(input.replaces);
+              return m.add(input.section, input.text, localDate());
+            }
+            case "forget": {
+              const m = this.getMemory();
+              if (!m) return { removed: [] };
+              return m.remove(input.match);
+            }
+            case "search_chats":
+              return this.searchChats ? this.searchChats(input.keywords || []) : { results: [] };
             case "what_now": {
               const d = /* @__PURE__ */ new Date(), now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
               return Planner.next(nb.listTasks({ status: "open" }), { today: localDate(), now, days: this.getRoutine().days });
@@ -36830,10 +36868,12 @@ A project template. Each line: task (day it starts, how many days, priority). Te
           let client = makeClient(active);
           const tried = /* @__PURE__ */ new Set([`${active.conn.id}::${active.model}`]);
           this.money = this.getMoney();
-          const plainTools = this.money ? [...TOOLS, ...MONEY_TOOLS] : TOOLS;
+          const mem = this.getMemory();
+          const plainTools = [...TOOLS, ...this.money ? MONEY_TOOLS : [], ...mem ? MEMORY_TOOLS.filter((t) => t.name !== "search_chats" || this.searchChats) : []];
           const tools = plainTools.map((t, i) => i === plainTools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t);
           let changed = false, moneyChanged = false;
-          const system = systemPrompt(this.nb, localDate(), this.getPersona(), !!this.money);
+          this.memory = this.getMemory();
+          const system = systemPrompt(this.nb, localDate(), this.getPersona(), !!this.money, !!this.memory);
           for (let step = 0; step < 12; step++) {
             const model = active.model;
             onEvent({ type: "step" });
@@ -36893,11 +36933,11 @@ A project template. Each line: task (day it starts, how many days, priority). Te
               const input = d.input || block.input || {};
               const edited = d.input && JSON.stringify(d.input) !== JSON.stringify(block.input);
               onEvent({ type: "tool", name: block.name, input });
-              const writes = WRITE_TOOLS.has(block.name) || block.name === "undo_last_save" || block.name === "save_template" || block.name === "use_template";
+              const writes = WRITE_TOOLS.has(block.name) || ["undo_last_save", "save_template", "use_template", "remember", "forget"].includes(block.name);
               if (writes) changed = true;
               if (MONEY_WRITES.has(block.name)) moneyChanged = true;
               try {
-                const tx = WRITE_TOOLS.has(block.name) || MONEY_WRITES.has(block.name) || block.name === "save_template" || block.name === "use_template";
+                const tx = WRITE_TOOLS.has(block.name) || MONEY_WRITES.has(block.name) || ["save_template", "use_template", "remember", "forget"].includes(block.name);
                 if (tx) this.nb.begin(describe(block.name, input));
                 const out = this.runTool(block.name, input);
                 if (tx) this.nb.commit();
@@ -36937,6 +36977,10 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             return input.reason || `Moved ${(input.changes || []).length} tasks`;
           case "save_template":
             return `Template ${input.name}`;
+          case "remember":
+            return `Remembered: ${input.text}`;
+          case "forget":
+            return `Forgot: ${input.match}`;
           case "use_template":
             return `${input.project} from ${input.template}`;
           case "add_money_record":
@@ -36982,7 +37026,9 @@ A project template. Each line: task (day it starts, how many days, priority). Te
         });
         const from = starts.length > maxTurns ? starts[starts.length - maxTurns] : 0;
         const current = starts.length ? starts[starts.length - 1] : 0;
+        const memBlock = from > 0 && Array.isArray(messages[0].content) ? messages[0].content.find((b) => b.type === "text" && b.text.startsWith("[Scribble] What you know")) : null;
         return messages.slice(from).map((m, j) => {
+          if (j === 0 && memBlock) return { ...m, content: [memBlock, ...Array.isArray(m.content) ? m.content : [{ type: "text", text: m.content }]] };
           const i = from + j;
           if (i >= current || m.role !== "assistant" || !Array.isArray(m.content)) return m;
           const content = m.content.filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
@@ -38881,7 +38927,29 @@ Content-Type: application/octet-stream\r
         "Set picture": "Pasang gambar",
         "Change picture": "Ganti gambar",
         "Remove picture": "Hapus gambar",
-        "That picture is too big.": "Gambarnya terlalu besar."
+        "That picture is too big.": "Gambarnya terlalu besar.",
+        Memory: "Ingatan",
+        "What your buddy knows about you": "Yang buddy-mu tahu tentang kamu",
+        "Your buddy keeps this from your chats and uses it without being asked. Read every line, delete any, or add your own. It's the page Memory.md in your notebook, so it syncs.": "Buddy-mu menyimpan ini dari obrolan kalian dan memakainya tanpa diminta. Baca setiap baris, hapus yang mana saja, atau tambahkan sendiri. Ini halaman Memory.md di buku catatanmu, jadi ikut tersinkron.",
+        "Remember things from our chats": "Ingat hal-hal dari obrolan kita",
+        "Look back at past chats when it helps": "Lihat obrolan lama kalau membantu",
+        "Tell your buddy something to remember\u2026": "Bilang sesuatu yang perlu diingat buddy-mu\u2026",
+        "Never kept: passwords, PINs, card or ID numbers, or health details unless you ask.": "Tidak pernah disimpan: kata sandi, PIN, nomor kartu atau identitas, atau info kesehatan kecuali kamu minta.",
+        "Forget everything": "Lupakan semuanya",
+        "About you": "Tentang kamu",
+        "How you like things": "Gaya dan kebiasaanmu",
+        People: "Orang",
+        "Ongoing work": "Pekerjaan berjalan",
+        "Nothing yet.": "Belum ada.",
+        "Forget this": "Lupakan ini",
+        "{0} things your buddy knows about you": "{0} hal yang buddy-mu tahu tentang kamu",
+        "Forget everything your buddy knows about you? You can undo it right after.": "Lupakan semua yang buddy-mu tahu tentang kamu? Kamu bisa mengurungkannya sesudahnya.",
+        "Added to memory": "Ditambahkan ke ingatan",
+        "Removed from memory": "Dihapus dari ingatan",
+        "Cleared memory": "Ingatan dikosongkan",
+        "\u{1F9E0} Remembered": "\u{1F9E0} Diingat",
+        "\u{1F9E0} Forgot": "\u{1F9E0} Dilupakan",
+        "\u{1F50E} Searched past chats": "\u{1F50E} Mencari obrolan lama"
       };
     }
   });
@@ -39000,6 +39068,124 @@ Content-Type: application/octet-stream\r
         if (typeof module !== "undefined" && module.exports) module.exports = api;
         else root.I18n = api;
       })(typeof window !== "undefined" ? window : globalThis);
+    }
+  });
+
+  // ../src/memory.js
+  var require_memory = __commonJS({
+    "../src/memory.js"(exports, module) {
+      init_buffer_inject();
+      var PAGE = "Memory.md";
+      var SECTIONS = [
+        ["about", "About you"],
+        ["prefs", "How you like things"],
+        ["people", "People"],
+        ["work", "Ongoing work"]
+      ];
+      var KEY_BY_TITLE = Object.fromEntries(SECTIONS.map(([k, t]) => [t.toLowerCase(), k]));
+      function parse(text) {
+        const out = Object.fromEntries(SECTIONS.map(([k]) => [k, []]));
+        let cur = null;
+        for (const raw of String(text || "").split("\n")) {
+          const h = raw.match(/^##\s+(.+?)\s*$/);
+          if (h) {
+            cur = KEY_BY_TITLE[h[1].toLowerCase()] || null;
+            continue;
+          }
+          const m = raw.match(/^\s*[-*]\s+(.+?)\s*(?:\((\d{4}-\d{2}-\d{2})\))?\s*$/);
+          if (m && cur) out[cur].push({ text: m[1].trim(), date: m[2] || null });
+        }
+        return out;
+      }
+      function serialize(mem, name = "your buddy") {
+        let s = `# What ${name} knows about you
+
+Your buddy keeps this from your chats. Change or delete any line; it uses what's here.
+`;
+        for (const [k, title] of SECTIONS) {
+          s += `
+## ${title}
+`;
+          for (const f of mem[k] || []) s += `- ${f.text}${f.date ? ` (${f.date})` : ""}
+`;
+        }
+        return s;
+      }
+      var NEVER = [/\b\d{12,19}\b/, /\b(password|passwd|kata sandi|pin|cvv|otp)\b/i, /\b(nik|ktp|npwp|passport|paspor)\b.*\d{6,}/i];
+      var unsafe = (t) => NEVER.some((re) => re.test(t));
+      var norm = (s) => String(s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      var Memory = class {
+        constructor(nb, getName = () => "your buddy") {
+          this.nb = nb;
+          this.getName = getName;
+        }
+        read() {
+          try {
+            return parse(this.nb.exists(PAGE) ? this.nb.read(PAGE) : "");
+          } catch {
+            return parse("");
+          }
+        }
+        write(mem) {
+          return this.nb.write(PAGE, serialize(mem, this.getName()));
+        }
+        add(section, text, date) {
+          const k = SECTIONS.some(([s]) => s === section) ? section : "about";
+          text = String(text || "").replace(/\s+/g, " ").trim().slice(0, 240);
+          if (!text) return { saved: false, note: "Nothing to remember." };
+          if (unsafe(text)) return { saved: false, note: "Not kept: passwords, PINs, card or ID numbers are never remembered." };
+          const mem = this.read();
+          const n = norm(text);
+          for (const [s] of SECTIONS) {
+            const i = mem[s].findIndex((f) => norm(f.text) === n);
+            if (i !== -1) return { saved: false, note: "Already remembered." };
+          }
+          mem[k].push({ text, date: date || null });
+          this.write(mem);
+          return { saved: true, section: k, text };
+        }
+        // update: replace the line that best matches `old`
+        replace(old, text) {
+          const mem = this.read(), o = norm(old);
+          for (const [s] of SECTIONS) {
+            const i = mem[s].findIndex((f) => norm(f.text) === o) !== -1 ? mem[s].findIndex((f) => norm(f.text) === o) : mem[s].findIndex((f) => norm(f.text).includes(o) || o.includes(norm(f.text)));
+            if (i !== -1) {
+              if (unsafe(text)) return { saved: false };
+              mem[s][i] = { text: String(text).trim(), date: mem[s][i].date };
+              this.write(mem);
+              return { saved: true };
+            }
+          }
+          return { saved: false, note: "No such memory." };
+        }
+        remove(match) {
+          const mem = this.read(), o = norm(match);
+          const gone = [];
+          for (const [s] of SECTIONS) {
+            mem[s] = mem[s].filter((f) => {
+              const hit = norm(f.text) === o || o.length > 3 && norm(f.text).includes(o);
+              if (hit) gone.push(f.text);
+              return !hit;
+            });
+          }
+          if (gone.length) this.write(mem);
+          return { removed: gone };
+        }
+        clear() {
+          const mem = parse("");
+          this.write(mem);
+          return { cleared: true };
+        }
+        // the short version for the buddy's context
+        brief() {
+          const mem = this.read();
+          const parts = [];
+          for (const [k, title] of SECTIONS) if (mem[k].length) parts.push(`${title}:
+` + mem[k].map((f) => `- ${f.text}`).join("\n"));
+          return parts.join("\n");
+        }
+      };
+      module.exports = { Memory, SECTIONS, PAGE, parse, serialize };
     }
   });
 
@@ -39522,7 +39708,10 @@ Content-Type: application/octet-stream\r
         plan_week: "Planned the week",
         reschedule_late: "Made a new plan for late tasks",
         move_tasks: "Moved tasks",
-        show_timeline: "Opened the timeline"
+        show_timeline: "Opened the timeline",
+        remember: "\u{1F9E0} Remembered",
+        forget: "\u{1F9E0} Forgot",
+        search_chats: "\u{1F50E} Searched past chats"
       };
       function toolLabel(name, input = {}) {
         const base = I18n.t(TOOL_LABELS[name] || name);
@@ -39534,6 +39723,9 @@ Content-Type: application/octet-stream\r
         if (name === "add_debt" || name === "settle_debt") return `${base}: ${input.person || ""}`;
         if (name === "update_goal") return `${base}: ${input.goal || ""}`;
         if (name === "move_tasks") return `${base} (${(input.changes || []).length})`;
+        if (name === "remember") return `${base}: ${input.text || ""}`;
+        if (name === "forget") return `${base}: ${input.match || ""}`;
+        if (name === "search_chats") return base;
         if (["what_now", "plan_week", "reschedule_late", "show_timeline", "mark_paid", "update_recurring"].includes(name)) return base;
         const detail = input.path || input.page || input.query || input.title || input.name || (input.id ? `#${input.id}` : "");
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
@@ -40486,6 +40678,15 @@ In one short line say what it is, then offer what to do with it as options (add 
         } else {
           chat.messages.push({ role: "user", content: text });
         }
+        if (before === 0) {
+          const m = memory(), brief = m ? m.brief() : "";
+          if (brief) {
+            const first = chat.messages[0];
+            const blocks = Array.isArray(first.content) ? first.content : [{ type: "text", text: first.content }];
+            first.content = [{ type: "text", text: `[Scribble] What you know about the user (from earlier chats; use it, don't recite it):
+${brief}` }, ...blocks];
+          }
+        }
         if (label) {
           chat.labels = chat.labels || {};
           chat.labels[before] = String(label).slice(0, 120);
@@ -40775,6 +40976,67 @@ In one short line say what it is, then offer what to do with it as options (add 
           logLine("fold conflict copies failed", e && e.message);
         }
       }
+      var { Memory, SECTIONS: MEM_SECTIONS } = require_memory();
+      var memCfg = () => ({ on: true, chats: true, ...config.memory || {} });
+      function memory() {
+        return memCfg().on ? new Memory(notebook, () => avatar().name || "your buddy") : null;
+      }
+      function searchChats(keywords) {
+        if (!memCfg().chats) return { results: [], note: "Looking back at past chats is off in Settings." };
+        const words = [...new Set((keywords || []).map((w) => String(w).toLowerCase().trim()).filter((w) => w.length >= 3))];
+        if (!words.length) return { results: [] };
+        const hits = [];
+        let files = [];
+        try {
+          files = fs2.readdirSync(chatsDir()).filter((f) => f.endsWith(".json")).sort().reverse().slice(0, 400);
+        } catch {
+        }
+        for (const f of files) {
+          let c;
+          try {
+            c = JSON.parse(fs2.readFileSync(path.join(chatsDir(), f), "utf8"));
+          } catch {
+            continue;
+          }
+          for (const m of c.messages || []) {
+            const texts = typeof m.content === "string" ? [m.content] : (m.content || []).filter((b) => b.type === "text" && !b.text.startsWith("[Scribble]") && !b.text.startsWith(ATTACH_NOTE)).map((b) => b.text);
+            for (const t2 of texts) {
+              const l = t2.toLowerCase(), score = words.reduce((a, w) => a + (l.includes(w) ? 1 : 0), 0);
+              if (!score) continue;
+              const at = Math.max(0, Math.min(...words.map((w) => {
+                const i = l.indexOf(w);
+                return i === -1 ? 1e9 : i;
+              })) - 120);
+              hits.push({ chat: c.id, date: String(c.id).slice(0, 10), who: m.role === "user" ? "user" : "you", score, text: t2.slice(at, at + 400) });
+            }
+          }
+          if (hits.length > 60) break;
+        }
+        hits.sort((a, b) => b.score - a.score || b.date.localeCompare(a.date));
+        return { results: hits.slice(0, 8) };
+      }
+      ipcMain.handle("memory:get", () => ({ ...memCfg(), sections: MEM_SECTIONS.map(([k, t2]) => [k, I18n.t(t2)]), facts: new Memory(notebook).read() }));
+      ipcMain.handle("memory:set", (_e, patch) => {
+        config.memory = { ...memCfg(), ...patch };
+        saveConfig();
+        return memCfg();
+      });
+      var memOp = (label, fn) => (_e, ...a) => {
+        notebook.begin(I18n.t(label));
+        try {
+          const r = fn(new Memory(notebook, () => avatar().name || "your buddy"), ...a);
+          notebook.commit();
+          sendPanel("notebook:changed");
+          scheduleSync(3e3);
+          return r;
+        } catch (e) {
+          notebook.rollback();
+          return { error: e.message };
+        }
+      };
+      ipcMain.handle("memory:add", memOp("Added to memory", (m, section, text) => m.add(section, text, localDate())));
+      ipcMain.handle("memory:remove", memOp("Removed from memory", (m, text) => m.remove(text)));
+      ipcMain.handle("memory:clear", memOp("Cleared memory", (m) => m.clear()));
       ipcMain.handle("widget:data", () => {
         const T = I18n.t, today = localDate();
         const open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today).sort((a, b) => (a.due < today ? 0 : 1) - (b.due < today ? 0 : 1) || String(a.time || "99").localeCompare(String(b.time || "99")));
@@ -41688,7 +41950,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine() });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
@@ -41869,6 +42131,11 @@ ${lines.join("\n")}
         moneyPlans: () => ipcRenderer.invoke("money:plans"),
         weekStats: () => ipcRenderer.invoke("stats:week"),
         widgetData: () => ipcRenderer.invoke("widget:data"),
+        memoryGet: () => ipcRenderer.invoke("memory:get"),
+        memorySet: (p) => ipcRenderer.invoke("memory:set", p),
+        memoryAdd: (section, text) => ipcRenderer.invoke("memory:add", section, text),
+        memoryRemove: (text) => ipcRenderer.invoke("memory:remove", text),
+        memoryClear: () => ipcRenderer.invoke("memory:clear"),
         moneyMarkPaid: (id) => ipcRenderer.invoke("money:markPaid", id),
         moneyStopRecurring: (id) => ipcRenderer.invoke("money:stopRecurring", id),
         moneySettle: (person, wallet) => ipcRenderer.invoke("money:settle", person, wallet),

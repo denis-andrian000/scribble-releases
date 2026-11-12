@@ -42,7 +42,7 @@ function showTab(tab) {
   if (tab === 'chat') setTimeout(() => $('#input').focus(), 30);
   if (tab === 'notebook') loadTree();
   if (tab === 'tasks') loadTasks();
-  if (tab === 'settings') { loadSettings(); if (window.Voice) Voice.load(); }
+  if (tab === 'settings') { loadSettings(); if (window.Voice) Voice.load(); loadMemory(); }
   if (tab === 'money' && window.Money) Money.show();
 }
 $$('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.area === 'work' ? 'work' : b.dataset.tab)));
@@ -91,6 +91,9 @@ S.onShown(({ tab } = {}) => showTab(tab || (currentTab === 'settings' ? 'chat' :
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-ext]');
   if (a) { e.preventDefault(); S.openExternal(a.dataset.ext); }
+  // a past chat the buddy found ("the 28 Oct chat")
+  const ch = e.target.closest('[data-chat]');
+  if (ch) { e.preventDefault(); showTab('chat'); openPastChat(ch.dataset.chat); return; }
   // a page the buddy quoted from ("Source: [Vendor quote](page:Projects/Vendor.md)")
   const pg = e.target.closest('[data-page]');
   if (pg && !pg.classList.contains('td-pg')) { e.preventDefault(); let p = decodeURIComponent(pg.dataset.page); if (!/\.md$/.test(p)) p += '.md'; showTab('notebook'); setTimeout(() => openPage(p), 200); }
@@ -3037,3 +3040,42 @@ Promise.all([S.account(), S.getSettings()]).then(([a, s]) => {
   else if (!s.hasKey && !s.onboarded) { openOnboarding('choose'); obAuto = true; }
   else if (!s.onboarded) S.setSettings({ onboarded: true });      // set up before this flag was saved: remember it (follows the account)
 });
+
+// ---------------- Settings → Buddy → Memory ----------------
+async function loadMemory() {
+  if (!S.memoryGet) return;
+  const m = await S.memoryGet();
+  $('#m-on').checked = !!m.on; $('#m-chats').checked = !!m.chats; $('#m-chats').disabled = !m.on;
+  const sel = $('#m-sec'); sel.innerHTML = '';
+  for (const [k, t] of m.sections) sel.append(new Option(t, k));
+  const ICON = { about: '🙋', prefs: '💬', people: '👥', work: '🔧' };
+  const box = $('#m-list'); box.innerHTML = '';
+  let n = 0;
+  for (const [k, title] of m.sections) {
+    const facts = m.facts[k] || [];
+    n += facts.length;
+    const sec = el('div', 'm-sec');
+    const h = el('div', 'm-h'); h.textContent = `${ICON[k] || '•'} ${title}`; const c = el('small'); c.textContent = facts.length || ''; h.append(c);
+    sec.append(h);
+    if (!facts.length) { const e = el('div', 'm-empty'); e.textContent = I18n.t('Nothing yet.'); sec.append(e); }
+    for (const f of facts) {
+      const row = el('div', 'm-row');
+      const tx = el('span'); tx.textContent = f.text;
+      const d = el('em'); d.textContent = f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'short' }) : '';
+      const x = el('button', 'm-x', '✕'); x.type = 'button'; x.title = I18n.t('Forget this');
+      x.addEventListener('click', async () => { await S.memoryRemove(f.text); loadMemory(); });
+      row.append(tx, d, x); sec.append(row);
+    }
+    box.append(sec);
+  }
+  $('#m-sum').textContent = n ? I18n.t('{0} things your buddy knows about you', n) : I18n.t('What your buddy knows about you');
+}
+if ($('#m-on')) {
+  $('#m-on').addEventListener('change', async () => { await S.memorySet({ on: $('#m-on').checked }); loadMemory(); });
+  $('#m-chats').addEventListener('change', async () => { await S.memorySet({ chats: $('#m-chats').checked }); });
+  const addMem = async () => { const t = $('#m-text').value.trim(); if (!t) return; const r = await S.memoryAdd($('#m-sec').value, t); if (r && r.saved === false && r.note) toast(r.note); $('#m-text').value = ''; loadMemory(); };
+  $('#m-add').addEventListener('click', addMem);
+  $('#m-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addMem(); } });
+  $('#m-clear').addEventListener('click', async () => { if (!confirm(I18n.t('Forget everything your buddy knows about you? You can undo it right after.'))) return; await S.memoryClear(); loadMemory(); });
+  S.onNotebookChanged(() => { if (currentTab === 'settings') loadMemory(); });
+}

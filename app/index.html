@@ -231,6 +231,14 @@
     <div class="settings" id="set-buddy" hidden>
       <div id="avatar-editor"></div>
       <input type="file" id="av-file" accept="image/*" hidden>
+      <details class="set-sec" data-sec="b-memory"><summary><b>Memory</b><small class="set-sum-hint" id="m-sum">What your buddy knows about you</small></summary><div class="set-body">
+        <small>Your buddy keeps this from your chats and uses it without being asked. Read every line, delete any, or add your own. It's the page Memory.md in your notebook, so it syncs.</small>
+        <label class="toggle"><input type="checkbox" id="m-on"><span>Remember things from our chats</span></label>
+        <label class="toggle"><input type="checkbox" id="m-chats"><span>Look back at past chats when it helps</span></label>
+        <div id="m-list" class="m-list"></div>
+        <div class="m-add"><select id="m-sec" class="mini"></select><input id="m-text" placeholder="Tell your buddy something to remember…" autocomplete="off"><button class="btn" id="m-add" type="button">Add</button></div>
+        <div class="m-foot"><small>Never kept: passwords, PINs, card or ID numbers, or health details unless you ask.</small><button class="link danger" id="m-clear" type="button">Forget everything</button></div>
+      </div></details>
       <details class="set-sec" data-sec="b-voice"><summary><b>Voice</b><small class="set-sum-hint">Your buddy speaks its replies</small></summary><div class="set-body">
       <label class="toggle"><input type="checkbox" id="v-on"><span>Voice: your buddy says its replies out loud <em class="beta">new</em></span></label>
       <div class="sync-box voice-box" id="v-box" hidden>
