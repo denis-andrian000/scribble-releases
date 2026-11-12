@@ -1439,7 +1439,7 @@ async function loadTaskTree() {
 // ---------------- tasks: view switch (tree / table) ----------------
 const viewKey = () => (wideMode ? 'taskViewWide' : 'taskViewCompact');
 function taskView() {
-  try { const v = localStorage.getItem(viewKey()); if (v === 'tree' || v === 'table') return v; } catch {}
+  try { const v = localStorage.getItem(viewKey()); if (v === 'tree' || v === 'table' || v === 'timeline') return v; } catch {}
   return wideMode ? 'table' : 'tree';
 }
 $$('#task-view-seg button').forEach((b) => b.addEventListener('click', () => {
@@ -1453,6 +1453,9 @@ async function loadTasks() {
   $('#task-list').hidden = view !== 'tree';
   $('#task-table').hidden = view !== 'table';
   $('#tbl-filters').hidden = view !== 'table';
+  $('#task-timeline').hidden = view !== 'timeline';
+  $('#task-filter-seg').hidden = view === 'timeline';
+  if (view === 'timeline') return window.Timeline.render();
   if (view === 'table') return loadTaskTable();
   return loadTaskTree();
 }

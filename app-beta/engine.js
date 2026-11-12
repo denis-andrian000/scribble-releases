@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.16.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.17.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37969,7 +37969,26 @@ Content-Type: application/octet-stream\r
         "New month!": "Bulan baru!",
         "Want a look back at {0}?": "Mau lihat lagi {0}?",
         "How's it going?": "Gimana hari ini?",
-        "Anything to note down or tick off? Just tell me.": "Ada yang mau dicatat atau dicentang? Bilang aja."
+        "Anything to note down or tick off? Just tell me.": "Ada yang mau dicatat atau dicentang? Bilang aja.",
+        Timeline: "Linimasa",
+        "Projects over time, from start date to due date": "Proyek dari waktu ke waktu, dari tanggal mulai sampai tenggat",
+        Week: "Minggu",
+        Month: "Bulan",
+        Quarter: "Kuartal",
+        "All projects": "Semua proyek",
+        "Show done": "Tampilkan yang selesai",
+        "Project / task": "Proyek / tugas",
+        "1 day late": "Telat 1 hari",
+        "{0} days late": "Telat {0} hari",
+        Late: "Telat",
+        "One-day task": "Tugas sehari",
+        "No dates yet ({0})": "Belum ada tanggal ({0})",
+        "None of these tasks have dates yet.": "Belum ada tugas yang punya tanggal.",
+        Other: "Lainnya",
+        "No project": "Tanpa proyek",
+        "{0}% \xB7 ends {1}": "{0}% \xB7 selesai {1}",
+        "Drag to move, drag the ends to change the dates. Click to open.": "Geser untuk memindahkan, tarik ujungnya untuk mengubah tanggal. Klik untuk membuka.",
+        "{0}: {1} \u2192 {2}": "{0}: {1} \u2192 {2}"
       };
     }
   });
