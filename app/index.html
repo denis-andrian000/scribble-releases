@@ -191,13 +191,14 @@
   <section id="view-tasks" class="view">
     <div class="task-toolbar">
       <div class="seg area-seg" role="tablist" aria-label="Tasks or notebook"><button type="button" data-sub="tasks">Tasks</button><button type="button" data-sub="notebook">Notebook</button></div>
-      <div class="seg">
+      <div class="seg" id="task-filter-seg">
         <button data-filter="open" class="on">Open</button>
         <button data-filter="done">Done</button>
       </div>
       <div class="seg view-seg" id="task-view-seg">
         <button data-view="tree" title="Grouped by area, category and project">Tree</button>
         <button data-view="table" title="Sortable table">Table</button>
+        <button data-view="timeline" title="Projects over time, from start date to due date">Timeline</button>
       </div>
       <div class="tbl-filters" id="tbl-filters">
         <input type="search" id="tf-q" placeholder="Filter tasks…">
@@ -210,6 +211,7 @@
     </div>
     <div id="task-list"></div>
     <div id="task-table" hidden></div>
+    <div id="task-timeline" hidden></div>
   </section>
 
   <!-- SETTINGS -->
@@ -488,6 +490,7 @@
 <script src="rig.js"></script>
 <script src="sounds.js"></script>
 <script src="money-view.js"></script>
+<script src="timeline.js"></script>
 <script src="voice.js"></script>
 <script src="engine.js"></script>
 </body>
