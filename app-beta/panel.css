@@ -1000,3 +1000,12 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .wins { display: flex; flex-direction: column; gap: 10px; max-height: 100%; }
 .wins img { max-width: min(432px, 100%); max-height: calc(100vh - 110px); border-radius: 16px; box-shadow: var(--shadow); object-fit: contain; }
 .wins-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+.mn-badge { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 9.5px; font-weight: 800; letter-spacing: -.02em; font-style: normal; line-height: 1; }
+.mn-badge.long { font-size: 8px; }
+.mn-badge.dot { width: 9px; height: 9px; border-radius: 5px; }
+.mn-badge.img { object-fit: cover; background: #fff; border: 1px solid var(--line); }
+.mn-badge.big { width: 32px; height: 32px; border-radius: 9px; font-size: 12px; }
+.mn-badge.big.long { font-size: 10px; }
+.mn-badge.big.dot { width: 12px; height: 12px; margin: 0 10px; }
+.mn-pic-row { display: flex; align-items: center; gap: 10px; }
