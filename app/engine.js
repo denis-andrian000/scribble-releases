@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.22.2";
+globalThis.__SCRIBBLE_VERSION__ = "1.22.3";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36813,6 +36813,7 @@ A project template. Each line: task (day it starts, how many days, priority). Te
         // onEvent({type:'tool', name, input}); approve(call) -> Promise<{decision:'approve', input?} | {decision:'skip'} | {decision:'reply', text}>
         async run(messages, onEvent = () => {
         }, approve = null) {
+          this._nudged = false;
           let active = this.getActive();
           if (!active || !active.model) throw new Error("NO_KEY");
           const makeClient = (a) => (PROVIDERS[a.conn.provider] || {}).kind === "anthropic" ? new Anthropic({
@@ -36847,10 +36848,25 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             }
             onEvent({ type: "usage", model: `${active.conn.provider}:${active.model}`, usage: resp.usage || {} });
             if (resp.noTools) onEvent({ type: "notools", conn: active.conn.id, model: active.model });
+            const said = (resp.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+            if (resp.stop_reason !== "tool_use" && !said) {
+              if (!this._nudged && step < 11) {
+                this._nudged = true;
+                const nudge = { type: "text", text: "[Scribble] Please write your answer now, from what you have already read. Keep it concise." };
+                const last = messages[messages.length - 1];
+                if (last && last.role === "user" && Array.isArray(last.content)) last.content.push(nudge);
+                else messages.push({ role: "user", content: [nudge] });
+                continue;
+              }
+              this._nudged = false;
+              const msg = resp.stop_reason === "max_tokens" || resp.stop_reason === "length" ? "I read everything but ran out of room to write the answer. Try asking for a shorter version, or pick a bigger model in Settings \u2192 App \u2192 AI." : "I read everything but the AI model sent back an empty answer. Please try again, or pick another model in Settings \u2192 App \u2192 AI.";
+              messages.push({ role: "assistant", content: [{ type: "text", text: msg }] });
+              return { text: msg, changed, moneyChanged };
+            }
             messages.push({ role: "assistant", content: resp.content });
             if (resp.stop_reason !== "tool_use") {
-              const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-              return { text, changed, moneyChanged };
+              this._nudged = false;
+              return { text: said, changed, moneyChanged };
             }
             const calls = resp.content.filter((b) => b.type === "tool_use");
             const decisions = await Promise.all(calls.map(
@@ -39543,7 +39559,7 @@ Content-Type: application/octet-stream\r
             }
             if (typeof m.content === "string") out.push({ role: "user", text: m.content, files });
             else {
-              const t2 = m.content.filter((b) => b.type === "text" && !b.text.startsWith(ATTACH_NOTE)).map((b) => b.text).join("\n");
+              const t2 = m.content.filter((b) => b.type === "text" && !b.text.startsWith(ATTACH_NOTE) && !b.text.startsWith("[Scribble] ")).map((b) => b.text).join("\n");
               if (t2 || files.length) out.push({ role: "user", text: t2, files });
             }
           } else {
@@ -40253,7 +40269,7 @@ In one short line say what it is, then offer what to do with it as options (add 
             const c = JSON.parse(fs2.readFileSync(path.join(chatsDir(), f), "utf8"));
             const firstUser = c.messages.find((m) => m.role === "user" && (typeof m.content === "string" || m.content.some((b) => b.type === "text" && !b.text.startsWith(ATTACH_NOTE))));
             if (!firstUser) continue;
-            const title = typeof firstUser.content === "string" ? firstUser.content : firstUser.content.filter((b) => b.type === "text" && !b.text.startsWith(ATTACH_NOTE)).map((b) => b.text).join(" ");
+            const title = typeof firstUser.content === "string" ? firstUser.content : firstUser.content.filter((b) => b.type === "text" && !b.text.startsWith(ATTACH_NOTE) && !b.text.startsWith("[Scribble] ")).map((b) => b.text).join(" ");
             const turns = c.messages.filter((m) => m.role === "user" && (typeof m.content === "string" || !m.content.some((b) => b.type === "tool_result"))).length;
             list.push({ id: c.id, created: c.created, title: title.slice(0, 90), turns, current: c.id === chat.id });
           } catch {
