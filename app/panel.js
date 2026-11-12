@@ -241,11 +241,23 @@ function addMessage(m) {
     }
     if (m.money && m.money.length) for (const r of m.money) msgsEl.append(moneyCard(r));
     if (options.length) msgsEl.append(optionRow(options));
-    if (m.tools && m.tools.length) {
+    if (m.tools && m.tools.length || (m.undo && m.undo.length)) {
       const t = el('div', 'tools');
-      for (const label of m.tools) {
+      for (const label of m.tools || []) {
         const c = el('span', `tool${label.endsWith('(not saved)') ? ' skipped' : ''}`);
         c.textContent = label; t.append(c);
+      }
+      if (m.undo && m.undo.length) {
+        // everything the buddy changed in this reply, undone in one go
+        const u = el('button', 'undo-run'); u.type = 'button';
+        u.textContent = m.undo.length > 1 ? I18n.t('↶ Undo all {0}', m.undo.length) : I18n.t('↶ Undo');
+        u.addEventListener('click', async () => {
+          const r = await S.undoIds(m.undo);
+          if (!r || !r.ok) { toast((r && r.error) || 'Couldn\'t undo.'); return; }
+          u.replaceWith(Object.assign(el('span', 'tool skipped'), { textContent: I18n.t('Undone') }));
+          if (currentTab === 'tasks') loadTasks();
+        });
+        t.append(u);
       }
       msgsEl.append(t);
     }
@@ -330,7 +342,46 @@ async function send(text, label) {
   setComposerHint();
   refreshUndo();
   $('#input').focus();
+  return r;
 }
+// quick capture (Ctrl+Alt+Space) and things dropped on the buddy come in through here
+if (S.onQuickSend) S.onQuickSend(async (text) => {
+  if (busy || viewingOld) { S.quickResult({ error: I18n.t('Your buddy is busy with something else. Try again in a moment.') }); return; }
+  if (currentTab !== 'chat' && !wideMode) showTab('chat');
+  const r = await send(text);
+  const lastA = r && r.messages ? [...r.messages].reverse().find((m) => m.role === 'assistant') : null;
+  S.quickResult({ reply: r && r.reply, error: r && r.error ? (r.error === 'NO_KEY' || r.error === 'NO_ACCOUNT' ? I18n.t('Open Scribble to finish setting up first.') : r.error) : null, undo: lastA && lastA.undo ? lastA.undo : null });
+});
+if (S.onQuickFill) S.onQuickFill((text) => { showTab('chat'); $('#input').value = text; autosize(); $('#input').focus(); });
+window.__onDropped = async (d) => {
+  showTab('chat');
+  if (d.text) { $('#input').value = ($('#input').value ? $('#input').value + '\n' : '') + d.text; autosize(); }
+  const files = (d.files || []).map((f) => new File([Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0))], f.name, { type: f.type || 'application/octet-stream' }));
+  if (files.length) await addFiles(files);
+  if (d.send && !busy) send(d.prompt || $('#input').value || '', d.label);
+};
+if (S.onDropped) S.onDropped((d) => window.__onDropped(d));
+
+// Android: "Share to Scribble" from any app (text, links, pictures, PDFs) works like dropping it on the buddy
+(() => {
+  const SP = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.ScribbleShare;
+  if (!SP) return;
+  const take = async () => {
+    let r; try { r = await SP.take(); } catch { return; }
+    if (!r || (!r.text && !(r.files || []).length)) return;
+    const files = (r.files || []).map((f) => ({ name: f.name || 'shared', type: f.type, data: f.data }));
+    const text = [r.subject, r.text].filter(Boolean).join('\n').trim();
+    const what = files.length ? files.map((f) => f.name).join(', ') : '';
+    const prompt = files.length
+      ? `I shared ${files.length === 1 ? 'this' : 'these'} with you from another app (${what})${text ? ` with this text: "${text}"` : ''}. In one or two short lines say what it is and the key facts (for a bill: who, amount, due date). Then offer what to do with it as options: for a bill, plan it as a payment, mark it paid, or just keep it; otherwise the two or three most useful actions (add task(s), save as a note, record money, summarise). Don't save anything until I pick.`
+      : `I shared this with you from another app:\n\n"${text}"\n\nIn one short line say what it is. If it asks me to do things, list the tasks you'd add (with due dates if it says when). Then offer what to do as options (add the task(s), save as a note, record money, or something else that fits). Don't save anything until I pick.`;
+    const label = I18n.t('📤 Shared: {0}', files.length ? what : `"${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`);
+    const go = () => { if (busy) { setTimeout(go, 800); return; } window.__onDropped({ files, send: true, prompt, label }); };
+    setTimeout(go, 600);
+  };
+  SP.addListener('shared', take);
+  setTimeout(take, 1500);
+})();
 
 // ---- handwriting: a writing pad for a stylus (or finger / mouse); the page goes to the AI as a picture ----
 // The AI reads it and, as always, asks before saving anything. Only what it read is saved, not the drawing.
@@ -735,8 +786,8 @@ const FIELDS = {
   capture_note: [['text', 'long', 'Note'], ['page', 'page', 'Save to']],
   append_to_page: [['content', 'long', 'Add'], ['path', 'page', 'Page'], ['heading', 'text', 'Under heading']],
   write_page: [['content', 'long', 'New content'], ['path', 'page', 'Page']],
-  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
-  update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
+  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
+  update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
   delete_task: [],
   create_project: [['name', 'text', 'Project'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['goal', 'long', 'Goal']],
   log_project: [['entry', 'long', 'Progress'], ['name', 'project', 'Project'], ['area', 'area', 'Area (only if new)']],
@@ -791,7 +842,7 @@ function renderCard(card) {
       if (!val && kind === 'priority' && !required) inp.value = 'medium';
     } else {
       inp = el('input');
-      inp.type = kind === 'date' ? 'date' : 'text';
+      inp.type = kind === 'date' ? 'date' : kind === 'time' ? 'time' : 'text';
       const list = kind === 'page' ? L.pages : kind === 'project' ? L.projects : kind === 'area' ? L.areas : kind === 'category' ? (L.categories || []) : null;
       if (list) { const d = datalist(list); row.append(d); inp.setAttribute('list', d.id); }
       if (kind === 'page' && card.tool === 'capture_note') inp.placeholder = "Today's page";
@@ -970,6 +1021,24 @@ function toast(msg) {
   document.body.append(t);
   setTimeout(() => t.remove(), 2600);
 }
+// a change you just made: "Moved … · Undo" for 8 seconds
+function undoToast(label, ids) {
+  document.querySelector('.toast.undo')?.remove();
+  const t = el('div', 'toast undo');
+  const s = el('span'); s.textContent = label;
+  const b = el('button'); b.type = 'button'; b.textContent = I18n.t('Undo');
+  b.addEventListener('click', async () => {
+    t.remove();
+    const r = await S.undoIds(ids);
+    if (!r || !r.ok) { toast((r && r.error) || 'Couldn\'t undo.'); return; }
+    toast(I18n.t('Undone: {0}', r.undone[0] || label));
+    if (currentTab === 'tasks') loadTasks();
+  });
+  t.append(s, b);
+  document.body.append(t);
+  setTimeout(() => t.remove(), 8000);
+}
+if (S.onUndoOffer) S.onUndoOffer((o) => undoToast(o.label, o.ids));
 
 function prettyName(node) {
   if (/^Daily\/\d{4}-\d{2}-\d{2}\.md$/.test(node.path)) {
@@ -1657,6 +1726,11 @@ function tableRow(t, showDone, t0) {
 
   const tdSt = el('td'); tdSt.append(cellDate(t.start, (v, i) => { if (v) patchTask(t, { start: v }, i); }, miss.includes('start') ? 'need' : ''));
   const tdD = el('td'); tdD.append(cellDate(t.due, (v, i) => { if (v) patchTask(t, { due: v }, i); }, miss.includes('due') ? 'need' : ''));
+  if (!isClosedT(t)) {
+    const ti = el('input', 'cell-in cell-time'); ti.type = 'time'; ti.value = t.time || ''; ti.title = I18n.t('Time (optional)');
+    ti.addEventListener('change', () => patchTask(t, { time: ti.value || null }, ti));
+    tdD.append(ti);
+  }
   tr.append(tdT, tdP, tdS, tdPr, tdSt, tdD);
   if (showDone) {
     const tdC = el('td', 'c-done');
@@ -1881,6 +1955,8 @@ async function loadSettings() {
   $('#k-panel').dataset.accel = s.shortcut;
   $('#k-capture').textContent = prettyAccel(s.captureShortcut);
   $('#k-capture').dataset.accel = s.captureShortcut;
+  $('#k-quick').textContent = prettyAccel(s.quickShortcut);
+  $('#k-quick').dataset.accel = s.quickShortcut;
   $('#s-capture').checked = s.captureEnabled;
   $('#k-msg').textContent = '';
   loadSync();
@@ -2445,7 +2521,7 @@ function accelFrom(e) {
   if (/^Arrow/.test(k)) key = k.slice(5);
   return [...mods, key].join('+');
 }
-for (const id of ['k-panel', 'k-capture']) {
+for (const id of ['k-panel', 'k-capture', 'k-quick']) {
   const b = $('#' + id);
   b.addEventListener('click', () => { b.classList.add('recording'); b.textContent = 'Press keys…'; b.focus(); });
   b.addEventListener('blur', () => { if (b.classList.contains('recording')) { b.classList.remove('recording'); b.textContent = prettyAccel(b.dataset.accel); } });
@@ -2457,8 +2533,8 @@ for (const id of ['k-panel', 'k-capture']) {
     if (!a) return;
     if (a === 'NEED_MOD') { $('#k-msg').textContent = 'Use Ctrl or Alt with a key.'; return; }
     b.classList.remove('recording');
-    const r = await S.setSettings(id === 'k-panel' ? { shortcut: a } : { captureShortcut: a });
-    const ok = r && r.shortcuts ? (id === 'k-panel' ? r.shortcuts.panel : r.shortcuts.capture) : true;
+    const r = await S.setSettings(id === 'k-panel' ? { shortcut: a } : id === 'k-quick' ? { quickShortcut: a } : { captureShortcut: a });
+    const ok = r && r.shortcuts ? (id === 'k-panel' ? r.shortcuts.panel : id === 'k-quick' ? r.shortcuts.quick : r.shortcuts.capture) : true;
     $('#k-msg').textContent = ok ? '' : `${prettyAccel(a)} is taken by another app. Try a different one.`;
     b.dataset.accel = a;
     b.textContent = prettyAccel(a);
@@ -2515,7 +2591,7 @@ const RFIELDS = {
   'r-wstart': ['workStart', 'time'], 'r-wend': ['workEnd', 'time'], 'r-workonly': ['workOnly', 'check'],
   'r-quiet': ['quiet', 'check'], 'r-qfrom': ['quietFrom', 'time'], 'r-qto': ['quietTo', 'time'], 'r-daystart': ['dayStart', 'time'],
   'r-mevening': ['moneyEvening', 'check'], 'r-metime': ['moneyEveningTime', 'time'], 'r-mmonthly': ['moneyMonthly', 'check'],
-  'r-dueahead': ['dueAhead', 'num'], 'r-billsahead': ['billsAhead', 'num'], 'r-budgetwarn': ['budgetWarn', 'num'],
+  'r-dueahead': ['dueAhead', 'num'], 'r-timeahead': ['timeAhead', 'num'], 'r-billsahead': ['billsAhead', 'num'], 'r-budgetwarn': ['budgetWarn', 'num'],
 };
 const CHATTY_HINT = { quiet: 'Only the check-ins above, nothing in between.', normal: 'The check-ins, plus useful nudges: tasks due, bills coming up, budgets running out.', chatty: 'All of that, plus a friendly check-in on quiet afternoons.' };
 let routineNow = null;

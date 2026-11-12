@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.18.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.19.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4071,6 +4071,12 @@ var __dirname = '/app/src', __filename = '/app/src/main.js';
       }
       var PRIORITIES = ["low", "medium", "high"];
       var STATUSES = ["todo", "doing", "hold", "done", "cancelled"];
+      function cleanTime(v) {
+        if (v == null || v === "") return null;
+        const m = String(v).trim().match(/^(\d{1,2})[:.](\d{2})$/);
+        if (!m || +m[1] > 23 || +m[2] > 59) throw Object.assign(new Error(`Task not saved: time "${v}" should look like 14:00. Ask the user for the missing or corrected details (start date, due date, priority low/medium/high) before trying again.`), { code: "TASK_FIELDS" });
+        return `${m[1].padStart(2, "0")}:${m[2]}`;
+      }
       var CLOSED = /* @__PURE__ */ new Set(["done", "cancelled"]);
       var isClosed = (t) => CLOSED.has(t.status);
       function normPriority(p) {
@@ -4095,7 +4101,7 @@ var __dirname = '/app/src', __filename = '/app/src/main.js';
       function slugify(name) {
         return String(name).trim().replace(/[\\/:*?"<>|#]+/g, "-").replace(/\s+/g, " ").slice(0, 80) || "untitled";
       }
-      var Notebook = class {
+      var Notebook = class _Notebook {
         constructor(root) {
           this.setRoot(root);
         }
@@ -4129,9 +4135,15 @@ var __dirname = '/app/src', __filename = '/app/src/main.js';
           this._tx = null;
           if (!tx || !Object.keys(tx.files).length) return null;
           const hist = this.undoHistory();
+          tx.id = tx.time + "#" + Math.random().toString(36).slice(2, 7);
           hist.push(tx);
           this._saveUndo(hist.slice(-30));
-          return { label: tx.label, time: tx.time };
+          const r = { label: tx.label, time: tx.time, id: tx.id };
+          if (_Notebook.onCommit) try {
+            _Notebook.onCommit(r);
+          } catch {
+          }
+          return r;
         }
         rollback() {
           this._tx = null;
@@ -4153,6 +4165,13 @@ var __dirname = '/app/src', __filename = '/app/src/main.js';
           const h = this.undoHistory();
           const t = h[h.length - 1];
           return t ? { label: t.label, time: t.time, count: h.length } : null;
+        }
+        // undo exactly these changes (newest first), only if nothing else changed after them
+        undoIds(ids) {
+          const hist = this.undoHistory();
+          const top = hist.slice(-ids.length).map((t) => t.id);
+          if (!ids.length || top.length !== ids.length || !ids.every((id) => top.includes(id))) return null;
+          return this.undo(ids.length);
         }
         undo(count = 1) {
           const hist = this.undoHistory();
@@ -4485,7 +4504,7 @@ ${goal || "_Not set yet._"}
           const done = tasks.filter(isClosed).sort((a, b) => String(b.completed || "").localeCompare(String(a.completed || ""))).slice(0, 30);
           const fmt = (t) => {
             const bits = [];
-            if (t.start || t.due) bits.push(`${t.start || "?"} \u2192 ${t.due || "?"}`);
+            if (t.start || t.due) bits.push(`${t.start || "?"} \u2192 ${t.due || "?"}${t.time ? " " + t.time : ""}`);
             if (t.priority) bits.push(t.priority);
             if (t.status === "doing") bits.push("in progress");
             if (t.status === "hold") bits.push("on hold");
@@ -4535,7 +4554,7 @@ ${groups[n].map(fmt).join("\n")}
           }
           return out;
         }
-        addTask({ title, project, area, start, due, priority, notes }) {
+        addTask({ title, project, area, start, due, time, priority, notes }) {
           if (!title) throw new Error("Task title is required.");
           const req = this._checkTaskFields({ start, due, priority });
           const tasks = this.loadTasks();
@@ -4548,6 +4567,7 @@ ${groups[n].map(fmt).join("\n")}
             area: area ? String(area).trim() : null,
             start: req.start,
             due: req.due,
+            time: cleanTime(time),
             priority: req.priority,
             status: "todo",
             notes: notes || "",
@@ -4567,6 +4587,7 @@ ${groups[n].map(fmt).join("\n")}
             { partial: true, current: t }
           );
           Object.assign(t, req);
+          if (fields.time !== void 0) t.time = cleanTime(fields.time);
           if (fields.status !== void 0 && !STATUSES.includes(fields.status)) throw new Error(`Status must be one of: ${STATUSES.join(", ")}`);
           for (const k of ["title", "project", "area", "notes", "status"]) {
             if (fields[k] !== void 0) t[k] = fields[k];
@@ -4771,6 +4792,10 @@ ${groups[n].map(fmt).join("\n")}
           return this.data || this.load();
         }
         save() {
+          if (_Money.beforeSave) try {
+            _Money.beforeSave(this.file);
+          } catch {
+          }
           fs2.mkdirSync(path.dirname(this.file), { recursive: true });
           const tmp = this.file + ".tmp";
           fs2.writeFileSync(tmp, JSON.stringify(this.data, null, 1));
@@ -35844,6 +35869,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               area: { type: "string", description: 'Area folder it belongs to, e.g. "Work". Omit for personal/general.' },
               start: { type: "string", description: 'Start date as YYYY-MM-DD (when work on it begins). Convert relative dates like "today" or "Monday" yourself.' },
               due: { type: "string", description: "Due date as YYYY-MM-DD. Must be on or after the start date." },
+              time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks.' },
               priority: { type: "string", enum: ["low", "medium", "high"] },
               notes: { type: "string" }
             },
@@ -35863,6 +35889,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               area: { type: "string", description: 'Area folder it belongs to, e.g. "Work". Omit for personal/general.' },
               start: { type: "string", description: "YYYY-MM-DD" },
               due: { type: "string", description: "YYYY-MM-DD" },
+              time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks.' },
               priority: { type: "string", enum: ["low", "medium", "high"] },
               notes: { type: "string" }
             },
@@ -36275,9 +36302,10 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               if (writes) changed = true;
               if (MONEY_WRITES.has(block.name)) moneyChanged = true;
               try {
-                if (WRITE_TOOLS.has(block.name)) this.nb.begin(describe(block.name, input));
+                const tx = WRITE_TOOLS.has(block.name) || MONEY_WRITES.has(block.name);
+                if (tx) this.nb.begin(describe(block.name, input));
                 const out = this.runTool(block.name, input);
-                if (WRITE_TOOLS.has(block.name)) this.nb.commit();
+                if (tx) this.nb.commit();
                 const payload = edited ? { result: out, note: "The user edited this before saving. Saved as: " + JSON.stringify(input) } : out;
                 results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(payload) });
               } catch (e) {
@@ -36310,6 +36338,20 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             return `Project ${input.name}`;
           case "log_project":
             return `Log on ${input.name}`;
+          case "add_money_record":
+            return `Recorded ${input.description || "money"}`;
+          case "update_money_record":
+            return "Changed a money record";
+          case "delete_money_record":
+            return "Deleted a money record";
+          case "add_wallet":
+            return `Wallet ${input.name || ""}`.trim();
+          case "set_wallet_balance":
+            return `Balance of ${input.wallet || input.name || "a wallet"}`;
+          case "add_category":
+            return `Category ${input.name || ""}`.trim();
+          case "remember_shop":
+            return `Remembered ${input.shop || "a shop"}`;
           default:
             return name;
         }
@@ -38040,7 +38082,47 @@ Content-Type: application/octet-stream\r
         "Drag to move, drag the ends to change the dates. Click to open.": "Geser untuk memindahkan, tarik ujungnya untuk mengubah tanggal. Klik untuk membuka.",
         "{0}: {1} \u2192 {2}": "{0}: {1} \u2192 {2}",
         "Snip an area of the screen into the chat": "Potong area layar ke obrolan",
-        "Drag over the area to send to your buddy. Esc to cancel.": "Tarik di area yang mau dikirim ke buddy-mu. Esc untuk batal."
+        "Drag over the area to send to your buddy. Esc to cancel.": "Tarik di area yang mau dikirim ke buddy-mu. Esc untuk batal.",
+        "Something else changed after this, so it can't be undone from here. Use \u21B6 Undo at the top, one step at a time.": "Ada perubahan lain setelah ini, jadi tidak bisa diurungkan dari sini. Pakai \u21B6 Urungkan di atas, satu per satu.",
+        "Money change": "Perubahan keuangan",
+        "Added a money record": "Menambah catatan keuangan",
+        "Changed a money record": "Mengubah catatan keuangan",
+        "Deleted a money record": "Menghapus catatan keuangan",
+        "Added a wallet": "Menambah dompet",
+        "Changed a wallet": "Mengubah dompet",
+        "Changed a balance": "Mengubah saldo",
+        "Deleted a wallet": "Menghapus dompet",
+        "Added a category": "Menambah kategori",
+        "Changed a category": "Mengubah kategori",
+        "Merged categories": "Menggabungkan kategori",
+        "Remembered a shop": "Mengingat toko",
+        "Forgot a shop": "Melupakan toko",
+        'Ticked off "{0}"': 'Mencentang "{0}"',
+        'Moved "{0}" to {1} \u2192 {2}': 'Memindahkan "{0}" ke {1} \u2192 {2}',
+        'Moved "{0}" to {1}': 'Memindahkan "{0}" ke {1}',
+        'Changed "{0}"': 'Mengubah "{0}"',
+        "Saved what you copied to Inbox": "Menyimpan yang kamu salin ke Inbox",
+        "\u21B6 Undo all {0}": "\u21B6 Urungkan semua ({0})",
+        Undone: "Sudah diurungkan",
+        "Undone: {0}": "Diurungkan: {0}",
+        Time: "Jam",
+        "Time (optional)": "Jam (opsional)",
+        "Tasks with a time": "Tugas yang ada jamnya",
+        "No reminder": "Tanpa pengingat",
+        "10 min before": "10 menit sebelumnya",
+        "30 min before": "30 menit sebelumnya",
+        "1 hour before": "1 jam sebelumnya",
+        "2 hours before": "2 jam sebelumnya",
+        "In {0} min: {1}": "{0} menit lagi: {1}",
+        "Now: {0}": "Sekarang: {0}",
+        "Tell {0} anything: a task, a note, money\u2026": "Bilang apa saja ke {0}: tugas, catatan, uang\u2026",
+        "Enter: send to {0} \xB7 Shift+Enter: open the chat \xB7 Esc: close": "Enter: kirim ke {0} \xB7 Shift+Enter: buka obrolan \xB7 Esc: tutup",
+        "Your buddy is busy with something else. Try again in a moment.": "Buddy-mu sedang mengerjakan hal lain. Coba lagi sebentar.",
+        "Open Scribble to finish setting up first.": "Buka Scribble untuk menyelesaikan pengaturan dulu.",
+        "Quick capture: tell your buddy something from any app": "Catat cepat: bilang sesuatu ke buddy-mu dari aplikasi mana pun",
+        "\u{1F4E5} Dropped on your buddy: {0}": "\u{1F4E5} Diberikan ke buddy-mu: {0}",
+        '\u{1F4E5} Dropped on your buddy: "{0}"': '\u{1F4E5} Diberikan ke buddy-mu: "{0}"',
+        "\u{1F4E4} Shared: {0}": "\u{1F4E4} Dibagikan: {0}"
       };
     }
   });
@@ -38310,7 +38392,7 @@ Content-Type: application/octet-stream\r
       var syncEvery = null;
       var signedIn = () => !!(config.google && config.google.refresh);
       var syncStateFile = () => path.join(userDir(), "sync-state.json");
-      var SYNC_KEYS = ["avatar", "theme", "gravity", "confirmSaves", "autoFallback", "routine", "model", "onboarded", "shortcut", "captureShortcut", "captureEnabled", "money"];
+      var SYNC_KEYS = ["avatar", "theme", "gravity", "confirmSaves", "autoFallback", "routine", "model", "onboarded", "shortcut", "captureShortcut", "quickShortcut", "captureEnabled", "money"];
       function settingsCore() {
         const core = {};
         for (const k of SYNC_KEYS) if (config[k] !== void 0) core[k] = config[k];
@@ -38680,7 +38762,7 @@ Content-Type: application/octet-stream\r
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
       }
       var ATTACH_NOTE = "[Attached ";
-      function displayMessages(messages, meta = {}, labels = {}) {
+      function displayMessages(messages, meta = {}, labels = {}, undo = {}) {
         const notSaved = /* @__PURE__ */ new Set();
         const moneyCards = /* @__PURE__ */ new Map();
         const asked = /* @__PURE__ */ new Set();
@@ -38723,6 +38805,7 @@ Content-Type: application/octet-stream\r
               if (money2.length) last.money = [...last.money || [], ...money2];
               last.text = text;
             } else out.push({ role: "assistant", text, tools, ...money2.length ? { money: money2 } : {} });
+            if (undo && undo[i] && undo[i].length) out[out.length - 1].undo = undo[i];
           }
         });
         return out.filter((m) => m.text || m.tools && m.tools.length || m.money && m.money.length);
@@ -39011,6 +39094,7 @@ Content-Type: application/octet-stream\r
       }
       var DEFAULT_SHORTCUT = "CommandOrControl+Shift+Space";
       var DEFAULT_CAPTURE = "CommandOrControl+Alt+C";
+      var DEFAULT_QUICK = "CommandOrControl+Alt+Space";
       function registerShortcut() {
         globalShortcut.unregisterAll();
         const ok = {};
@@ -39026,7 +39110,125 @@ Content-Type: application/octet-stream\r
             ok.capture = false;
           }
         }
+        try {
+          ok.quick = globalShortcut.register(config.quickShortcut || DEFAULT_QUICK, () => openQuick());
+        } catch {
+          ok.quick = false;
+        }
         return ok;
+      }
+      var quickWin = null;
+      var quickTimer = null;
+      var quickBusy = false;
+      function openQuick() {
+        if (ANDROID) return;
+        if (!quickWin || quickWin.isDestroyed()) {
+          quickWin = new BrowserWindow({
+            width: 560,
+            height: 120,
+            frame: false,
+            transparent: true,
+            resizable: false,
+            movable: true,
+            skipTaskbar: true,
+            alwaysOnTop: true,
+            show: false,
+            fullscreenable: false,
+            hasShadow: false,
+            backgroundColor: "#00000000",
+            webPreferences: { preload: path.join(__dirname, "quick-preload.js"), contextIsolation: true, nodeIntegration: false }
+          });
+          quickWin.setAlwaysOnTop(true, "pop-up-menu");
+          quickWin.loadFile(path.join(__dirname, "quick.html"));
+          quickWin.on("blur", () => {
+            if (!quickBusy) hideQuick();
+          });
+        }
+        const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+        quickWin.setBounds({ x: Math.round(d.x + (d.width - 560) / 2), y: Math.round(d.y + d.height * 0.22), width: 560, height: 120 });
+        const name = avatar().name || "Scribble", T = I18n.t;
+        const send = () => quickWin.webContents.send("quick:open", {
+          placeholder: T("Tell {0} anything: a task, a note, money\u2026", name),
+          hint: T("Enter: send to {0} \xB7 Shift+Enter: open the chat \xB7 Esc: close", name)
+        });
+        if (quickWin.webContents.isLoading()) quickWin.webContents.once("did-finish-load", send);
+        else send();
+        clearTimeout(quickTimer);
+        quickBusy = false;
+        quickWin.show();
+        quickWin.focus();
+      }
+      function hideQuick() {
+        clearTimeout(quickTimer);
+        quickBusy = false;
+        if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) quickWin.hide();
+      }
+      ipcMain.on("quick:close", () => hideQuick());
+      ipcMain.on("quick:later", (_e, ms) => {
+        clearTimeout(quickTimer);
+        if (ms > 0) quickTimer = setTimeout(hideQuick, ms);
+      });
+      ipcMain.on("quick:resize", (_e, h) => {
+        if (quickWin && !quickWin.isDestroyed()) {
+          const b = quickWin.getBounds();
+          quickWin.setBounds({ ...b, height: Math.max(80, Math.min(260, Math.round(h))) });
+        }
+      });
+      ipcMain.on("quick:submit", (_e, text, open) => {
+        if (open) {
+          hideQuick();
+          showPanel("chat");
+          sendPanel("quick:fill", text);
+          return;
+        }
+        quickBusy = true;
+        sendPanel("quick:send", text);
+      });
+      ipcMain.on("quick:result", (_e, r) => {
+        quickBusy = false;
+        if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) quickWin.webContents.send("quick:result", { ...r, undoLabel: I18n.t("Undo"), undoneLabel: I18n.t("Undone") });
+      });
+      ipcMain.on("buddy:drop", (_e, d) => dropToChat(d));
+      function dropToChat(d) {
+        if (!d || !(d.files || []).length && !d.text) return;
+        sendBuddy("buddy:state", "happy");
+        sendBuddy("buddy:talk", 1400);
+        const names = (d.files || []).map((f) => f.name).join(", ");
+        const T = I18n.t;
+        const prompt = (d.files || []).length ? `I dropped ${d.files.length === 1 ? "this file" : "these files"} on you (${names}). In one or two short lines say what it is and the key facts (for a bill: who, amount, due date). Then offer what to do with it as options: for a bill, plan it as a payment, mark it paid, or just keep it; for anything else, the two or three most useful actions (add a task, save as a note, record money, summarise). Don't save anything until I pick.` : `I dropped this text on you:
+
+"""
+${d.text}
+"""
+
+In one short line say what it is, then offer what to do with it as options (add as task(s), save as a note, record money, or something else that fits). Don't save anything until I pick.`;
+        const label = (d.files || []).length ? T("\u{1F4E5} Dropped on your buddy: {0}", names) : T('\u{1F4E5} Dropped on your buddy: "{0}"', d.text.slice(0, 80) + (d.text.length > 80 ? "\u2026" : ""));
+        showPanel("chat");
+        setTimeout(() => sendPanel("drop:files", { files: d.files || [], send: true, prompt, label }), 250);
+      }
+      var MIME = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json" };
+      function filesFromArgs(argv) {
+        const out = [];
+        for (const a of (argv || []).slice(1)) {
+          if (!a || a.startsWith("-") || out.length >= 10) continue;
+          try {
+            const full = path.resolve(a);
+            if (full === process.execPath || !fs2.statSync(full).isFile() || fs2.statSync(full).size > 15e6 || /\.(exe|asar|js)$/i.test(full)) continue;
+            const ext = path.extname(full).slice(1).toLowerCase();
+            out.push({ name: path.basename(full), type: MIME[ext] || "", data: fs2.readFileSync(full).toString("base64") });
+          } catch {
+          }
+        }
+        return out;
+      }
+      function sendToShortcut() {
+        if (process.platform !== "win32" || !app.isPackaged) return;
+        try {
+          const lnk = path.join(app.getPath("appData"), "Microsoft", "Windows", "SendTo", "Scribble.lnk");
+          shell.writeShortcutLink(lnk, fs2.existsSync(lnk) ? "update" : "create", { target: process.execPath, description: "Send to Scribble", icon: process.execPath, iconIndex: 0 });
+        } catch (e) {
+          logLine("send-to shortcut failed", e && e.message);
+        }
       }
       var capturing = false;
       async function readClipboard() {
@@ -39051,7 +39253,7 @@ Content-Type: application/octet-stream\r
         try {
           const { png, text } = await readClipboard();
           const stamp = localTime();
-          notebook.begin("Clipboard capture");
+          notebook.begin(I18n.t("Saved what you copied to Inbox"));
           try {
             if (png) {
               const d = /* @__PURE__ */ new Date();
@@ -39206,7 +39408,7 @@ Content-Type: application/octet-stream\r
       }, 33);
       ipcMain.handle("chat:get", () => ({
         id: chat.id,
-        messages: displayMessages(chat.messages, chat.meta, chat.labels),
+        messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo),
         busy,
         hasKey: hasAI(),
         pending: [...pending.values()].map((p) => p.card),
@@ -39242,6 +39444,7 @@ Content-Type: application/octet-stream\r
         return new Promise((resolve) => {
           pending.set(call.id, { card, resolve });
           sendBuddy("buddy:state", "asking");
+          if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) hideQuick();
           if (panelWin && !panelWin.isVisible()) showPanel("chat");
           sendPanel("chat:approval", card);
         });
@@ -39306,19 +39509,39 @@ Content-Type: application/octet-stream\r
             config.currentChat = c.id;
             saveConfig();
           }
-          return { id: c.id, created: c.created, messages: displayMessages(c.messages, c.meta, c.labels), current: c.id === chat.id };
+          return { id: c.id, created: c.created, messages: displayMessages(c.messages, c.meta, c.labels, c.undo), current: c.id === chat.id };
         } catch {
           return null;
         }
       });
+      Money.beforeSave = (file) => notebook._touch(file);
+      var txSink = null;
+      Notebook.onCommit = (r) => {
+        if (txSink) txSink.push(r);
+        else sendPanel("undo:offer", { ids: [r.id], label: r.label });
+      };
+      function afterUndo(done) {
+        if (!done || !done.length) return;
+        sendPanel("notebook:changed");
+        sendPanel("money:changed");
+        sendBuddy("buddy:state", "idle");
+        scheduleSync(3e3);
+      }
       ipcMain.handle("undo:last", () => notebook.lastUndo());
       ipcMain.handle("undo:do", () => {
         const done = notebook.undo(1);
-        if (done.length) {
-          sendPanel("notebook:changed");
-          sendBuddy("buddy:state", "idle");
-        }
+        afterUndo(done);
         return { undone: done, next: notebook.lastUndo() };
+      });
+      ipcMain.handle("undo:ids", (_e, ids) => {
+        const done = notebook.undoIds(Array.isArray(ids) ? ids : []);
+        if (!done) return { ok: false, error: I18n.t("Something else changed after this, so it can't be undone from here. Use \u21B6 Undo at the top, one step at a time.") };
+        afterUndo(done);
+        if (chat && chat.undo) {
+          for (const k of Object.keys(chat.undo)) if (chat.undo[k].some((x) => ids.includes(x))) delete chat.undo[k];
+          saveChat();
+        }
+        return { ok: true, undone: done };
       });
       var usageFile = () => path.join(userDir(), "usage.json");
       function loadUsage() {
@@ -39482,6 +39705,7 @@ Content-Type: application/octet-stream\r
           chat.labels[before] = String(label).slice(0, 120);
         }
         try {
+          txSink = [];
           const { text: reply, changed, moneyChanged } = await agent.run(chat.messages, (ev) => {
             if (ev.type === "tool") sendPanel("chat:tool", toolLabel(ev.name, ev.input));
             else if (ev.type === "text") sendPanel("chat:delta", ev.delta);
@@ -39499,7 +39723,13 @@ Content-Type: application/octet-stream\r
             sendPanel("money:changed");
             scheduleSync(3e3);
           }
-          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels) };
+          const steps = txSink || [];
+          txSink = null;
+          if (steps.length) {
+            (chat.undo ||= {})[chat.messages.length - 1] = steps.map((s) => s.id);
+            saveChat(chat);
+          }
+          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo) };
         } catch (e) {
           chat.messages.length = before;
           if (chat.meta) delete chat.meta[before];
@@ -39517,6 +39747,7 @@ Content-Type: application/octet-stream\r
           return { error: msg, text };
         } finally {
           busy = false;
+          txSink = null;
           for (const id of [...pending.keys()]) settle(id, { decision: "skip" });
         }
       });
@@ -39691,13 +39922,16 @@ Content-Type: application/octet-stream\r
         m.load();
         return m;
       }
-      var moneyOp = (fn) => async (_e, ...args) => {
+      var moneyOp = (fn, label = "Money change") => async (_e, ...args) => {
+        notebook.begin(I18n.t(label));
         try {
           const r = await fn(money(), ...args);
+          notebook.commit();
           sendPanel("money:changed");
           scheduleSync(3e3);
           return { ok: true, result: r };
         } catch (e) {
+          notebook.rollback();
           return { ok: false, error: e.message };
         }
       };
@@ -39706,18 +39940,18 @@ Content-Type: application/octet-stream\r
         const out = m.addRecord({ ...r, source: "manual" });
         if (!out.saved) throw new Error(out.note || "Not saved.");
         return out;
-      }));
-      ipcMain.handle("money:updateRecord", moneyOp((m, id, f) => m.updateRecord(id, f)));
-      ipcMain.handle("money:deleteRecord", moneyOp((m, id) => m.deleteRecord(id)));
-      ipcMain.handle("money:addWallet", moneyOp((m, w) => m.addWallet(w)));
-      ipcMain.handle("money:updateWallet", moneyOp((m, id, f) => m.updateWallet(id, f)));
-      ipcMain.handle("money:setBalance", moneyOp((m, id, v) => m.setBalance(id, v)));
-      ipcMain.handle("money:deleteWallet", moneyOp((m, id) => m.deleteWallet(id)));
-      ipcMain.handle("money:addCategory", moneyOp((m, c) => m.addCategory(c)));
-      ipcMain.handle("money:updateCategory", moneyOp((m, id, f) => m.updateCategory(id, f)));
-      ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b)));
-      ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat)));
-      ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id)));
+      }, "Added a money record"));
+      ipcMain.handle("money:updateRecord", moneyOp((m, id, f) => m.updateRecord(id, f), "Changed a money record"));
+      ipcMain.handle("money:deleteRecord", moneyOp((m, id) => m.deleteRecord(id), "Deleted a money record"));
+      ipcMain.handle("money:addWallet", moneyOp((m, w) => m.addWallet(w), "Added a wallet"));
+      ipcMain.handle("money:updateWallet", moneyOp((m, id, f) => m.updateWallet(id, f), "Changed a wallet"));
+      ipcMain.handle("money:setBalance", moneyOp((m, id, v) => m.setBalance(id, v), "Changed a balance"));
+      ipcMain.handle("money:deleteWallet", moneyOp((m, id) => m.deleteWallet(id), "Deleted a wallet"));
+      ipcMain.handle("money:addCategory", moneyOp((m, c) => m.addCategory(c), "Added a category"));
+      ipcMain.handle("money:updateCategory", moneyOp((m, id, f) => m.updateCategory(id, f), "Changed a category"));
+      ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b), "Merged categories"));
+      ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat), "Remembered a shop"));
+      ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id), "Forgot a shop"));
       ipcMain.handle("nb:tree", () => notebook.tree());
       ipcMain.handle("nb:nested", () => notebook.nestedTree());
       var nbOp = (fn) => async (_e, ...args) => {
@@ -39798,7 +40032,11 @@ Content-Type: application/octet-stream\r
       ipcMain.handle("nb:openPage", (_e, p) => shell.openPath(notebook.resolve(p)));
       ipcMain.handle("tasks:list", () => notebook.loadTasks());
       ipcMain.handle("tasks:update", (_e, id, fields) => {
-        notebook.begin(`Updated task #${id}`);
+        const before = notebook.loadTasks().find((x) => String(x.id) === String(id));
+        const nm = before ? before.title : `#${id}`, T = I18n.t;
+        const day = (d) => (/* @__PURE__ */ new Date(d + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" });
+        const label = fields.status === "done" ? T('Ticked off "{0}"', nm) : fields.due && fields.start && before && (fields.due !== before.due || fields.start !== before.start) ? T('Moved "{0}" to {1} \u2192 {2}', nm, day(fields.start), day(fields.due)) : fields.due && before && fields.due !== before.due ? T('Moved "{0}" to {1}', nm, day(fields.due)) : T('Changed "{0}"', nm);
+        notebook.begin(label);
         try {
           const t2 = notebook.updateTask(id, fields);
           notebook.commit();
@@ -39821,6 +40059,7 @@ Content-Type: application/octet-stream\r
         lang: appLang(),
         shortcut: config.shortcut || DEFAULT_SHORTCUT,
         captureShortcut: config.captureShortcut || DEFAULT_CAPTURE,
+        quickShortcut: config.quickShortcut || DEFAULT_QUICK,
         captureEnabled: config.captureEnabled !== false,
         openAtLogin: process.platform === "linux" ? !!config.openAtLogin : app.getLoginItemSettings().openAtLogin,
         platform: process.platform
@@ -39848,9 +40087,10 @@ Content-Type: application/octet-stream\r
         }
         if (s.shortcut) config.shortcut = s.shortcut;
         if (s.captureShortcut) config.captureShortcut = s.captureShortcut;
+        if (s.quickShortcut) config.quickShortcut = s.quickShortcut;
         if (s.captureEnabled !== void 0) config.captureEnabled = !!s.captureEnabled;
         let shortcuts = null;
-        if (s.shortcut || s.captureShortcut || s.captureEnabled !== void 0) shortcuts = registerShortcut();
+        if (s.shortcut || s.captureShortcut || s.quickShortcut || s.captureEnabled !== void 0) shortcuts = registerShortcut();
         if (s.openAtLogin !== void 0) setOpenAtLogin(!!s.openAtLogin);
         saveConfig();
         return shortcuts ? { shortcuts } : true;
@@ -40184,7 +40424,8 @@ X-GNOME-Autostart-enabled=true
         moneyMonthly: true,
         dueAhead: 1,
         billsAhead: 3,
-        budgetWarn: 80
+        budgetWarn: 80,
+        timeAhead: 30
       };
       var routine = () => {
         const r = { ...ROUTINE_DEFAULT, ...config.routine || {} };
@@ -40408,6 +40649,24 @@ ${lines.join("\n")}
           st.lastRecap = today;
           changed = true;
         }
+        if (Number(r.timeAhead) > 0) {
+          const toMin = (s) => {
+            const [h, m] = s.split(":").map(Number);
+            return h * 60 + m;
+          };
+          const nowMin = toMin(hhmm);
+          const told = new Set(st.timeTold || []);
+          const soon = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due === today && t2.time && !told.has(t2.id + "@" + today + t2.time) && nowMin >= toMin(t2.time) - Number(r.timeAhead) && nowMin <= toMin(t2.time) + 5);
+          for (const t2 of soon.slice(0, 3)) {
+            const left = toMin(t2.time) - nowMin;
+            notify(left > 0 ? I18n.t("In {0} min: {1}", left, t2.title) : I18n.t("Now: {0}", t2.title), `${t2.time}${t2.project ? " \xB7 " + t2.project : ""}`, "tasks");
+            alertBuddy("tasks");
+          }
+          if (soon.length) {
+            st.timeTold = [...told, ...soon.map((t2) => t2.id + "@" + today + t2.time)].slice(-300);
+            changed = true;
+          }
+        }
         if (nudgesOn && Number(r.dueAhead) > 0 && st.lastBrief === today) {
           const until = addDays(today, Number(r.dueAhead));
           const ahead = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due > today && t2.due <= until);
@@ -40494,7 +40753,11 @@ ${lines.join("\n")}
         else if (a.rotate === "day" && new Date(last).toDateString() !== (/* @__PURE__ */ new Date()).toDateString()) rotateBuddy();
       }
       setInterval(rotateTick, 60 * 1e3);
-      app.on("second-instance", () => showPanel());
+      app.on("second-instance", (_e, argv) => {
+        const files = filesFromArgs(argv);
+        if (files.length) dropToChat({ files });
+        else showPanel();
+      });
       var quitSynced = false;
       app.on("before-quit", (e) => {
         app.isQuitting = true;
@@ -40543,6 +40806,11 @@ ${lines.join("\n")}
           if (!ANDROID) {
             createTray();
             registerShortcut();
+            sendToShortcut();
+          }
+          if (!ANDROID) {
+            const f = filesFromArgs(process.argv);
+            if (f.length) setTimeout(() => dropToChat({ files: f }), 2500);
           }
           if (ANDROID || !signedIn() || !hasAI()) panelWin.webContents.once("did-finish-load", () => showPanel("chat"));
           if (signedIn()) startSync();
@@ -40611,6 +40879,8 @@ ${lines.join("\n")}
         openChat: (id) => ipcRenderer.invoke("chat:open", id),
         lastUndo: () => ipcRenderer.invoke("undo:last"),
         undo: () => ipcRenderer.invoke("undo:do"),
+        undoIds: (ids) => ipcRenderer.invoke("undo:ids", ids),
+        onUndoOffer: (fn) => on("undo:offer", fn),
         usage: () => ipcRenderer.invoke("usage:get"),
         aiGet: () => ipcRenderer.invoke("ai:get"),
         aiTest: (d) => ipcRenderer.invoke("ai:test", d),
@@ -40699,6 +40969,11 @@ ${lines.join("\n")}
         onMoneyChanged: (fn) => on("money:changed", fn),
         onShowView: (fn) => on("ui:show", fn),
         snip: () => ipcRenderer.invoke("snip:start"),
+        onQuickSend: (fn) => on("quick:send", fn),
+        onQuickFill: (fn) => on("quick:fill", fn),
+        quickResult: (r) => ipcRenderer.send("quick:result", r),
+        onDropped: (fn) => on("drop:files", fn),
+        dropOnBuddy: (d) => ipcRenderer.send("buddy:drop", d),
         voiceGet: () => ipcRenderer.invoke("voice:get"),
         voiceSet: (p) => ipcRenderer.invoke("voice:set", p),
         voiceTest: (key) => ipcRenderer.invoke("voice:test", key),

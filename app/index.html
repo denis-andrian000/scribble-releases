@@ -318,6 +318,7 @@
       <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
       <div class="field"><span>Shortcuts</span>
         <div class="kbd-row"><button type="button" class="kbd-btn" id="k-panel"></button><small>Open / close this panel</small></div>
+        <div class="kbd-row"><button type="button" class="kbd-btn" id="k-quick"></button><small>Quick capture: tell your buddy something from any app</small></div>
         <div class="kbd-row"><button type="button" class="kbd-btn" id="k-capture"></button><small>Save what you copied to Inbox</small></div>
         <label class="toggle"><input type="checkbox" id="s-capture"><span>Clipboard capture hotkey on</span></label>
         <small>Click a shortcut, then press the new keys. <span id="k-msg" class="kbd-bad"></span></small>
@@ -349,6 +350,7 @@
         <label class="toggle r-money"><input type="checkbox" id="r-mmonthly"><span>Monthly money report on the 1st</span></label>
       </div>
       <div class="field"><span>Reminders</span>
+        <div class="t-row"><span>Tasks with a time</span><select id="r-timeahead" class="mini"><option value="0">No reminder</option><option value="10">10 min before</option><option value="30">30 min before</option><option value="60">1 hour before</option><option value="120">2 hours before</option></select></div>
         <div class="t-row"><span>Tasks due</span><select id="r-dueahead" class="mini"><option value="0">On the day</option><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option></select></div>
         <div class="t-row r-money"><span>Bills and planned payments</span><select id="r-billsahead" class="mini"><option value="0">On the day</option><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option><option value="7">A week before</option></select></div>
         <div class="t-row r-money"><span>Budget warning at</span><select id="r-budgetwarn" class="mini"><option value="50">50%</option><option value="70">70%</option><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option></select></div>
