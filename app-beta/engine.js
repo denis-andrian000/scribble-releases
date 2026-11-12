@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.22.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.22.2";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -38844,7 +38844,19 @@ Content-Type: application/octet-stream\r
         "+ {0} more": "+ {0} lagi",
         "Free to spend: {0} a day": "Bisa dipakai: {0} sehari",
         "{0} \xB7 Today": "{0} \xB7 Hari ini",
-        "Merged {0} conflict copies into their pages": "Menggabungkan {0} salinan konflik ke halamannya"
+        "Merged {0} conflict copies into their pages": "Menggabungkan {0} salinan konflik ke halamannya",
+        "What a week! \u{1F389}": "Minggu yang luar biasa! \u{1F389}",
+        "Nice work this week!": "Kerja bagus minggu ini!",
+        "A steady start. Keep going!": "Awal yang mantap. Lanjutkan!",
+        "A quiet week. Rest counts too.": "Minggu yang tenang. Istirahat juga penting.",
+        "Good work, but spending ran high.": "Kerja bagus, tapi pengeluaran agak tinggi.",
+        "{0} still open": "{0} masih terbuka",
+        "Made with Scribble": "Dibuat dengan Scribble",
+        "No spending this week": "Tidak ada pengeluaran minggu ini",
+        "\u{1F4CB} What's on my plate today?": "\u{1F4CB} Apa saja agendaku hari ini?",
+        "\u{1F9FE} Summarize my day": "\u{1F9FE} Rangkum hariku",
+        "\u{1F5E3}\uFE0F Write my stand-up for today": "\u{1F5E3}\uFE0F Tulis laporan stand-up hari ini",
+        "\u{1F4C1} Show my projects and where they stand": "\u{1F4C1} Tampilkan proyekku dan progresnya"
       };
     }
   });
@@ -40788,7 +40800,7 @@ In one short line say what it is, then offer what to do with it as options (add 
             budget = { total, spent };
           }
         }
-        return { from: monday, to: today, done: week.length, titles: week.slice(-6).map((t2) => t2.title), busiest, streak, projects, moneyOut, budget, name: avatar().name || "Scribble", look: avatar() };
+        return { open: all.filter((t2) => t2.status !== "done" && t2.status !== "cancelled").length, from: monday, to: today, done: week.length, titles: week.sort((a, b) => String(a.completed).localeCompare(String(b.completed))).slice(-8).map((t2) => t2.title), busiest, streak, projects, moneyOut, budget, name: avatar().name || "Scribble", look: avatar() };
       });
       ipcMain.handle("money:plans", () => {
         const m = money();

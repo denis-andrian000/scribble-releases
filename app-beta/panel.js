@@ -1009,7 +1009,8 @@ $$('.chips button').forEach((b) => b.addEventListener('click', async () => {
   if (b.dataset.brief) { currentBrief = await S.briefNow(); return renderMessages([]); }
   if (b.dataset.meeting) { if (window.Meeting) Meeting.open(); return; }
   if (b.dataset.wins) { if (window.Wins) Wins.open(); return; }
-  send(b.textContent);
+  const label = b.textContent.trim();
+  send(label.replace(/^[^\p{L}\p{N}]+/u, ''), label);   // the emoji is just for the button
 }));
 
 $('#btn-newchat').addEventListener('click', async () => {
