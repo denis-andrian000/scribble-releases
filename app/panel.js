@@ -56,6 +56,14 @@ function applyMoney(on) {
   if (!moneyOn && currentTab === 'money') showTab(lastWork);
 }
 S.getSettings().then((s) => applyMoney(s.money)).catch(() => {});
+// the buddy can open a view for you ("show me the timeline")
+if (S.onShowView) S.onShowView((opts = {}) => {
+  if (opts.view !== 'timeline') return;
+  try { localStorage.setItem(viewKey(), 'timeline'); } catch {}
+  if (window.Timeline) Timeline.focus(opts);
+  lastWork = 'tasks';
+  showTab('tasks');
+});
 if (S.onMoneyChanged) S.onMoneyChanged(() => { if (currentTab === 'money' && window.Money) Money.show(); });
 $('#btn-settings').addEventListener('click', () => showTab(currentTab === 'settings' ? (wideMode ? lastLeft : 'chat') : 'settings'));
 $('#btn-close').addEventListener('click', () => S.hide());
