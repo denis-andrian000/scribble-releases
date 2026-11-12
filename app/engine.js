@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.25.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.26.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37912,7 +37912,7 @@ Content-Type: application/octet-stream\r
         "I need an AI key to think, write notes and track your tasks. Pick one \u2014 it takes about a minute.": "Aku butuh kunci AI untuk berpikir, menulis catatan, dan melacak tugasmu. Pilih satu \u2014 cuma sekitar satu menit.",
         "Google Gemini": "Google Gemini",
         Free: "Gratis",
-        Paid: "Sudah bayar",
+        Paid: "Berbayar",
         "Free with any Google account. No credit card. Daily limits that are fine for personal use.": "Gratis dengan akun Google apa pun. Tanpa kartu kredit. Batas harian cukup untuk pemakaian pribadi.",
         Claude: "Claude",
         "The smartest at notes and tasks. Pay as you go: a few dollars of credit lasts a long time.": "Paling pintar untuk catatan dan tugas. Bayar sesuai pemakaian: kredit beberapa dolar bisa tahan lama.",
@@ -38958,7 +38958,35 @@ Content-Type: application/octet-stream\r
         "Couldn't hear the meeting. Allow the microphone and try again.": "Tidak bisa mendengar rapatnya. Izinkan mikrofon lalu coba lagi.",
         "Writing the meeting notes\u2026": "Menulis catatan rapat\u2026",
         "I didn't hear anything in that meeting.": "Aku tidak mendengar apa-apa di rapat itu.",
-        "Listening to {0} \xB7 {1} min": "Mendengarkan {0} \xB7 {1} menit"
+        "Listening to {0} \xB7 {1} min": "Mendengarkan {0} \xB7 {1} menit",
+        "Your AI keys and what each one does": "Kunci AI-mu dan fungsinya masing-masing",
+        "Add one or more keys. Your buddy picks the right one for each job: chatting, reading photos and PDFs, the mic, meeting notes and its voice.": "Tambahkan satu atau beberapa kunci. Buddy-mu memilih yang tepat untuk tiap tugas: mengobrol, membaca foto dan PDF, mikrofon, catatan rapat, dan suaranya.",
+        "Paste the key here": "Tempel kuncinya di sini",
+        "How do I get a key?": "Bagaimana cara dapat kunci?",
+        "Keys stay encrypted on your devices.": "Kunci tetap terenkripsi di perangkatmu.",
+        "Rotate between my keys automatically when one is busy or runs out of free use": "Bergantian antar kunciku otomatis saat salah satu sibuk atau jatah gratisnya habis",
+        Chatting: "Mengobrol",
+        "Photos & PDFs": "Foto & PDF",
+        "Mic & meetings": "Mikrofon & rapat",
+        "Backup chat": "Cadangan obrolan",
+        "Chat (free models)": "Mengobrol (model gratis)",
+        "Buddy voice": "Suara buddy",
+        "The best at following your instructions and writing. Paid, pay as you go.": "Paling jago mengikuti instruksi dan menulis. Berbayar, sesuai pemakaian.",
+        "Free tier from Google. Good all-rounder.": "Jatah gratis dari Google. Serba bisa.",
+        "Free. Very fast, and the best at Bahasa Indonesia speech for the mic and meeting notes.": "Gratis. Sangat cepat, dan paling bagus mengenali suara Bahasa Indonesia untuk mikrofon dan catatan rapat.",
+        "Free models for chat; the buddy's voice is pay as you go.": "Model gratis untuk mengobrol; suara buddy dibayar sesuai pemakaian.",
+        "Chats with this": "Dipakai mengobrol",
+        "Chat with this": "Pakai untuk mengobrol",
+        "Your buddy now chats with {0}": "Buddy-mu sekarang mengobrol dengan {0}",
+        Works: "Berfungsi",
+        "Pick which key you have. Not sure? Groq and Gemini are free and quick to get.": "Pilih kunci yang kamu punya. Bingung? Groq dan Gemini gratis dan cepat didapat.",
+        "Paste your {0} key here": "Tempel kunci {0}-mu di sini",
+        "{0} works. Press Add.": "{0} berfungsi. Tekan Tambah.",
+        "Drop the buddy on a Meet, Zoom or Teams window to listen and write meeting notes (uses one of your AI keys; a free Groq or Gemini key works)": "Taruh buddy di jendela Meet, Zoom, atau Teams untuk mendengarkan dan menulis catatan rapat (memakai salah satu kunci AI-mu; kunci Groq atau Gemini gratis bisa)",
+        "Add a Groq or Gemini key first": "Tambahkan kunci Groq atau Gemini dulu",
+        "Listening to meetings turns speech into text with one of your AI keys. A free Groq or Gemini key works: Settings \u2192 App \u2192 AI.": "Mendengarkan rapat mengubah suara jadi teks dengan salah satu kunci AI-mu. Kunci Groq atau Gemini gratis bisa: Pengaturan \u2192 Aplikasi \u2192 AI.",
+        "To talk here, add a free Groq or Gemini key in Settings \u2192 App \u2192 AI.": "Untuk bicara di sini, tambahkan kunci Groq atau Gemini gratis di Pengaturan \u2192 Aplikasi \u2192 AI.",
+        "To listen here, add a free Groq or Gemini key in Settings \u2192 App \u2192 AI. You can still type your notes.": "Untuk mendengarkan di sini, tambahkan kunci Groq atau Gemini gratis di Pengaturan \u2192 Aplikasi \u2192 AI. Kamu tetap bisa mengetik catatan."
       };
     }
   });
@@ -39617,7 +39645,12 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
             out.push({ c, m, key, tools: !(c.noTools || []).includes(m.id) && AI.supportsTools(c, m.id) });
           }
         }
-        return out.sort((a, b) => b.tools - a.tools);
+        const size = (id) => /(405|235|120|70|72)b|gpt-oss-120|scout|maverick|pro|sonnet|opus|large/i.test(id) ? 2 : /(8|7|3|1)b\b|mini|nano|lite|small|tiny/i.test(id) ? 0 : 1;
+        const pref = (x) => {
+          const p = AI.preferredModel(x.c, x.c.models || []);
+          return p && p.id === x.m.id ? 1 : 0;
+        };
+        return out.sort((a, b) => b.tools - a.tools || (a.c.id === fromConnId ? 0 : 1) - (b.c.id === fromConnId ? 0 : 1) || pref(b) - pref(a) || size(b.m.id) - size(a.m.id));
       }
       function onLimit(active, e, tried) {
         const key = `${active.conn.id}::${active.model}`;
@@ -40217,8 +40250,8 @@ public static string At(int x, int y, uint me) { SetProcessDPIAware(); for (IntP
       var callOn = null;
       function startCall(title) {
         const name = meetingName(title), T = I18n.t;
-        if (!voiceKey()) {
-          notify(T("Add your OpenRouter key first"), T("Listening to meetings turns speech into text with your OpenRouter key: Settings \u2192 Buddy \u2192 Voice."), "settings");
+        if (!sttKeys().length) {
+          notify(T("Add a Groq or Gemini key first"), T("Listening to meetings turns speech into text with one of your AI keys. A free Groq or Gemini key works: Settings \u2192 App \u2192 AI."), "settings");
           sendBuddy("buddy:state", "sad");
           return;
         }
@@ -40662,7 +40695,7 @@ In one short line say what it is, then offer what to do with it as options (add 
           month: summarize(Object.entries(u.days).filter(([d]) => d.startsWith(month)).map(([, v]) => v))
         };
       });
-      var OFFERED = ["gemini", "anthropic"];
+      var OFFERED = ["anthropic", "gemini", "groq", "openrouter"];
       ipcMain.handle("ai:get", () => ({
         connections: connections().map(publicConn),
         model: (() => {
@@ -40690,7 +40723,7 @@ In one short line say what it is, then offer what to do with it as options (add 
       ipcMain.handle("ai:add", async (_e, d = {}) => {
         const key = String(d.key || "").trim();
         let r;
-        if (d.provider && d.provider !== "auto" && !OFFERED.includes(d.provider)) return { ok: false, error: "Scribble works with Gemini and Claude keys." };
+        if (d.provider && d.provider !== "auto" && !OFFERED.includes(d.provider)) return { ok: false, error: "Scribble works with Claude, Gemini, Groq and OpenRouter keys." };
         try {
           r = await AI.detect({ key, provider: d.provider && d.provider !== "auto" ? d.provider : void 0, only: OFFERED });
         } catch (e) {
@@ -40839,7 +40872,11 @@ ${brief}` }, ...blocks];
       });
       var VOICE_DEFAULT_MODEL = "fish-audio/s2.1-pro-free:free";
       var voiceCfg = () => config.voice = config.voice || { on: false, model: VOICE_DEFAULT_MODEL, cute: 1.25, refs: {} };
-      var voiceKey = () => unseal(voiceCfg());
+      var connKey = (provider) => {
+        const c = (config.connections || []).find((x) => x.provider === provider);
+        return c ? unseal(c) : "";
+      };
+      var voiceKey = () => unseal(voiceCfg()) || connKey("openrouter");
       async function orFetch(pathname, key, init = {}) {
         return fetch("https://openrouter.ai/api/v1" + pathname, { ...init, headers: { authorization: "Bearer " + key, "content-type": "application/json", "x-title": "Scribble", ...init.headers || {} } });
       }
@@ -40919,23 +40956,78 @@ ${brief}` }, ...blocks];
         saveConfig();
         return true;
       });
-      ipcMain.handle("voice:transcribe", async (_e, b64, format, lang) => {
-        const key = voiceKey();
-        if (!key) return { ok: false, error: "nokey" };
+      function sttHints() {
+        const words = /* @__PURE__ */ new Set();
         try {
-          const r = await orFetch("/audio/transcriptions", key, { method: "POST", body: JSON.stringify({ model: voiceCfg().sttModel || "openai/whisper-large-v3", input_audio: { data: b64, format: format || "webm" }, ...lang === "id" ? { language: "id" } : {} }) });
-          const t2 = await r.text();
-          if (!r.ok) return { ok: false, error: orError(t2, r.status) };
-          let j = {};
-          try {
-            j = JSON.parse(t2);
-          } catch {
-          }
-          return { ok: true, text: String(j.text || "").trim() };
-        } catch (e) {
-          return { ok: false, error: e.message };
+          const m = new Memory(notebook).read();
+          for (const f of [...m.people, ...m.work]) for (const w of f.text.match(/\b[A-Z][\w-]+(?:\s[A-Z][\w-]+)?/g) || []) words.add(w);
+        } catch {
         }
+        try {
+          for (const t2 of notebook.listTasks({ status: "open" })) if (t2.project) words.add(t2.project);
+        } catch {
+        }
+        return [...words].slice(0, 30).join(", ");
+      }
+      var sttKeys = () => [["groq", connKey("groq")], ["gemini", connKey("gemini")], ["openrouter", voiceKey()]].filter(([, k]) => k);
+      async function transcribeWith(provider, key, b64, format, hints) {
+        const mime = format === "wav" ? "audio/wav" : format === "ogg" ? "audio/ogg" : format === "mp4" ? "audio/mp4" : "audio/webm";
+        if (provider === "groq") {
+          const fd = new FormData();
+          fd.append("file", new Blob([Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0))], { type: mime }), `audio.${format || "webm"}`);
+          fd.append("model", "whisper-large-v3");
+          fd.append("response_format", "json");
+          if (hints) fd.append("prompt", `Percakapan dalam Bahasa Indonesia dan English. ${hints}`.slice(0, 800));
+          const r2 = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: fd });
+          const t3 = await r2.text();
+          if (!r2.ok) throw Object.assign(new Error((() => {
+            try {
+              return JSON.parse(t3).error.message;
+            } catch {
+              return `Groq said ${r2.status}`;
+            }
+          })()), { status: r2.status });
+          return String(JSON.parse(t3).text || "").trim();
+        }
+        if (provider === "gemini") {
+          const prompt = `Transcribe this audio exactly as spoken, word for word. People switch between Bahasa Indonesia and English: keep each part in the language it was said in, do not translate. No timestamps, no speaker labels, no comments; if nobody speaks, return nothing.${hints ? ` Names and terms that may come up: ${hints}.` : ""}`;
+          const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-goog-api-key": key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { temperature: 0 } })
+          });
+          const j2 = await r2.json().catch(() => ({}));
+          if (!r2.ok) throw Object.assign(new Error(j2.error && j2.error.message || `Gemini said ${r2.status}`), { status: r2.status });
+          return ((((j2.candidates || [])[0] || {}).content || {}).parts || []).map((p) => p.text || "").join("").trim();
+        }
+        const r = await orFetch("/audio/transcriptions", key, { method: "POST", body: JSON.stringify({ model: voiceCfg().sttModel || "openai/whisper-large-v3", input_audio: { data: b64, format: format || "webm" } }) });
+        const t2 = await r.text();
+        if (!r.ok) throw Object.assign(new Error(orError(t2, r.status)), { status: r.status });
+        let j = {};
+        try {
+          j = JSON.parse(t2);
+        } catch {
+        }
+        return String(j.text || "").trim();
+      }
+      ipcMain.handle("voice:transcribe", async (_e, b64, format) => {
+        const keys = sttKeys();
+        if (!keys.length) return { ok: false, error: "nokey" };
+        const hints = sttHints();
+        let last = null;
+        for (const [provider, key] of keys) {
+          if (coolingFor(`stt::${provider}`) > 0) continue;
+          try {
+            return { ok: true, text: await transcribeWith(provider, key, b64, format, hints), via: provider };
+          } catch (e) {
+            last = e;
+            if ([429, 402, 503, 529].includes(e.status)) cooldown.set(`stt::${provider}`, Date.now() + 6e4);
+            logLine("stt failed", provider, e.status, e.message);
+          }
+        }
+        return { ok: false, error: last ? last.message : "nokey" };
       });
+      ipcMain.handle("voice:sttReady", () => sttKeys().length > 0);
       var snipping = false;
       ipcMain.handle("snip:start", async () => {
         if (ANDROID || snipping) return { ok: false };
@@ -42264,6 +42356,7 @@ ${lines.join("\n")}
         voiceKeep: (clip) => ipcRenderer.invoke("voice:keep", clip),
         voiceTalking: (ms) => ipcRenderer.send("voice:talking", ms),
         voiceTranscribe: (b64, format, lang) => ipcRenderer.invoke("voice:transcribe", b64, format, lang),
+        sttReady: () => ipcRenderer.invoke("voice:sttReady"),
         onTalk: (fn) => on("buddy:talk", fn)
       });
     }

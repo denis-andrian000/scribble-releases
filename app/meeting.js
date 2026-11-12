@@ -76,8 +76,8 @@
     ov.classList.add('rec');
     if (NATIVE) { engine = 'android'; hint(T('Listening with your phone. Keep Scribble open during the meeting.')); return nativeLoop(); }
     if (BROWSER_SR) { engine = 'browser'; hint(T('Listening. Words appear as people talk.')); return browserLoop(); }
-    let cfg = null; try { cfg = await S.voiceGet(); } catch {}
-    if (!cfg || !cfg.hasKey || !navigator.mediaDevices) { engine = 'type'; ov.classList.remove('rec'); hint(T('To listen here, turn on Voice in Settings and add your OpenRouter key. You can still type your notes.')); return; }
+    let ready = false; try { ready = await S.sttReady(); } catch {}
+    if (!ready || !navigator.mediaDevices) { engine = 'type'; ov.classList.remove('rec'); hint(T('To listen here, add a free Groq or Gemini key in Settings → App → AI. You can still type your notes.')); return; }
     engine = 'rec'; hint(T('Listening. Text appears every minute or so.'));
     recorderLoop();
   }
@@ -111,8 +111,9 @@
         if (!parts.length) return;
         const blob = new Blob(parts, { type: type || 'audio/webm' });
         if (blob.size < 4000) return;
-        const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
-        const r = await S.voiceTranscribe(b64, /ogg/.test(type) ? 'ogg' : 'webm', lang().slice(0, 2));
+        let b64 = null, fmt = 'wav';
+        try { b64 = await window.toWav16k(blob); } catch { fmt = /ogg/.test(type) ? 'ogg' : 'webm'; b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); }); }
+        const r = await S.voiceTranscribe(b64, fmt);
         if (r && r.ok && r.text) add(r.text);
         else if (r && r.error) hint('⚠ ' + r.error);
       };
@@ -150,8 +151,9 @@
         owner.job = owner.job.then(async () => {
           const blob = new Blob(bits, { type: type || 'audio/webm' });
           if (blob.size < 6000) return;
-          const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
-          const r = await S.voiceTranscribe(b64, 'webm', '');
+          let b64 = null, fmt = 'wav';
+          try { b64 = await window.toWav16k(blob); } catch { fmt = 'webm'; b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); }); }
+          const r = await S.voiceTranscribe(b64, fmt);
           if (r && r.ok && r.text) owner.parts.push(r.text);
         }).catch(() => {});
       };

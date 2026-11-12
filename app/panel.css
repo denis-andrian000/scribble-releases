@@ -1029,3 +1029,15 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .call-bar { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 900; display: flex; align-items: center; gap: 8px; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; box-shadow: var(--shadow); white-space: nowrap; }
 .call-bar i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: micpulse 1.2s ease-in-out infinite; }
 .call-bar button { color: var(--accent); font-weight: 700; }
+
+/* Settings → AI */
+.ai-uses { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
+.ai-uses span { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--ink); }
+.ai-main { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--bg); margin-left: auto; }
+.ai-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ai-card { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); cursor: pointer; }
+.ai-card small { color: var(--ink-2); font-size: 11px; }
+.ai-card.on { border: 2px solid var(--ink); padding: 7px 3px; }
+.ai-about { font-size: 12.5px; color: var(--ink-2); }
+.ai-card b { font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ai-key { font: inherit; font-size: 13px; }

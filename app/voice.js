@@ -139,7 +139,7 @@
       rec.start(); mic.classList.add('rec'); mic.title = t('Listening… click to stop');
       return;
     }
-    if (!cfg.hasKey) { window.toast && toast(t('To talk, turn on Voice in Settings and add your OpenRouter key.')); return; }
+    if (!(await S.sttReady())) { window.toast && toast(t('To talk here, add a free Groq or Gemini key in Settings → App → AI.')); return; }
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch { window.toast && toast(t('Allow the microphone to talk to your buddy.')); return; }
     const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((x) => window.MediaRecorder && MediaRecorder.isTypeSupported(x)) || '';
@@ -149,15 +149,36 @@
       stream.getTracks().forEach((x) => x.stop()); rec = null;
       mic.classList.remove('rec'); mic.classList.add('busy'); mic.title = t('Turning it into text…');
       const blob = new Blob(chunks, { type: type || 'audio/webm' });
-      const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
-      const r = await S.voiceTranscribe(b64, /mp4/.test(type) ? 'mp4' : /ogg/.test(type) ? 'ogg' : 'webm', lang().slice(0, 2));
+      let b64 = null, fmt = 'wav';
+      try { b64 = await toWav16k(blob); } catch { fmt = /mp4/.test(type) ? 'mp4' : /ogg/.test(type) ? 'ogg' : 'webm'; b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); }); }
+      const r = await S.voiceTranscribe(b64, fmt);
       micOff();
       if (r.ok && r.text) { setInput(before + r.text); input.focus(); }
-      else window.toast && toast(r.error === 'nokey' ? t('To talk, turn on Voice in Settings and add your OpenRouter key.') : (r.error || t("I didn't catch that. Try again?")));
+      else window.toast && toast(r.error === 'nokey' ? t('To talk here, add a free Groq or Gemini key in Settings → App → AI.') : (r.error || t("I didn't catch that. Try again?")));
     };
     rec.start(); mic.classList.add('rec'); mic.title = t('Listening… click to stop');
   });
 
+
+  // recordings → 16 kHz mono WAV: every speech-to-text service takes it (Gemini doesn't take WebM), and it's small enough
+  async function toWav16k(blob) {
+    const buf = await blob.arrayBuffer();
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    let audio; try { audio = await ac.decodeAudioData(buf); } finally { try { ac.close(); } catch {} }
+    const rate = 16000, len = Math.max(1, Math.ceil(audio.duration * rate));
+    const off = new OfflineAudioContext(1, len, rate);
+    const src = off.createBufferSource(); src.buffer = audio; src.connect(off.destination); src.start();
+    const pcm = (await off.startRendering()).getChannelData(0);
+    const out = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+    const w = (o, str) => [...str].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+    w(0, 'RIFF'); out.setUint32(4, 36 + pcm.length * 2, true); w(8, 'WAVE'); w(12, 'fmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+    out.setUint32(24, rate, true); out.setUint32(28, rate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true); w(36, 'data'); out.setUint32(40, pcm.length * 2, true);
+    for (let i = 0; i < pcm.length; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 0x7fff, true);
+    const bytes = new Uint8Array(out.buffer); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  window.toWav16k = toWav16k;
   window.Voice = { say, stop, load };
   load();
 })();

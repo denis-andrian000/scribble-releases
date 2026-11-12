@@ -1999,7 +1999,6 @@ async function loadSettings() {
   loadAccount();
   S.updateState().then(applyUpdate);
   loadRoutine();
-  loadUsage();
   loadAI();
   const s = await S.getSettings();
   if (!s.hasKey) { showSettingsTab('app'); const d = document.querySelector('details[data-sec="a-ai"]'); if (d) d.open = true; }
@@ -2056,80 +2055,87 @@ document.querySelectorAll('details.set-sec[data-sec]').forEach(wireSec);
 // ---------------- AI connections ----------------
 let aiState = null;
 let aiDraft = null;          // result of the last successful test of the key in the form
+// What each kind of key does for you (Settings → AI). Your buddy picks the right key for each job by itself.
+const AI_ABOUT = {
+  anthropic: { name: 'Claude', uses: ['Chatting'], note: 'The best at following your instructions and writing. Paid, pay as you go.', free: false },
+  gemini: { name: 'Gemini', uses: ['Chatting', 'Photos & PDFs', 'Mic & meetings'], note: 'Free tier from Google. Good all-rounder.', free: true },
+  groq: { name: 'Groq', uses: ['Backup chat', 'Mic & meetings'], note: 'Free. Very fast, and the best at Bahasa Indonesia speech for the mic and meeting notes.', free: true },
+  openrouter: { name: 'OpenRouter', uses: ['Chat (free models)', 'Buddy voice', 'Mic & meetings'], note: 'Free models for chat; the buddy\'s voice is pay as you go.', free: true },
+};
+let aiPicked = '';
 async function loadAI() {
   aiState = await S.aiGet();
   const list = $('#ai-list');
   list.innerHTML = '';
+  const chatConn = String(aiState.model || '').split('::')[0];
   if (!aiState.connections.length) {
-    const e = el('div', 'ai-empty'); e.textContent = 'No AI connected yet. Add a key below to start chatting.';
+    const e = el('div', 'ai-empty'); e.textContent = I18n.t('No AI connected yet. Add a key below to start chatting.');
     list.append(e);
     $('#ai-add').open = true;
   }
   for (const c of aiState.connections) {
+    const about = AI_ABOUT[c.provider] || { name: c.providerLabel, uses: ['Chatting'] };
     const row = el('div', 'ai-conn');
     const head = el('div', 'ai-head');
-    const name = el('b'); name.textContent = c.label;
-    const prov = el('span', 'ai-prov'); const pl = c.provider === 'custom' ? (c.baseUrl.replace(/^https?:\/\//, '').split('/')[0] || 'Custom') : c.providerLabel;
-    prov.textContent = c.providerLabel.toLowerCase().startsWith(c.label.toLowerCase()) ? c.keyHint : `${pl} · ${c.keyHint}`;
-    const st = el('span', 'ai-status'); st.textContent = `${c.models.length} model${c.models.length === 1 ? '' : 's'}${c.info ? ' · ' + c.info : ''}`;
-    head.append(name, prov);
+    const name = el('b'); name.textContent = about.name;
+    const hint = el('span', 'ai-prov'); hint.textContent = c.keyHint;
+    head.append(name, hint);
+    if (c.id === chatConn) { const m = el('span', 'ai-main'); m.textContent = I18n.t('Chats with this'); head.append(m); }
+    const uses = el('div', 'ai-uses');
+    for (const u of about.uses) { const t = el('span'); t.textContent = I18n.t(u); uses.append(t); }
+    const st = el('span', 'ai-status');
     const acts = el('div', 'ai-acts');
-    const test = el('button', 'link'); test.type = 'button'; test.textContent = 'Test';
+    if (c.id !== chatConn && c.models.length && !/Backup/.test(about.uses[0])) {
+      const use = el('button', 'link'); use.type = 'button'; use.textContent = I18n.t('Chat with this');
+      use.addEventListener('click', async () => { const best = c.models[0]; await S.aiSetModel(`${c.id}::${best.id}`); toast(I18n.t('Your buddy now chats with {0}', about.name)); loadAI(); });
+      acts.append(use);
+    }
+    const test = el('button', 'link'); test.type = 'button'; test.textContent = I18n.t('Test');
     test.addEventListener('click', async () => {
-      st.textContent = 'Testing…'; st.className = 'ai-status';
+      st.textContent = I18n.t('Testing…'); st.className = 'ai-status';
       const r = await S.aiTest({ id: c.id });
-      if (r.ok) { st.className = 'ai-status ok'; st.textContent = `✓ Works · ${r.models.length} models${r.info ? ' · ' + r.info : ''}`; setTimeout(loadAI, 1800); }
+      if (r.ok) { st.className = 'ai-status ok'; st.textContent = '✓ ' + I18n.t('Works'); }
       else { st.className = 'ai-status bad'; st.textContent = `✗ ${r.error}`; }
     });
     acts.append(test);
     if (!c.env) {
-      const rm = el('button', 'link danger'); rm.type = 'button'; rm.textContent = 'Remove';
+      const rm = el('button', 'link danger'); rm.type = 'button'; rm.textContent = I18n.t('Remove');
       rm.addEventListener('click', async () => {
         if (rm.dataset.sure) { await S.aiRemove(c.id); loadAI(); return; }
-        rm.dataset.sure = '1'; rm.textContent = 'Click again to remove';
-        setTimeout(() => { delete rm.dataset.sure; rm.textContent = 'Remove'; }, 3000);
+        rm.dataset.sure = '1'; rm.textContent = I18n.t('Click again to remove');
+        setTimeout(() => { delete rm.dataset.sure; rm.textContent = I18n.t('Remove'); }, 3000);
       });
       acts.append(rm);
     }
-    row.append(head, st, acts);
+    row.append(head, uses, st, acts);
     list.append(row);
   }
-  // model picker: grouped by connection
-  const sel = $('#s-model');
-  sel.innerHTML = '';
-  for (const c of aiState.connections) {
-    if (!c.models.length) continue;
-    const g = document.createElement('optgroup'); g.label = c.label;
-    for (const m of c.models) { const o = document.createElement('option'); o.value = `${c.id}::${m.id}`; o.textContent = m.label + (m.free ? ' · free' : '') + (m.noTools ? ' (chat only)' : ''); o.dataset.noTools = m.noTools ? '1' : ''; g.append(o); }
-    sel.append(g);
-  }
-  sel.value = aiState.model;
-  sel.disabled = !aiState.connections.length;
-  modelHint(sel.selectedOptions[0]?.dataset.noTools ? 'chat' : '');
-  // provider list for the form
+  // the four kinds of key you can add
   const pv = $('#ai-provider');
   if (pv.options.length < 2) for (const p of aiState.providers) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; pv.append(o); }
+  const pick = $('#ai-pick'); pick.innerHTML = '';
+  for (const id of ['groq', 'gemini', 'anthropic', 'openrouter']) {
+    const a = AI_ABOUT[id], have = aiState.connections.some((c) => c.provider === id);
+    const b = el('button', 'ai-card' + (aiPicked === id ? ' on' : '')); b.type = 'button';
+    b.innerHTML = '<b></b><small></small>';
+    b.querySelector('b').textContent = a.name + (have ? ' ✓' : '');
+    b.querySelector('small').textContent = I18n.t(a.free ? 'Free' : 'Paid');
+    b.addEventListener('click', () => { aiPicked = id; pv.value = id; aiFormChanged(); loadAIPick(); });
+    pick.append(b);
+  }
+  loadAIPick();
 }
-const MODEL_HINT = 'The model your buddy chats with. Models from every connection are listed here.';
-function modelHint(kind, text) {
-  const h = $('#s-model-hint');
-  h.classList.toggle('warn', kind === 'chat' || kind === 'warn');
-  h.textContent = kind === 'chat' ? "This model can chat, but it can't use tools, so it can't save notes, tasks or projects. Pick another model for that."
-    : kind === 'checking' ? text : kind === 'warn' ? text : MODEL_HINT;
+function loadAIPick() {
+  $$('#ai-pick .ai-card').forEach((b, i) => b.classList.toggle('on', ['groq', 'gemini', 'anthropic', 'openrouter'][i] === aiPicked));
+  const box = $('#ai-about'); box.innerHTML = '';
+  const a = AI_ABOUT[aiPicked];
+  if (!a) { box.textContent = I18n.t('Pick which key you have. Not sure? Groq and Gemini are free and quick to get.'); return; }
+  const n = el('div'); n.textContent = I18n.t(a.note);
+  const u = el('div', 'ai-uses'); for (const x of a.uses) { const t = el('span'); t.textContent = I18n.t(x); u.append(t); }
+  box.append(n, u);
+  $('#ai-key').placeholder = I18n.t('Paste your {0} key here', a.name);
 }
 $('#s-fallback').addEventListener('change', () => S.setSettings({ autoFallback: $('#s-fallback').checked }));
-$('#s-model').addEventListener('change', async () => {
-  const sel = $('#s-model');
-  const name = sel.selectedOptions[0]?.textContent || 'model';
-  sel.disabled = true;
-  modelHint('checking', `Checking ${name}…`);
-  const r = await S.aiSetModel(sel.value);
-  sel.disabled = false;
-  if (aiState) aiState.model = sel.value;
-  if (r?.chatOnly) { await loadAI(); modelHint('chat'); toast('Switched (chat only)'); }
-  else if (r?.warn) { modelHint('warn', r.warn); toast('Model switched'); }
-  else { modelHint(''); toast('Model switched'); }
-});
 S.onAIChanged(() => { if (currentTab === 'settings') loadAI(); });
 
 function aiForm() {
@@ -2139,7 +2145,7 @@ function aiForm() {
 }
 function aiFormChanged() {
   aiDraft = null;
-  $('#ai-save').disabled = true;
+  $('#ai-save').disabled = !$('#ai-key').value.trim();      // Add checks the key itself
   $('#ai-result').hidden = true;
   const k = $('#ai-key').value.trim(), pv = $('#ai-provider').value;
   const isJson = k.startsWith('{');
@@ -2158,27 +2164,25 @@ function showAIResult(r) {
   box.className = `ai-result ${r.ok ? 'ok' : 'bad'}`;
   box.innerHTML = '';
   if (!r.ok) { box.textContent = `✗ ${r.error}`; return; }
-  const h = el('div'); h.innerHTML = `<b>✓ ${r.providerLabel}</b>${r.info ? ` · ${r.info}` : ''}`;
-  const m = el('div', 'ai-models');
-  m.textContent = `${r.models.length} models available: ${r.models.slice(0, 8).map((x) => x.label).join(', ')}${r.models.length > 8 ? '…' : ''}`;
-  box.append(h, m);
+  const h = el('div'); h.textContent = '✓ ' + I18n.t('{0} works. Press Add.', (AI_ABOUT[r.provider] || {}).name || r.providerLabel);
+  box.append(h);
 }
 $('#ai-test').addEventListener('click', async () => {
   const f = aiForm();
   if (!f.key && f.provider !== 'custom') { showAIResult({ ok: false, error: 'Paste a key first.' }); return; }
-  const b = $('#ai-test'); b.disabled = true; b.textContent = 'Testing…';
+  const b = $('#ai-test'); b.disabled = true; b.textContent = I18n.t('Testing…');
   const r = await S.aiTest(f);
-  b.disabled = false; b.textContent = 'Test connection';
+  b.disabled = false; b.textContent = I18n.t('Test');
   showAIResult(r);
-  if (r.ok) { aiDraft = r; $('#ai-save').disabled = false; if ($('#ai-provider').value === 'auto') $('#ai-provider').value = r.provider; }
+  if (r.ok) { aiDraft = r; $('#ai-save').disabled = false; if ($('#ai-provider').value === 'auto') { $('#ai-provider').value = r.provider; aiPicked = r.provider; loadAIPick(); } }
 });
 $('#ai-save').addEventListener('click', async () => {
   const b = $('#ai-save'); b.disabled = true; b.textContent = 'Adding…';
   const r = await S.aiAdd(aiForm());
-  b.textContent = 'Add';
+  b.textContent = I18n.t('Add');
   if (!r.ok) { showAIResult(r); b.disabled = false; return; }
   ['#ai-key', '#ai-label', '#ai-url', '#ai-project', '#ai-region'].forEach((q) => { $(q).value = ''; });
-  $('#ai-provider').value = 'auto';
+  $('#ai-provider').value = 'auto'; aiPicked = '';
   aiFormChanged();
   $('#ai-add').open = false;
   toast(`${r.providerLabel} connected`);
@@ -2557,13 +2561,7 @@ function usageBox(label, u) {
   return box;
 }
 
-async function loadUsage() {
-  const u = await S.usage();
-  const box = $('#usage');
-  box.innerHTML = '';
-  box.append(usageBox('Today', u.today), usageBox('This month', u.month));
-}
-S.onUsage(() => { if (currentTab === 'settings') loadUsage(); });
+
 
 // ---------------- shortcuts (press-to-record) ----------------
 let platform = 'win32';
