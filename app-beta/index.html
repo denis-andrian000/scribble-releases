@@ -279,38 +279,25 @@
         </div>
       </div>
       </div></details>
-      <details class="set-sec" data-sec="a-ai"><summary><b>AI</b><small class="set-sum-hint">API keys, model, usage</small></summary><div class="set-body">
-      <div class="field">
-        <span>AI connections</span>
-        <div id="ai-list" class="ai-list"></div>
-        <details class="ai-add" id="ai-add">
-          <summary>+ Add an API key</summary>
-          <div class="ai-form">
-            <textarea id="ai-key" rows="2" spellcheck="false" placeholder="Paste a Gemini key (AIza…) or a Claude key (sk-ant-…)"></textarea>
-            <div class="ai-row">
-              <select id="ai-provider"><option value="auto">Detect automatically</option></select>
-              <input id="ai-label" type="text" placeholder="Name (optional)">
-            </div>
-            <div class="ai-row" id="ai-url-row" hidden><input id="ai-url" type="text" placeholder="Server URL, e.g. http://localhost:11434/v1"></div>
-            <div class="ai-row" id="ai-gcp-row" hidden><input id="ai-project" type="text" placeholder="Project ID (from the JSON if empty)"><input id="ai-region" type="text" placeholder="Region (global)"></div>
-            <div class="ai-result" id="ai-result" hidden></div>
-            <div class="row end"><button class="btn ghost" id="ai-test" type="button">Test connection</button><button class="btn" id="ai-save" type="button" disabled>Add</button></div>
-            <small>Keys are stored encrypted on this computer. <span id="ai-keylink"></span> Never made a key? <button type="button" class="link inline" id="ai-howto">Show me how</button></small>
-          </div>
-        </details>
-      </div>
-      <label class="field">
-        <span>Model</span>
-        <select id="s-model"></select>
-        <small id="s-model-hint">The model your buddy chats with. Models from every connection are listed here.</small>
-      </label>
-      <label class="toggle"><input type="checkbox" id="s-fallback"><span>If the model is rate-limited or out of credit, switch to a free model automatically</span>
-      </label>
-      <div class="field">
-        <span>Usage</span>
-        <div class="usage" id="usage"></div>
-        <small>Token counts on this computer. For costs, check your provider's billing page.</small>
-      </div>
+      <details class="set-sec" data-sec="a-ai"><summary><b>AI</b><small class="set-sum-hint">Your AI keys and what each one does</small></summary><div class="set-body">
+      <small>Add one or more keys. Your buddy picks the right one for each job: chatting, reading photos and PDFs, the mic, meeting notes and its voice.</small>
+      <div id="ai-list" class="ai-list"></div>
+      <details class="ai-add" id="ai-add">
+        <summary>+ Add an API key</summary>
+        <div class="ai-form">
+          <div class="ai-pick" id="ai-pick"></div>
+          <div class="ai-about" id="ai-about"></div>
+          <textarea id="ai-key" rows="2" spellcheck="false" placeholder="Paste the key here"></textarea>
+          <select id="ai-provider" hidden><option value="auto">Detect automatically</option></select>
+          <input id="ai-label" type="hidden">
+          <div class="ai-row" id="ai-url-row" hidden><input id="ai-url" type="text" placeholder="Server URL, e.g. http://localhost:11434/v1"></div>
+          <div class="ai-row" id="ai-gcp-row" hidden><input id="ai-project" type="text" placeholder="Project ID (from the JSON if empty)"><input id="ai-region" type="text" placeholder="Region (global)"></div>
+          <div class="ai-result" id="ai-result" hidden></div>
+          <div class="row end"><button class="btn ghost" id="ai-test" type="button">Test</button><button class="btn" id="ai-save" type="button" disabled>Add</button></div>
+          <small>Keys stay encrypted on your devices. <span id="ai-keylink"></span> <button type="button" class="link inline" id="ai-howto">How do I get a key?</button></small>
+        </div>
+      </details>
+      <label class="toggle"><input type="checkbox" id="s-fallback"><span>Rotate between my keys automatically when one is busy or runs out of free use</span></label>
       </div></details>
       <details class="set-sec" data-sec="a-general"><summary><b>General</b><small class="set-sum-hint">Language, look, shortcuts</small></summary><div class="set-body">
       <div class="field"><span>Language</span>
@@ -329,7 +316,7 @@
       <label class="toggle"><input type="checkbox" id="s-confirm"><span>Ask me before saving anything (polished preview + where it goes)</span></label>
       <label class="toggle"><input type="checkbox" id="s-gravity"><span>Buddy drops to the bottom of the screen after dragging</span></label>
       <label class="toggle"><input type="checkbox" id="s-login"><span>Start Scribble when I log in</span></label>
-      <label class="toggle" id="s-call-row"><input type="checkbox" id="s-call"><span>Drop the buddy on a Meet, Zoom or Teams window to listen and write meeting notes (uses your OpenRouter key)</span></label>
+      <label class="toggle" id="s-call-row"><input type="checkbox" id="s-call"><span>Drop the buddy on a Meet, Zoom or Teams window to listen and write meeting notes (uses one of your AI keys; a free Groq or Gemini key works)</span></label>
       <div class="field"><span>Shortcuts</span>
         <div class="kbd-row"><button type="button" class="kbd-btn" id="k-panel"></button><small>Open / close this panel</small></div>
         <div class="kbd-row"><button type="button" class="kbd-btn" id="k-quick"></button><small>Quick capture: tell your buddy something from any app</small></div>
