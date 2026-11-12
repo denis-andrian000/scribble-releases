@@ -1025,3 +1025,7 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .m-add input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); }
 .m-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .m-foot small { color: var(--ink-2); }
+
+.call-bar { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 900; display: flex; align-items: center; gap: 8px; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; box-shadow: var(--shadow); white-space: nowrap; }
+.call-bar i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: micpulse 1.2s ease-in-out infinite; }
+.call-bar button { color: var(--accent); font-weight: 700; }

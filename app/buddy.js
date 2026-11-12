@@ -700,3 +700,18 @@ S.getAvatar().then((a) => { window.ScribbleSound?.configure(a); render(a); reque
     S.dropOnBuddy({ files, text });
   });
 })();
+
+
+// ---------------------------------------------------------------- listening to a meeting (dropped on Meet / Zoom / Teams)
+(() => {
+  if (!S || !S.onListening) return;
+  const badge = document.createElement('div');
+  badge.id = 'listen-badge'; badge.textContent = '🎧';
+  badge.style.cssText = 'position:absolute;right:4px;top:4px;font-size:18px;display:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));pointer-events:none;z-index:5';
+  const dot = document.createElement('i');
+  dot.style.cssText = 'position:absolute;right:-3px;top:-2px;width:8px;height:8px;border-radius:50%;background:#D6453D;animation:lpulse 1.2s ease-in-out infinite';
+  badge.append(dot);
+  const st = document.createElement('style'); st.textContent = '@keyframes lpulse{50%{opacity:.25}}';
+  document.head.append(st); document.body.append(badge);
+  S.onListening((on) => { badge.style.display = on ? 'block' : 'none'; document.body.classList.toggle('listening', !!on); });
+})();

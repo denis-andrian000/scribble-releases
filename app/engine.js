@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.24.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.25.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -38949,7 +38949,16 @@ Content-Type: application/octet-stream\r
         "Cleared memory": "Ingatan dikosongkan",
         "\u{1F9E0} Remembered": "\u{1F9E0} Diingat",
         "\u{1F9E0} Forgot": "\u{1F9E0} Dilupakan",
-        "\u{1F50E} Searched past chats": "\u{1F50E} Mencari obrolan lama"
+        "\u{1F50E} Searched past chats": "\u{1F50E} Mencari obrolan lama",
+        "Drop the buddy on a Meet, Zoom or Teams window to listen and write meeting notes (uses your OpenRouter key)": "Taruh buddy di jendela Meet, Zoom, atau Teams untuk mendengarkan dan menulis catatan rapat (memakai kunci OpenRouter-mu)",
+        "Add your OpenRouter key first": "Tambahkan kunci OpenRouter-mu dulu",
+        "Listening to meetings turns speech into text with your OpenRouter key: Settings \u2192 Buddy \u2192 Voice.": "Mendengarkan rapat mengubah suara jadi teks dengan kunci OpenRouter-mu: Pengaturan \u2192 Buddy \u2192 Suara.",
+        "\u{1F534} Listening to {0}": "\u{1F534} Mendengarkan {0}",
+        "Drag me off the window when the meeting ends, and I'll write the notes.": "Tarik aku keluar dari jendela saat rapat selesai, nanti aku tulis catatannya.",
+        "Couldn't hear the meeting. Allow the microphone and try again.": "Tidak bisa mendengar rapatnya. Izinkan mikrofon lalu coba lagi.",
+        "Writing the meeting notes\u2026": "Menulis catatan rapat\u2026",
+        "I didn't hear anything in that meeting.": "Aku tidak mendengar apa-apa di rapat itu.",
+        "Listening to {0} \xB7 {1} min": "Mendengarkan {0} \xB7 {1} menit"
       };
     }
   });
@@ -39804,6 +39813,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           y: Math.min(Math.max(y, wa.y), wa.y + wa.height - BUDDY.h)
         };
       }
+      function allowCallAudio(win) {
+        try {
+          win.webContents.session.setDisplayMediaRequestHandler((_req, cb) => {
+            desktopCapturer.getSources({ types: ["screen"] }).then((s) => cb(s[0] ? { video: s[0], audio: "loopback" } : {})).catch(() => cb({}));
+          });
+        } catch (e) {
+          logLine("display media handler", e && e.message);
+        }
+      }
       function createBuddy() {
         const wa = screen.getPrimaryDisplay().workArea;
         let pos = config.buddyPos || { x: wa.x + wa.width - BUDDY.w - 24, y: wa.y + wa.height - BUDDY.h };
@@ -39862,6 +39880,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         panelWin.setAlwaysOnTop(true, "floating");
         panelWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
         panelWin.loadFile(path.join(__dirname, "panel.html"));
+        if (!ANDROID) allowCallAudio(panelWin);
         panelWin.on("close", (e) => {
           if (!app.isQuitting) {
             e.preventDefault();
@@ -40157,6 +40176,72 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         quickBusy = false;
         if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) quickWin.webContents.send("quick:result", { ...r, undoLabel: I18n.t("Undo"), undoneLabel: I18n.t("Undone") });
       });
+      var MEETING_RE = /(^|\s)Meet\s*[-–:]|Google Meet|meet\.google\.com|Zoom Meeting|Zoom Workplace|Zoom Webinar|^Zoom$|Microsoft Teams|Teams meeting|Webex|Jitsi/i;
+      var isMeetingTitle = (t2) => !!t2 && MEETING_RE.test(t2);
+      var meetingName = (t2) => {
+        if (/meet/i.test(t2) && /google|meet\s*[-–]/i.test(t2)) return "Google Meet";
+        if (/zoom/i.test(t2)) return "Zoom";
+        if (/teams/i.test(t2)) return "Microsoft Teams";
+        if (/webex/i.test(t2)) return "Webex";
+        if (/jitsi/i.test(t2)) return "Jitsi";
+        return "the meeting";
+      };
+      var sameMeeting = (a, b) => meetingName(a) === meetingName(b);
+      function windowTitleAt(x, y) {
+        const p = screen.dipToScreenPoint ? screen.dipToScreenPoint({ x, y }) : { x, y };
+        const ps = `Add-Type @"
+using System; using System.Text; using System.Runtime.InteropServices;
+public class W { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern IntPtr GetTopWindow(IntPtr h); [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint c);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+public struct RECT { public int L, T, R, B; }
+public static string At(int x, int y, uint me) { SetProcessDPIAware(); for (IntPtr h = GetTopWindow(IntPtr.Zero); h != IntPtr.Zero; h = GetWindow(h, 2)) {
+ if (!IsWindowVisible(h) || IsIconic(h)) continue; uint pid; GetWindowThreadProcessId(h, out pid); if (pid == me) continue;
+ RECT r; GetWindowRect(h, out r); if (x < r.L || x >= r.R || y < r.T || y >= r.B) continue;
+ var sb = new StringBuilder(512); GetWindowText(h, sb, 512); var t = sb.ToString(); if (t.Length == 0) continue; return t; } return ""; } }
+"@
+[W]::At(${Math.round(p.x)}, ${Math.round(p.y)}, ${process.pid})`;
+        return new Promise((resolve) => {
+          const load = __require;
+          load("child_process").execFile(
+            "powershell.exe",
+            // loaded only here (Windows), not bundled into the phone and web builds
+            ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps],
+            { timeout: 6e3, windowsHide: true },
+            (err, out) => resolve(err ? "" : String(out || "").trim())
+          );
+        });
+      }
+      var callOn = null;
+      function startCall(title) {
+        const name = meetingName(title), T = I18n.t;
+        if (!voiceKey()) {
+          notify(T("Add your OpenRouter key first"), T("Listening to meetings turns speech into text with your OpenRouter key: Settings \u2192 Buddy \u2192 Voice."), "settings");
+          sendBuddy("buddy:state", "sad");
+          return;
+        }
+        callOn = { title, name, started: Date.now() };
+        sendBuddy("buddy:listening", true);
+        sendPanel("call:start", { title, name });
+        notify(T("\u{1F534} Listening to {0}", name), T("Drag me off the window when the meeting ends, and I'll write the notes."), "chat");
+      }
+      function stopCall() {
+        if (!callOn) return;
+        const c = callOn;
+        callOn = null;
+        sendBuddy("buddy:listening", false);
+        sendBuddy("buddy:state", "thinking");
+        sendPanel("call:stop", { name: c.name, minutes: Math.max(1, Math.round((Date.now() - c.started) / 6e4)) });
+      }
+      ipcMain.on("call:stopped", () => {
+        if (callOn) {
+          callOn = null;
+          sendBuddy("buddy:listening", false);
+        }
+      });
+      ipcMain.on("call:show", () => showPanel("chat"));
       ipcMain.on("buddy:drop", (_e, d) => dropToChat(d));
       function dropToChat(d) {
         if (!d || !(d.files || []).length && !d.text) return;
@@ -40296,11 +40381,25 @@ In one short line say what it is, then offer what to do with it as options (add 
       });
       ipcMain.on("buddy:dragMove", () => {
       });
-      ipcMain.on("buddy:dragEnd", () => {
+      ipcMain.on("buddy:dragEnd", async () => {
         clearInterval(dragTimer);
         const vy = drag ? drag.vy : 0;
         drag = null;
         sendBuddy("buddy:motion", { vx: 0, vy: 0 });
+        if (process.platform === "win32" && config.callListen !== false) {
+          const b = buddyWin.getBounds();
+          const title = await windowTitleAt(b.x + Math.round(b.width / 2), b.y + Math.round(b.height / 2)).catch(() => "");
+          const meeting = isMeetingTitle(title);
+          if (callOn && !(meeting && sameMeeting(title, callOn.title))) stopCall();
+          if (meeting && !callOn) {
+            finishMove();
+            return startCall(title);
+          }
+          if (callOn) {
+            finishMove();
+            return;
+          }
+        }
         if (config.gravity !== false) fallToBottom(vy);
         else finishMove();
       });
@@ -41213,6 +41312,7 @@ ${brief}` }, ...blocks];
         quickShortcut: config.quickShortcut || DEFAULT_QUICK,
         captureEnabled: config.captureEnabled !== false,
         openAtLogin: process.platform === "linux" ? !!config.openAtLogin : app.getLoginItemSettings().openAtLogin,
+        callListen: config.callListen !== false,
         platform: process.platform
       }));
       ipcMain.handle("settings:set", (_e, s) => {
@@ -41243,6 +41343,10 @@ ${brief}` }, ...blocks];
         let shortcuts = null;
         if (s.shortcut || s.captureShortcut || s.quickShortcut || s.captureEnabled !== void 0) shortcuts = registerShortcut();
         if (s.openAtLogin !== void 0) setOpenAtLogin(!!s.openAtLogin);
+        if (s.callListen !== void 0) {
+          config.callListen = !!s.callListen;
+          if (!config.callListen && callOn) stopCall();
+        }
         saveConfig();
         return shortcuts ? { shortcuts } : true;
       });
@@ -42132,6 +42236,11 @@ ${lines.join("\n")}
         weekStats: () => ipcRenderer.invoke("stats:week"),
         widgetData: () => ipcRenderer.invoke("widget:data"),
         memoryGet: () => ipcRenderer.invoke("memory:get"),
+        onCallStart: (fn) => on("call:start", fn),
+        onCallStop: (fn) => on("call:stop", fn),
+        callStopped: () => ipcRenderer.send("call:stopped"),
+        callShow: () => ipcRenderer.send("call:show"),
+        onListening: (fn) => on("buddy:listening", fn),
         memorySet: (p) => ipcRenderer.invoke("memory:set", p),
         memoryAdd: (section, text) => ipcRenderer.invoke("memory:add", section, text),
         memoryRemove: (text) => ipcRenderer.invoke("memory:remove", text),

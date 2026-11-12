@@ -122,5 +122,83 @@
     chunk();
   }
 
-  window.Meeting = { open };
+  // ---- Listening to a call (Windows app): the buddy was dropped on a Meet / Zoom / Teams window.
+  // Records the computer's sound (everyone in the call) mixed with your mic, a minute at a time, into text.
+  let call = null, last = null;
+  async function startCall({ name } = {}) {
+    if (call) return;
+    call = { name: name || 'the meeting', started: Date.now(), parts: [], job: Promise.resolve(), stopping: false };
+    let sys = null, mic = null;
+    try { sys = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }); } catch {}
+    try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); } catch {}
+    if (sys) sys.getVideoTracks().forEach((t) => t.stop());
+    if (!(sys && sys.getAudioTracks().length) && !mic) { window.toast && toast(T("Couldn't hear the meeting. Allow the microphone and try again.")); S.callStopped(); call = null; return; }
+    const ctx = new AudioContext(), dest = ctx.createMediaStreamDestination();
+    if (sys && sys.getAudioTracks().length) ctx.createMediaStreamSource(new MediaStream(sys.getAudioTracks())).connect(dest);
+    if (mic) ctx.createMediaStreamSource(mic).connect(dest);
+    Object.assign(call, { ctx, sys, mic, stream: dest.stream });
+    bar();
+    const type = ['audio/webm;codecs=opus', 'audio/webm'].find((x) => window.MediaRecorder && MediaRecorder.isTypeSupported(x)) || '';
+    const chunk = () => {
+      if (!call || call.stopping) return;
+      const owner = call, bits = [];
+      const rec = new MediaRecorder(owner.stream, type ? { mimeType: type } : undefined);
+      owner.rec = rec;
+      rec.ondataavailable = (e) => { if (e.data.size) bits.push(e.data); };
+      rec.onstop = () => {
+        if (!owner.stopping) chunk();
+        owner.job = owner.job.then(async () => {
+          const blob = new Blob(bits, { type: type || 'audio/webm' });
+          if (blob.size < 6000) return;
+          const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
+          const r = await S.voiceTranscribe(b64, 'webm', '');
+          if (r && r.ok && r.text) owner.parts.push(r.text);
+        }).catch(() => {});
+      };
+      rec.start();
+      owner.timer = setTimeout(() => { try { rec.state !== 'inactive' && rec.stop(); } catch {} }, 60000);
+    };
+    chunk();
+  }
+  async function stopCall({ minutes } = {}) {
+    if (!call) return;
+    const c = call; c.stopping = true; last = c;
+    clearTimeout(c.timer);
+    try { c.rec && c.rec.state !== 'inactive' && c.rec.stop(); } catch {}
+    bar(T('Writing the meeting notes…'));
+    await new Promise((r) => setTimeout(r, 400));
+    await Promise.race([c.job, new Promise((r) => setTimeout(r, 45000))]);
+    [c.sys, c.mic].forEach((st) => st && st.getTracks().forEach((t) => t.stop()));
+    try { c.ctx.close(); } catch {}
+    call = null; bar(null);
+    const text = c.parts.join(' ').trim();
+    const mins = minutes || Math.max(1, Math.round((Date.now() - c.started) / 60000));
+    S.callShow();
+    if (!text) { window.toast && toast(T("I didn't hear anything in that meeting.")); return; }
+    const q = '"""';
+    const prompt = `I listened to a ${c.name} meeting with the user today (about ${mins} min). This is the transcript, made from speech (everyone's voices mixed, so expect some wrong words and no names on lines):\n\n${q}\n${text.slice(0, 40000)}\n${q}\n\nWrite a meeting page "Meetings/${new Date().toLocaleDateString('en-CA')} ${c.name}.md" with: a short summary, the decisions, and action items (who, what, by when, where you can tell). Save it with write_page. Then list the user's own action items and offer to add them as tasks with due dates; ask before adding anyone else's. Write it in the language the meeting was in.`;
+    const go = () => { if (typeof busy !== 'undefined' && busy) return setTimeout(go, 1000); window.send && window.send(prompt, `🎧 ${T('Meeting notes')}: ${c.name} (${mins} min)`); };
+    go();
+  }
+  // a small bar at the top of the chat while it listens, with Stop
+  function bar(msg) {
+    let b = document.querySelector('.call-bar');
+    if (msg === null) { if (b) { clearInterval(b._t); b.remove(); } return; }
+    if (!b) {
+      b = document.createElement('div'); b.className = 'call-bar';
+      b.innerHTML = '<i></i><span></span><button type="button" class="link"></button>';
+      b.querySelector('button').addEventListener('click', () => { S.callStopped(); stopCall(); });
+      document.body.append(b);
+      b._t = setInterval(() => { if (!call || call.stopping) return; b.querySelector('span').textContent = T('Listening to {0} · {1} min', call.name, Math.floor((Date.now() - call.started) / 60000)); }, 15000);
+    }
+    b.querySelector('span').textContent = msg || T('Listening to {0} · {1} min', call.name, 0);
+    b.querySelector('button').textContent = T('Stop');
+    b.querySelector('button').hidden = !!msg;
+  }
+  if (window.scribble && window.scribble.onCallStart) {
+    window.scribble.onCallStart((d) => startCall(d || {}));
+    window.scribble.onCallStop((d) => stopCall(d || {}));
+  }
+
+  window.Meeting = { open, startCall, stopCall };
 })();
