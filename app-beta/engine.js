@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.22.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.22.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37280,6 +37280,25 @@ Content-Type: application/octet-stream\r
         };
         return { ...remote, messages: [...b, ...a.slice(i)], meta: move(local.meta, remote.meta), labels: move(local.labels, remote.labels) };
       }
+      var APPEND_PAGES = /^nb\/(Inbox\.md|Daily\/[^/]+\.md|Meetings\/[^/]+\.md)$/;
+      function mergeLines(a, b) {
+        const A = a.replace(/\r\n/g, "\n").split("\n"), B = b.replace(/\r\n/g, "\n").split("\n");
+        const have = new Set(A.filter((l) => l.trim()));
+        const out = A.slice();
+        let anchor = -1;
+        for (const line of B) {
+          if (!line.trim()) continue;
+          if (have.has(line)) {
+            const j = out.indexOf(line, anchor + 1);
+            anchor = j === -1 ? out.lastIndexOf(line) : j;
+            continue;
+          }
+          out.splice(anchor + 1, 0, line);
+          anchor += 1;
+          have.add(line);
+        }
+        return out.join("\n");
+      }
       var Sync = class {
         // opts: { drive, stateFile, notebookRoot(), chatsDir(), getSettings(), applySettings(obj), trash(fullPath),
         //         onTasks(), onChange({ notebook, chats, settings }), log }
@@ -37451,6 +37470,10 @@ Content-Type: application/octet-stream\r
             const merged = import_buffer.Buffer.from(JSON.stringify(mergeChats(l, r)));
             return { upload: merged, writeLocal: merged };
           }
+          if (APPEND_PAGES.test(name)) {
+            const merged = import_buffer.Buffer.from(mergeLines(remoteData.toString("utf8"), local.data.toString("utf8")));
+            return { upload: merged, writeLocal: merged };
+          }
           const ext = path.extname(name);
           const copy = `${name.slice(0, name.length - ext.length)} (conflict ${stamp()})${ext}`;
           return { download: true, extra: [copy, local.data] };
@@ -37619,7 +37642,7 @@ Content-Type: application/octet-stream\r
           return this.running;
         }
       };
-      module.exports = { mergeChats, Sync, md5 };
+      module.exports = { mergeLines, mergeChats, Sync, md5 };
     }
   });
 
@@ -38820,7 +38843,8 @@ Content-Type: application/octet-stream\r
         Share: "Bagikan",
         "+ {0} more": "+ {0} lagi",
         "Free to spend: {0} a day": "Bisa dipakai: {0} sehari",
-        "{0} \xB7 Today": "{0} \xB7 Hari ini"
+        "{0} \xB7 Today": "{0} \xB7 Hari ini",
+        "Merged {0} conflict copies into their pages": "Menggabungkan {0} salinan konflik ke halamannya"
       };
     }
   });
@@ -40677,6 +40701,43 @@ In one short line say what it is, then offer what to do with it as options (add 
       ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b), "Merged categories"));
       ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat), "Remembered a shop"));
       ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id), "Forgot a shop"));
+      function foldConflictCopies() {
+        try {
+          const { mergeLines } = require_sync();
+          const found = [];
+          for (const dir of ["", "Daily", "Meetings"]) {
+            const full = path.join(notebook.root, dir);
+            if (!fs2.existsSync(full)) continue;
+            for (const f of fs2.readdirSync(full)) {
+              const m = f.match(/^(.*) \(conflict \d{4}-\d{2}-\d{2} \d{4}\)\.md$/);
+              if (!m) continue;
+              const base = dir ? `${dir}/${m[1]}.md` : `${m[1]}.md`;
+              if (!dir && base !== "Inbox.md") continue;
+              found.push({ copy: dir ? `${dir}/${f}` : f, base });
+            }
+          }
+          if (!found.length) return;
+          notebook.begin(I18n.t("Merged {0} conflict copies into their pages", found.length));
+          for (const { copy, base } of found) {
+            const cFull = path.join(notebook.root, copy), bFull = path.join(notebook.root, base);
+            const extra = fs2.readFileSync(cFull, "utf8");
+            const cur = fs2.existsSync(bFull) ? fs2.readFileSync(bFull, "utf8") : "";
+            notebook._put(bFull, cur ? mergeLines(cur, extra) : extra);
+            notebook._touch(cFull);
+            fs2.unlinkSync(cFull);
+          }
+          notebook.commit();
+          sendPanel("notebook:changed");
+          scheduleSync(3e3);
+          logLine("folded conflict copies", found.length);
+        } catch (e) {
+          try {
+            notebook.rollback();
+          } catch {
+          }
+          logLine("fold conflict copies failed", e && e.message);
+        }
+      }
       ipcMain.handle("widget:data", () => {
         const T = I18n.t, today = localDate();
         const open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today).sort((a, b) => (a.due < today ? 0 : 1) - (b.due < today ? 0 : 1) || String(a.time || "99").localeCompare(String(b.time || "99")));
@@ -41612,6 +41673,7 @@ ${lines.join("\n")}
             const f = filesFromArgs(process.argv);
             if (f.length) setTimeout(() => dropToChat({ files: f }), 2500);
           }
+          setTimeout(foldConflictCopies, 2e4);
           if (ANDROID || !signedIn() || !hasAI()) panelWin.webContents.once("did-finish-load", () => showPanel("chat"));
           if (signedIn()) startSync();
           let toldReady = false;
