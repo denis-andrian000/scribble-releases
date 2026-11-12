@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.17.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.18.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -38038,7 +38038,9 @@ Content-Type: application/octet-stream\r
         "No project": "Tanpa proyek",
         "{0}% \xB7 ends {1}": "{0}% \xB7 selesai {1}",
         "Drag to move, drag the ends to change the dates. Click to open.": "Geser untuk memindahkan, tarik ujungnya untuk mengubah tanggal. Klik untuk membuka.",
-        "{0}: {1} \u2192 {2}": "{0}: {1} \u2192 {2}"
+        "{0}: {1} \u2192 {2}": "{0}: {1} \u2192 {2}",
+        "Snip an area of the screen into the chat": "Potong area layar ke obrolan",
+        "Drag over the area to send to your buddy. Esc to cancel.": "Tarik di area yang mau dikirim ke buddy-mu. Esc untuk batal."
       };
     }
   });
@@ -38169,6 +38171,7 @@ Content-Type: application/octet-stream\r
         BrowserWindow,
         ipcMain,
         screen,
+        desktopCapturer,
         Tray,
         Menu,
         globalShortcut,
@@ -39616,6 +39619,72 @@ Content-Type: application/octet-stream\r
           return { ok: false, error: e.message };
         }
       });
+      var snipping = false;
+      ipcMain.handle("snip:start", async () => {
+        if (ANDROID || snipping) return { ok: false };
+        snipping = true;
+        const panelWasVisible = panelWin && panelWin.isVisible();
+        try {
+          const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+          if (panelWasVisible) panelWin.hide();
+          await new Promise((r) => setTimeout(r, 220));
+          const px = { width: Math.round(disp.bounds.width * disp.scaleFactor), height: Math.round(disp.bounds.height * disp.scaleFactor) };
+          const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: px });
+          const src = sources.find((s) => String(s.display_id) === String(disp.id)) || sources[0];
+          if (!src) throw new Error("No screen to capture.");
+          const img = src.thumbnail;
+          const win = new BrowserWindow({
+            x: disp.bounds.x,
+            y: disp.bounds.y,
+            width: disp.bounds.width,
+            height: disp.bounds.height,
+            frame: false,
+            transparent: false,
+            resizable: false,
+            movable: false,
+            skipTaskbar: true,
+            alwaysOnTop: true,
+            fullscreenable: false,
+            hasShadow: false,
+            enableLargerThanScreen: true,
+            show: false,
+            backgroundColor: "#000000",
+            webPreferences: { preload: path.join(__dirname, "snip-preload.js"), contextIsolation: true, nodeIntegration: false }
+          });
+          win.setAlwaysOnTop(true, "screen-saver");
+          win.setBounds(disp.bounds);
+          await win.loadFile(path.join(__dirname, "snip.html"));
+          win.webContents.send("snip:image", { url: img.toDataURL(), hint: I18n.t("Drag over the area to send to your buddy. Esc to cancel.") });
+          win.show();
+          win.focus();
+          const rect = await new Promise((resolve) => {
+            const h = (e, r) => {
+              if (e.sender === win.webContents) {
+                ipcMain.removeListener("snip:done", h);
+                resolve(r);
+              }
+            };
+            ipcMain.on("snip:done", h);
+            win.on("closed", () => {
+              ipcMain.removeListener("snip:done", h);
+              resolve(null);
+            });
+          });
+          if (!win.isDestroyed()) win.destroy();
+          if (!rect) return { ok: false, cancelled: true };
+          const sz = img.getSize();
+          const crop = img.crop({ x: Math.round(rect.x * sz.width), y: Math.round(rect.y * sz.height), width: Math.max(1, Math.round(rect.w * sz.width)), height: Math.max(1, Math.round(rect.h * sz.height)) });
+          return { ok: true, data: crop.toPNG().toString("base64") };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        } finally {
+          snipping = false;
+          if (panelWasVisible && panelWin && !panelWin.isDestroyed()) {
+            panelWin.show();
+            panelWin.focus();
+          }
+        }
+      });
       ipcMain.on("voice:talking", (_e, ms) => sendBuddy("buddy:talk", Number(ms) || 0));
       function money() {
         const m = new Money(path.join(notebook.root, ".scribble", "money.json"));
@@ -40629,6 +40698,7 @@ ${lines.join("\n")}
         moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
         onMoneyChanged: (fn) => on("money:changed", fn),
         onShowView: (fn) => on("ui:show", fn),
+        snip: () => ipcRenderer.invoke("snip:start"),
         voiceGet: () => ipcRenderer.invoke("voice:get"),
         voiceSet: (p) => ipcRenderer.invoke("voice:set", p),
         voiceTest: (key) => ipcRenderer.invoke("voice:test", key),

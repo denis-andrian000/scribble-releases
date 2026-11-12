@@ -283,8 +283,8 @@ nav button { padding: 3px 8px; }
 .hist-meta { font-size: 11.5px; color: var(--ink-2); }
 #composer { align-items: flex-end; }
 #composer.disabled { opacity: .55; pointer-events: none; }
-#btn-attach, #btn-pen, #btn-mic { flex: none; width: 34px; height: 36px; }
-#btn-attach svg, #btn-pen svg, #btn-mic svg { width: 18px; height: 18px; }
+#btn-attach, #btn-pen, #btn-mic, #btn-snip { flex: none; width: 34px; height: 36px; }
+#btn-attach svg, #btn-pen svg, #btn-mic svg, #btn-snip svg { width: 18px; height: 18px; }
 #btn-pen { margin-left: -6px; }
 .att-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .att-row.in-msg { padding: 0 0 6px; }
@@ -941,3 +941,9 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .tl-ct { z-index: 1; background: var(--bg); padding-right: 6px; }
 .tl-cb { z-index: 1; }
 .tl-gantt { min-height: 0; }
+
+#btn-snip { flex: none; }
+.snip-ov { position: fixed; inset: 0; z-index: 2000; background: #000; cursor: crosshair; touch-action: none; display: flex; align-items: center; justify-content: center; }
+.snip-ov canvas { max-width: 100%; max-height: 100%; opacity: .75; }
+.snip-box { position: fixed; display: none; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(20, 18, 40, .35); pointer-events: none; }
+.snip-hint { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); font-weight: 600; font-size: 13px; padding: 7px 12px; border-radius: 10px; pointer-events: none; }
