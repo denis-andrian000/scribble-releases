@@ -577,6 +577,64 @@ function renderAttachRow() {
 
 $('#btn-attach').addEventListener('click', () => $('#file-pick').click());
 $('#btn-pen').addEventListener('click', () => Pad.open());
+
+// ---- snip: capture an area of the screen straight into the chat ----
+// Desktop app: the whole screen freezes, you drag a box. Browser: pick a screen or window to share, then drag a box.
+const IS_ELECTRON = /Electron/.test(navigator.userAgent);
+const NATIVE_APP = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+if (NATIVE_APP || (!IS_ELECTRON && !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia))) $('#btn-snip').hidden = true;
+async function addSnip(blob) {
+  const f = new File([blob], `snip-${new Date().toLocaleTimeString('en-GB').replace(/:/g, '')}.png`, { type: 'image/png' });
+  await addFiles([f]);
+  $('#input').focus();
+}
+function cropOverlay(bitmap) {
+  return new Promise((resolve) => {
+    const o = el('div', 'snip-ov');
+    const cv = el('canvas'); cv.width = bitmap.width; cv.height = bitmap.height; cv.getContext('2d').drawImage(bitmap, 0, 0);
+    const box = el('div', 'snip-box'), hint = el('div', 'snip-hint'); hint.textContent = I18n.t('Drag over the area to send to your buddy. Esc to cancel.');
+    o.append(cv, box, hint); document.body.append(o);
+    let a = null;
+    const fit = () => cv.getBoundingClientRect();
+    const end = (r) => { o.remove(); removeEventListener('keydown', key, true); resolve(r); };
+    const key = (e) => { if (e.key === 'Escape') { e.stopPropagation(); end(null); } };
+    addEventListener('keydown', key, true);
+    o.addEventListener('pointerdown', (e) => { a = { x: e.clientX, y: e.clientY }; o.setPointerCapture(e.pointerId); });
+    o.addEventListener('pointermove', (e) => {
+      if (!a) return;
+      Object.assign(box.style, { display: 'block', left: Math.min(a.x, e.clientX) + 'px', top: Math.min(a.y, e.clientY) + 'px', width: Math.abs(e.clientX - a.x) + 'px', height: Math.abs(e.clientY - a.y) + 'px' });
+    });
+    o.addEventListener('pointerup', (e) => {
+      if (!a) return;
+      const r = fit(), sx = cv.width / r.width, sy = cv.height / r.height;
+      const x = Math.max(0, Math.min(a.x, e.clientX) - r.left) * sx, y = Math.max(0, Math.min(a.y, e.clientY) - r.top) * sy;
+      const w = Math.min(cv.width - x, Math.abs(e.clientX - a.x) * sx), h = Math.min(cv.height - y, Math.abs(e.clientY - a.y) * sy);
+      a = null;
+      if (w < 8 || h < 8) { box.style.display = 'none'; return; }
+      const out = el('canvas'); out.width = Math.round(w); out.height = Math.round(h);
+      out.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, out.width, out.height);
+      out.toBlob((b) => end(b), 'image/png');
+    });
+  });
+}
+$('#btn-snip').addEventListener('click', async () => {
+  if (IS_ELECTRON && S.snip) {
+    const r = await S.snip();
+    if (r && r.ok) { const bin = Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)); await addSnip(new Blob([bin], { type: 'image/png' })); }
+    else if (r && r.error) toast(r.error);
+    return;
+  }
+  let stream;
+  try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); } catch { return; }
+  try {
+    const v = el('video'); v.muted = true; v.srcObject = stream; await v.play();
+    await new Promise((r) => setTimeout(r, 300));
+    const bmp = await createImageBitmap(v);
+    stream.getTracks().forEach((t) => t.stop());
+    const blob = await cropOverlay(bmp);
+    if (blob) await addSnip(blob);
+  } catch (e) { stream.getTracks().forEach((t) => t.stop()); toast(e.message); }
+});
 document.querySelectorAll('.about [data-url], .voice-box [data-url]').forEach((b) => b.addEventListener('click', () => S.openExternal(b.dataset.url)));
 $('#file-pick').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 $('#input').addEventListener('paste', (e) => {
