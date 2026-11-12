@@ -2008,6 +2008,7 @@ async function loadSettings() {
   $('#s-confirm').checked = s.confirmSaves;
   $('#s-fallback').checked = s.autoFallback;
   $('#s-login').checked = s.openAtLogin;
+  $('#s-call').checked = s.callListen; $('#s-call-row').hidden = s.platform !== 'win32';
   $('#s-money').checked = !!s.money;
   platform = s.platform;
   $('#k-panel').textContent = prettyAccel(s.shortcut);
@@ -2024,14 +2025,14 @@ async function loadSettings() {
 $('#s-pick').addEventListener('click', async () => { const p = await S.pickFolder(); if (p) $('#s-folder').textContent = p; });
 $('#s-open').addEventListener('click', () => S.openFolder());
 $('#s-save').addEventListener('click', async () => {
-  const patch = { gravity: $('#s-gravity').checked, confirmSaves: $('#s-confirm').checked, openAtLogin: $('#s-login').checked, money: $('#s-money').checked };
+  const patch = { gravity: $('#s-gravity').checked, confirmSaves: $('#s-confirm').checked, openAtLogin: $('#s-login').checked, money: $('#s-money').checked, callListen: $('#s-call').checked };
   await S.setSettings(patch);
   applyMoney(patch.money);
   await loadSettings();
   $('#s-saved').textContent = 'Saved ✓';
 });
 // the toggles save as soon as they change (they live in different sections now)
-for (const id of ['s-gravity', 's-confirm', 's-login', 's-money']) $('#' + id).addEventListener('change', () => $('#s-save').click());
+for (const id of ['s-gravity', 's-confirm', 's-login', 's-money', 's-call']) $('#' + id).addEventListener('change', () => $('#s-save').click());
 
 // ---------------- settings sections: each opens and closes, and stays the way you left it ----------------
 const openSecs = (() => { try { return new Set(JSON.parse(localStorage.getItem('scribble.openSecs') || '["a-acct","b-look"]')); } catch { return new Set(['a-acct', 'b-look']); } })();
