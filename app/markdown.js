@@ -16,6 +16,7 @@
       .replace(/(^|[^\w*])\*(?!\s)(.+?)\*(?!\w)/g, '$1<em>$2</em>')
       .replace(/(^|[^\w])_(?!\s)(.+?)_(?!\w)/g, '$1<em>$2</em>')
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
+      .replace(/\[([^\]]+)\]\(page:([^)]+)\)/g, (_, t, p) => `<a href="#" class="page-link" data-page="${p.replace(/"/g, '')}">📄 ${t}</a>`)
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="#" data-ext="$2">$1</a>')
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="#" data-ext="$2">$2</a>');
     return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[i]}</code>`);

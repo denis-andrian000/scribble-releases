@@ -91,6 +91,9 @@ S.onShown(({ tab } = {}) => showTab(tab || (currentTab === 'settings' ? 'chat' :
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-ext]');
   if (a) { e.preventDefault(); S.openExternal(a.dataset.ext); }
+  // a page the buddy quoted from ("Source: [Vendor quote](page:Projects/Vendor.md)")
+  const pg = e.target.closest('[data-page]');
+  if (pg && !pg.classList.contains('td-pg')) { e.preventDefault(); let p = decodeURIComponent(pg.dataset.page); if (!/\.md$/.test(p)) p += '.md'; showTab('notebook'); setTimeout(() => openPage(p), 200); }
 });
 
 // ---------------- chat ----------------
@@ -369,6 +372,18 @@ window.__onDropped = async (d) => {
 };
 if (S.onDropped) S.onDropped((d) => window.__onDropped(d));
 
+// Android: keep the home-screen widget up to date
+(() => {
+  const WP = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.ScribbleWidget;
+  if (!WP || !S.widgetData) return;
+  let t = null;
+  const push = () => { clearTimeout(t); t = setTimeout(async () => { try { await WP.set(await S.widgetData()); } catch {} }, 1200); };
+  S.onNotebookChanged(push);
+  if (S.onMoneyChanged) S.onMoneyChanged(push);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) push(); });
+  push();
+  setInterval(push, 15 * 60 * 1000);
+})();
 // Android: "Share to Scribble" from any app (text, links, pictures, PDFs) works like dropping it on the buddy
 (() => {
   const SP = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.Plugins && Capacitor.Plugins.ScribbleShare;
@@ -992,6 +1007,8 @@ document.addEventListener('input', () => {
 $$('.chips button').forEach((b) => b.addEventListener('click', async () => {
   if (b.dataset.kind) { const sg = await S.suggestNow(b.dataset.kind); await S.dismissSuggestion(); currentSuggestion = null; return send(sg.prompts[0].prompt, `📝 ${sg.prompts[0].label}`); }
   if (b.dataset.brief) { currentBrief = await S.briefNow(); return renderMessages([]); }
+  if (b.dataset.meeting) { if (window.Meeting) Meeting.open(); return; }
+  if (b.dataset.wins) { if (window.Wins) Wins.open(); return; }
   send(b.textContent);
 }));
 
