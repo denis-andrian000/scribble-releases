@@ -168,6 +168,10 @@
           const pn = el('button', 'tl-name'); pn.type = 'button';
           pn.innerHTML = `<span class="tl-car">${collapsed.has(key) ? '▸' : '▾'}</span><span class="tl-pn"></span><span class="tl-pct">${pct}%</span>`;
           pn.querySelector('.tl-pn').textContent = proj; pn.title = proj;
+          if (window.Planner) {
+            const h = Planner.health(everything, { today });
+            if (h.state !== 'done') { const d = el('span', `hdot ${h.state}`); d.title = `${T({ ok: 'On track', risk: 'At risk', late: 'Late' }[h.state])}: ${T(h.key, ...h.args)}`; pn.querySelector('.tl-pn').after(d); }
+          }
           pn.addEventListener('click', () => { collapsed.has(key) ? collapsed.delete(key) : collapsed.add(key); store.set('collapsed', [...collapsed]); render(); });
           const pl = el('div', 'tl-lane');
           if (ss.length) {

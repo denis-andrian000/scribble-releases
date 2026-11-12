@@ -127,7 +127,14 @@ function briefCard(b) {
   plan.addEventListener('click', () => send("Here's my day. Help me plan it: suggest an order for today's tasks with rough time blocks, and flag anything I should reschedule.", '☀️ Plan my day'));
   const tasks = el('button', 'btn ghost'); tasks.textContent = 'Open tasks';
   tasks.addEventListener('click', () => showTab('tasks'));
-  row.append(plan, tasks);
+  row.append(plan);
+  if (b.counts && b.counts.overdue > 0) {
+    // gentle rescheduling: one tap for a realistic new plan instead of editing dates one by one
+    const fix = el('button', 'btn ghost'); fix.textContent = I18n.t('🗓 Reschedule {0} late', b.counts.overdue);
+    fix.addEventListener('click', () => send('Some of my tasks are late. Make me a realistic new schedule for them (reschedule_late), tell me kindly in one line, and apply it with move_tasks.', I18n.t('🗓 Reschedule late tasks')));
+    row.append(fix);
+  }
+  row.append(tasks);
   c.append(head, body, row);
   return c;
 }
@@ -819,7 +826,25 @@ function renderCard(card) {
   c.append(head);
 
   const L = card.lists || { pages: [], areas: [], projects: [] };
-  const fields = FIELDS[card.tool] || Object.keys(card.input).map((k) => [k, 'text', k]);
+  // several tasks to new dates: one row each, untick to leave one where it is
+  let moveRows = null;
+  if (card.tool === 'move_tasks' && card.rows) {
+    moveRows = [];
+    const list = el('div', 'mv-list');
+    const day = (d) => (d ? new Date(d + 'T12:00:00').toLocaleDateString(I18n.locale(), { weekday: 'short', day: 'numeric', month: 'short' }) : '—');
+    for (const r of card.rows) {
+      const row = el('label', 'mv-row');
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+      const name = el('span', 'mv-t'); name.textContent = r.title;
+      const from = el('span', 'mv-from'); from.textContent = day(r.from) + ' →';
+      const d = el('input'); d.type = 'date'; d.value = r.due;
+      row.append(cb, name, from, d);
+      list.append(row);
+      moveRows.push({ r, cb, d });
+    }
+    c.append(list);
+  }
+  const fields = card.tool === 'move_tasks' ? [] : FIELDS[card.tool] || Object.keys(card.input).map((k) => [k, 'text', k]);
   const onlyPresent = card.tool === 'update_task';
   const inputs = {};
   let grid = null;
@@ -908,6 +933,7 @@ function renderCard(card) {
       const v = inp.value.trim();
       if (v === '') delete input[k]; else input[k] = v;
     }
+    if (moveRows) input.changes = moveRows.filter((m) => m.cb.checked && m.d.value).map((m) => ({ id: m.r.id, due: m.d.value, ...(m.r.start ? { start: m.r.start > m.d.value ? m.d.value : m.r.start } : {}), ...(m.r.time !== undefined ? { time: m.r.time } : {}) }));
     closeCard(c, `Saved${input.page || input.path ? ` to ${(input.page || input.path).replace(/\.md$/, '')}` : ''}`);
     await S.decide(card.id, { decision: 'approve', input });
   });
@@ -1479,6 +1505,17 @@ const isClosedT = (t) => t.status === 'done' || t.status === 'cancelled';
 const expandedEmpty = new Set();            // "+ N projects with no open tasks" rows the user opened
 const doneOpen = loadSet('doneOpen', []);   // in the Done view, groups start collapsed
 
+// project health: a small dot (green on track, amber at risk, red late) with the reason on hover
+const HEALTH_TXT = { ok: 'On track', risk: 'At risk', late: 'Late', done: 'Done' };
+function healthDot(row, tasks) {
+  if (!row || !window.Planner) return;
+  const today = new Date(Date.now() - (globalThis.__scribbleDayStartMs || 0)).toLocaleDateString('en-CA');
+  const h = Planner.health(tasks, { today });
+  if (h.state === 'done') return;
+  const d = el('span', `hdot ${h.state}`); d.title = `${I18n.t(HEALTH_TXT[h.state])}: ${I18n.t(h.key, ...h.args)}`;
+  const name = row.querySelector('.tname') || row;
+  name.after ? name.after(d) : row.append(d);
+}
 async function loadTaskTree() {
   const [all, nodes] = await Promise.all([S.tasks(), S.nested()]);
   const showDone = taskFilter === 'done';
@@ -1517,6 +1554,7 @@ async function loadTaskTree() {
   const projectNode = (p, area, depth) => {
     const key = `p:${area}/${p.name}`;
     const n = groupNode(p.name, p.tasks.length, depth, key, { area: area || null, project: p.name }, 'project', showDone);
+    if (!showDone && window.Planner && p.tasks.length) healthDot(n.row, all.filter((t) => t.project && t.project.toLowerCase() === p.name.toLowerCase() && (t.area || '') === (area || '')));
     for (const t of sortT(p.tasks)) n.kids.append(taskRow(t, depth + 1));
     return n.wrap;
   };

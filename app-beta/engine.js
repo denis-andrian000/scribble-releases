@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.19.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.20.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -35802,6 +35802,123 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
     }
   });
 
+  // ../src/planner.js
+  var require_planner = __commonJS({
+    "../src/planner.js"(exports, module) {
+      init_buffer_inject();
+      (function(root) {
+        const DAY = 864e5;
+        const dn = (s) => Math.round(Date.parse(s + "T00:00:00Z") / DAY);
+        const nd = (n) => new Date(n * DAY).toISOString().slice(0, 10);
+        const dow = (s) => (/* @__PURE__ */ new Date(s + "T12:00:00Z")).getUTCDay();
+        const PRI = { high: 3, medium: 2, low: 1 };
+        const isOpen = (t) => t.status !== "done" && t.status !== "cancelled";
+        const pri = (t) => PRI[String(t.priority || "").toLowerCase() === "normal" ? "medium" : String(t.priority || "").toLowerCase()] || 2;
+        function workdays(from, count, days = [1, 2, 3, 4, 5]) {
+          const out = [];
+          let n = dn(from);
+          for (let i = 0; out.length < count && i < count * 7 + 7; i++, n++) if (days.includes(new Date(n * DAY).getUTCDay())) out.push(nd(n));
+          return out;
+        }
+        function workdaysBetween(a, b, days) {
+          let c = 0;
+          for (let n = dn(a); n <= dn(b); n++) if (days.includes(new Date(n * DAY).getUTCDay())) c++;
+          return c;
+        }
+        function next(tasks, { today, now = "12:00", days } = {}) {
+          const toMin = (s) => {
+            const [h, m] = String(s).split(":").map(Number);
+            return h * 60 + (m || 0);
+          };
+          const scored = tasks.filter((t) => isOpen(t) && t.status !== "hold" && (!t.start || t.start <= today)).map((t) => {
+            let s = pri(t) * 10, why = [];
+            if (t.due && t.due < today) {
+              s += 60 + Math.min(30, dn(today) - dn(t.due));
+              why.push("late");
+            } else if (t.due === today) {
+              s += 40;
+              why.push("due today");
+            } else if (t.due && dn(t.due) - dn(today) <= 2) {
+              s += 20;
+              why.push("due soon");
+            }
+            if (t.due === today && t.time) {
+              const left = toMin(t.time) - toMin(now);
+              if (left >= 0 && left <= 90) {
+                s += 50;
+                why.push(`at ${t.time}`);
+              } else if (left < 0) {
+                s += 10;
+              }
+            }
+            if (t.status === "doing") {
+              s += 15;
+              why.push("already started");
+            }
+            if (pri(t) === 3) why.push("high priority");
+            return { id: t.id, title: t.title, project: t.project || null, due: t.due || null, time: t.time || null, priority: t.priority || null, status: t.status, score: s, why };
+          }).sort((a, b) => b.score - a.score || String(a.due || "9").localeCompare(String(b.due || "9")));
+          return { pick: scored[0] || null, also: scored.slice(1, 3), open_count: scored.length };
+        }
+        function reschedule(tasks, { today, days = [1, 2, 3, 4, 5], perDay = 3 } = {}) {
+          const late = tasks.filter((t) => isOpen(t) && t.status !== "hold" && t.due && t.due < today).sort((a, b) => pri(b) - pri(a) || a.due.localeCompare(b.due));
+          if (!late.length) return { late: 0, plan: [] };
+          const load = {};
+          for (const t of tasks) if (isOpen(t) && t.due && t.due >= today) load[t.due] = (load[t.due] || 0) + 1;
+          const slots = workdays(today, 30, days);
+          const plan = [];
+          for (const t of late) {
+            const day = slots.find((d) => (load[d] || 0) < perDay) || slots[slots.length - 1];
+            load[day] = (load[day] || 0) + 1;
+            const len = t.start && t.due ? Math.max(0, dn(t.due) - dn(t.start)) : 0;
+            const start = t.start && t.start < today ? len ? nd(Math.max(dn(today), dn(day) - len)) : day : t.start || day;
+            plan.push({ id: t.id, title: t.title, project: t.project || null, was_due: t.due, days_late: dn(today) - dn(t.due), new_start: start > day ? day : start, new_due: day });
+          }
+          return { late: late.length, plan };
+        }
+        function week(tasks, { today, days = [1, 2, 3, 4, 5], perDay = 4 } = {}) {
+          const span = workdays(today, 5, days);
+          const end = span[span.length - 1];
+          const open = tasks.filter((t) => isOpen(t) && t.status !== "hold");
+          const fixed = {};
+          for (const t of open) if (t.due && t.due >= today && t.due <= end && t.time) (fixed[t.due] ||= []).push(t);
+          const want = open.filter((t) => !(t.time && t.due >= today && t.due <= end) && (!t.due || t.due <= end || t.status === "doing")).sort((a, b) => String(a.due || "9999").localeCompare(String(b.due || "9999")) || pri(b) - pri(a));
+          const load = Object.fromEntries(span.map((d) => [d, (fixed[d] || []).length]));
+          const plan = [];
+          for (const t of want) {
+            const latest = t.due && t.due >= today ? t.due : t.due ? today : end;
+            const okDays = span.filter((d) => d <= latest);
+            const day = (okDays.length ? okDays : span).reduce((best, d) => (load[d] || 0) < (load[best] || 0) ? d : best, (okDays.length ? okDays : span)[0]);
+            if ((load[day] || 0) >= perDay + 2) continue;
+            load[day] = (load[day] || 0) + 1;
+            plan.push({ id: t.id, title: t.title, project: t.project || null, day, due: t.due || null, priority: t.priority || null, late: !!(t.due && t.due < today) });
+          }
+          const leftOut = want.filter((t) => !plan.some((p) => p.id === t.id)).map((t) => ({ id: t.id, title: t.title, due: t.due || null }));
+          return { days: span.map((d) => ({ date: d, fixed: (fixed[d] || []).map((t) => ({ id: t.id, title: t.title, time: t.time })), planned: plan.filter((p) => p.day === d) })), left_for_later: leftOut };
+        }
+        const R = (state, key, ...args) => ({ state, key, args, reason: key.replace(/\{(\d)\}/g, (_, i) => args[i]) });
+        function health(projectTasks, { today, days = [1, 2, 3, 4, 5] } = {}) {
+          const live = projectTasks.filter((t) => t.status !== "cancelled");
+          const open = live.filter(isOpen);
+          if (!live.length || !open.length) return R("done", "Everything is done");
+          const late = open.filter((t) => t.status !== "hold" && t.due && t.due < today);
+          if (late.length) return late.length === 1 ? R("late", '"{0}" is late', late[0].title) : R("late", "{0} tasks are late", late.length);
+          const soon = open.filter((t) => t.status === "todo" && t.due && dn(t.due) - dn(today) <= 1 && t.start && t.start < today);
+          if (soon.length) return soon[0].due === today ? R("risk", '"{0}" is due today and not started', soon[0].title) : R("risk", '"{0}" is due tomorrow and not started', soon[0].title);
+          const ends = open.map((t) => t.due).filter(Boolean).sort().pop();
+          if (ends) {
+            const left = workdaysBetween(today, ends, days);
+            if (open.length > Math.max(1, left) * 3) return R("risk", "{0} open tasks, {1} working days left", open.length, left);
+          }
+          return R("ok", "On track");
+        }
+        const P = { next, reschedule, week, health, workdays };
+        if (typeof module !== "undefined" && module.exports) module.exports = P;
+        else root.Planner = P;
+      })(typeof window !== "undefined" ? window : globalThis);
+    }
+  });
+
   // ../src/agent.js
   var require_agent = __commonJS({
     "../src/agent.js"(exports, module) {
@@ -35809,7 +35926,8 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
       var Anthropic = require_sdk();
       var { chatOpenAI, PROVIDERS } = require_providers();
       var { localDate, localTime, missingFields } = require_notebook();
-      var WRITE_TOOLS = /* @__PURE__ */ new Set(["capture_note", "write_page", "append_to_page", "add_task", "update_task", "delete_task", "create_project", "log_project"]);
+      var WRITE_TOOLS = /* @__PURE__ */ new Set(["capture_note", "write_page", "append_to_page", "add_task", "update_task", "delete_task", "create_project", "log_project", "move_tasks"]);
+      var Planner = require_planner();
       var TOOLS = [
         {
           name: "capture_note",
@@ -35911,6 +36029,33 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               project: { type: "string" },
               area: { type: "string" }
             }
+          }
+        },
+        {
+          name: "what_now",
+          description: 'Pick the ONE task the user should do right now (late, due today, a time coming up, already started, priority), with the reasons and two alternatives. Use for "what should I do now / next?", "apa yang harus aku kerjain sekarang?". Answer with the pick in one or two lines and why, then offer [[options: Start it | Something else | Later]]. "Start it" = update_task status doing.',
+          input_schema: { type: "object", properties: {} }
+        },
+        {
+          name: "plan_week",
+          description: `Suggest a plan for the coming working week (the user's working days from Settings): which open task to do on which day, keeping tasks with a set time on their day, at most a few per day, plus what is left for later. Use for "plan my week". Present it day by day, short. Then offer to apply it: use move_tasks with the new due dates (and start dates where it helps) for the tasks you are moving.`,
+          input_schema: { type: "object", properties: { per_day: { type: "number", description: "Tasks per day (default 4)" } } }
+        },
+        {
+          name: "reschedule_late",
+          description: "Make a realistic new schedule for LATE tasks: spreads them over the coming working days, most important first, at most a few a day. Use when the user has late tasks or asks to reschedule / catch up. Tell them kindly in one line, list the proposal, then apply it with move_tasks once they agree (or right away if they asked you to do it).",
+          input_schema: { type: "object", properties: { per_day: { type: "number", description: "Max late tasks per day (default 3)" } } }
+        },
+        {
+          name: "move_tasks",
+          description: "Change the dates of several tasks in one go (one undo step). Each change: id, and the new due date (YYYY-MM-DD), optionally the new start date and time.",
+          input_schema: {
+            type: "object",
+            properties: {
+              changes: { type: "array", items: { type: "object", properties: { id: { type: "number" }, start: { type: "string" }, due: { type: "string" }, time: { type: "string" } }, required: ["id", "due"] } },
+              reason: { type: "string", description: 'Short reason shown to the user, e.g. "Catch up on late tasks"' }
+            },
+            required: ["changes"]
           }
         },
         {
@@ -36084,8 +36229,9 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
         // onLimit(active, error, tried) -> another active model to retry with, or null (rate limits, no credit, overload)
         constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null, onShow = () => {
-        } }) {
+        }, getRoutine = () => ({}) }) {
           this.onShow = onShow;
+          this.getRoutine = getRoutine;
           this.getMoney = getMoney;
           this.onLimit = onLimit;
           this.nb = notebook;
@@ -36166,6 +36312,31 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               return { deleted: nb.deleteTask(input.id) };
             case "list_tasks":
               return nb.listTasks(input);
+            case "what_now": {
+              const d = /* @__PURE__ */ new Date(), now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+              return Planner.next(nb.listTasks({ status: "open" }), { today: localDate(), now, days: this.getRoutine().days });
+            }
+            case "plan_week":
+              return Planner.week(nb.listTasks({ status: "open" }), { today: localDate(), days: this.getRoutine().days, perDay: input.per_day || 4 });
+            case "reschedule_late":
+              return Planner.reschedule(nb.listTasks({ status: "open" }), { today: localDate(), days: this.getRoutine().days, perDay: input.per_day || 3 });
+            case "move_tasks": {
+              const done = [], problems = [];
+              for (const c of (input.changes || []).slice(0, 60)) {
+                try {
+                  const f = { due: c.due };
+                  if (c.start) f.start = c.start;
+                  const cur = nb.loadTasks().find((t2) => t2.id === Number(c.id));
+                  if (cur && cur.start && !c.start && cur.start > c.due) f.start = c.due;
+                  if (c.time !== void 0) f.time = c.time;
+                  const t = nb.updateTask(c.id, f);
+                  done.push({ id: t.id, title: t.title, start: t.start, due: t.due, time: t.time || null });
+                } catch (e) {
+                  problems.push(`#${c.id}: ${e.message}`);
+                }
+              }
+              return { moved: done, ...problems.length ? { problems } : {} };
+            }
             case "show_timeline": {
               const today = localDate(), dn = (s) => Math.round(Date.parse(s + "T00:00:00Z") / 864e5);
               const all = nb.listTasks({ status: "all" });
@@ -36189,6 +36360,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
                   project: project || "(no project)",
                   starts: dates[0] || null,
                   ends: dates[dates.length - 1] || null,
+                  health: project ? Planner.health(tasks, { today, days: this.getRoutine().days }) : null,
                   percent_done: live.length ? Math.round((live.length - open.length) / live.length * 100) : 0,
                   open: open.length,
                   in_progress: open.filter((t) => t.status === "doing").length,
@@ -36338,6 +36510,8 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             return `Project ${input.name}`;
           case "log_project":
             return `Log on ${input.name}`;
+          case "move_tasks":
+            return input.reason || `Moved ${(input.changes || []).length} tasks`;
           case "add_money_record":
             return `Recorded ${input.description || "money"}`;
           case "update_money_record":
@@ -37564,7 +37738,7 @@ Content-Type: application/octet-stream\r
         "Add to page": "Tambah ke halaman",
         "Rewrite page": "Tulis ulang halaman",
         "New task": "Tugas baru",
-        "Update task": "Perbarui tugas",
+        "Update task": "Ubah tugas",
         "Delete task": "Hapus tugas",
         "New project": "Proyek baru",
         "Log progress": "Catat progres",
@@ -38122,7 +38296,24 @@ Content-Type: application/octet-stream\r
         "Quick capture: tell your buddy something from any app": "Catat cepat: bilang sesuatu ke buddy-mu dari aplikasi mana pun",
         "\u{1F4E5} Dropped on your buddy: {0}": "\u{1F4E5} Diberikan ke buddy-mu: {0}",
         '\u{1F4E5} Dropped on your buddy: "{0}"': '\u{1F4E5} Diberikan ke buddy-mu: "{0}"',
-        "\u{1F4E4} Shared: {0}": "\u{1F4E4} Dibagikan: {0}"
+        "\u{1F4E4} Shared: {0}": "\u{1F4E4} Dibagikan: {0}",
+        "\u2728 What should I do now?": "\u2728 Apa yang harus aku kerjakan sekarang?",
+        "\u{1F5D3} Plan my week": "\u{1F5D3} Rencanakan mingguku",
+        "What should I do now?": "Apa yang harus aku kerjakan sekarang?",
+        "One task to focus on, and why": "Satu tugas untuk difokuskan, dan alasannya",
+        "Plan my week": "Rencanakan mingguku",
+        "Spread your tasks over the week": "Bagi tugasmu sepanjang minggu",
+        "\u{1F5D3} Reschedule {0} late": "\u{1F5D3} Jadwalkan ulang {0} yang telat",
+        "\u{1F5D3} Reschedule late tasks": "\u{1F5D3} Jadwalkan ulang tugas yang telat",
+        "Move tasks": "Pindahkan tugas",
+        "On track": "Sesuai jadwal",
+        "At risk": "Berisiko",
+        "Everything is done": "Semua sudah selesai",
+        '"{0}" is late': '"{0}" telat',
+        "{#0} tasks are late": "{0} tugas telat",
+        '"{0}" is due today and not started': '"{0}" tenggatnya hari ini dan belum dimulai',
+        '"{0}" is due tomorrow and not started': '"{0}" tenggatnya besok dan belum dimulai',
+        "{0} open tasks, {1} working days left": "{0} tugas terbuka, sisa {1} hari kerja"
       };
     }
   });
@@ -39424,7 +39615,8 @@ In one short line say what it is, then offer what to do with it as options (add 
         update_task: "Update task",
         delete_task: "Delete task",
         create_project: "New project",
-        log_project: "Log progress"
+        log_project: "Log progress",
+        move_tasks: "Move tasks"
       };
       function approve(call) {
         if (config.confirmSaves === false) return Promise.resolve({ decision: "approve" });
@@ -39436,11 +39628,19 @@ In one short line say what it is, then offer what to do with it as options (add 
         const card = {
           id: call.id,
           tool: call.name,
-          title: TOOL_TITLES[call.name] || call.name,
+          title: I18n.t(TOOL_TITLES[call.name] || call.name),
           input: call.input,
           context,
           lists: notebook.destinations()
         };
+        if (call.name === "move_tasks") {
+          const all = notebook.loadTasks();
+          card.rows = (call.input.changes || []).map((c) => {
+            const t2 = all.find((x) => x.id === Number(c.id)) || {};
+            return { id: Number(c.id), title: t2.title || `#${c.id}`, from: t2.due || null, due: c.due, start: c.start || null, time: c.time };
+          });
+          card.context = call.input.reason || "";
+        }
         return new Promise((resolve) => {
           pending.set(call.id, { card, resolve });
           sendBuddy("buddy:state", "asking");
@@ -40790,7 +40990,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine() });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
