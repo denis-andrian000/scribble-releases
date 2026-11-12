@@ -1009,3 +1009,19 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .mn-badge.big.long { font-size: 10px; }
 .mn-badge.big.dot { width: 12px; height: 12px; margin: 0 10px; }
 .mn-pic-row { display: flex; align-items: center; gap: 10px; }
+
+.m-list { display: flex; flex-direction: column; gap: 8px; }
+.m-sec { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--bg); }
+.m-h { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.m-h small { margin-left: auto; color: var(--ink-2); font-weight: 500; }
+.m-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 12.5px; }
+.m-row:first-of-type { border-top: 0; }
+.m-row span { flex: 1; }
+.m-row em { color: var(--ink-2); font-style: normal; font-size: 11px; white-space: nowrap; }
+.m-x { border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.m-x:hover { color: var(--red); }
+.m-empty { color: var(--ink-2); font-size: 12px; }
+.m-add { display: flex; gap: 6px; align-items: center; }
+.m-add input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); }
+.m-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.m-foot small { color: var(--ink-2); }
