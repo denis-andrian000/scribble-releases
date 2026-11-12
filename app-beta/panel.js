@@ -996,7 +996,12 @@ function showCard(card) {
 S.onApproval(showCard);
 
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); send(); });
+// Phones and tablets (on-screen keyboard): Enter makes a new line and the ➜ button sends, like WhatsApp.
+// With a real keyboard: Enter sends, Shift+Enter makes a new line.
+const TOUCH_KEYBOARD = (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) || (matchMedia('(pointer: coarse)').matches && !matchMedia('(hover: hover)').matches);
+if (TOUCH_KEYBOARD) $('#input').setAttribute('enterkeyhint', 'enter');
 $('#input').addEventListener('keydown', (e) => {
+  if (TOUCH_KEYBOARD) return;
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
 });
 function autosize() { const t = $('#input'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
