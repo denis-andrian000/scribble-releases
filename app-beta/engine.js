@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.20.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.21.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4804,7 +4804,7 @@ ${groups[n].map(fmt).join("\n")}
         static clean(d) {
           d = d && typeof d === "object" ? d : {};
           const arr = (x) => Array.isArray(x) ? x.filter((i) => i && typeof i === "object" && i.id) : [];
-          const out = { v: 1, wallets: arr(d.wallets), categories: arr(d.categories), records: arr(d.records), shops: arr(d.shops) };
+          const out = { v: 1, wallets: arr(d.wallets), categories: arr(d.categories), records: arr(d.records), shops: arr(d.shops), recurring: arr(d.recurring), debts: arr(d.debts), goals: arr(d.goals) };
           if (!out.categories.length) {
             const t = 1;
             out.categories = STARTER.map(([name, kind], i) => ({ id: "c" + norm(name), name, kind, color: CAT_COLORS[i % CAT_COLORS.length], budget: null, updated: t }));
@@ -4816,7 +4816,7 @@ ${groups[n].map(fmt).join("\n")}
           a = _Money.clean(a);
           b = _Money.clean(b);
           const out = { v: 1 };
-          for (const k of ["wallets", "categories", "records", "shops"]) {
+          for (const k of ["wallets", "categories", "records", "shops", "recurring", "debts", "goals"]) {
             const m = /* @__PURE__ */ new Map();
             for (const it of [...a[k], ...b[k]]) {
               const o = m.get(it.id);
@@ -5257,6 +5257,258 @@ ${groups[n].map(fmt).join("\n")}
           };
         }
         // For the AI: a compact summary (wallets, categories, recent records) so it can answer questions and pick names
+        // ---------------- recurring bills: set once, a planned payment appears before each due date ----------------
+        // every: 'month' (day 1–31), 'week' (day 0–6, Sunday = 0) or 'year' (day + month 1–12)
+        static nextDate(rule, from) {
+          const d = /* @__PURE__ */ new Date(from + "T12:00:00Z");
+          const iso = (x) => x.toISOString().slice(0, 10);
+          if (rule.every === "week") {
+            const add = (Number(rule.day) - d.getUTCDay() + 7) % 7;
+            d.setUTCDate(d.getUTCDate() + add);
+            return iso(d);
+          }
+          const dim = (y2, m) => new Date(Date.UTC(y2, m + 1, 0)).getUTCDate();
+          if (rule.every === "year") {
+            let y2 = d.getUTCFullYear();
+            const mo2 = Math.max(1, Math.min(12, Number(rule.month) || 1)) - 1;
+            let c2 = new Date(Date.UTC(y2, mo2, Math.min(Number(rule.day) || 1, dim(y2, mo2)), 12));
+            if (iso(c2) < from) {
+              y2++;
+              c2 = new Date(Date.UTC(y2, mo2, Math.min(Number(rule.day) || 1, dim(y2, mo2)), 12));
+            }
+            return iso(c2);
+          }
+          let y = d.getUTCFullYear(), mo = d.getUTCMonth();
+          let c = new Date(Date.UTC(y, mo, Math.min(Number(rule.day) || 1, dim(y, mo)), 12));
+          if (iso(c) < from) {
+            mo++;
+            if (mo > 11) {
+              mo = 0;
+              y++;
+            }
+            c = new Date(Date.UTC(y, mo, Math.min(Number(rule.day) || 1, dim(y, mo)), 12));
+          }
+          return iso(c);
+        }
+        recurring() {
+          return this.live("recurring");
+        }
+        addRecurring({ description, amount, kind = "out", wallet, category, every = "month", day, month }) {
+          const amt = parseAmount(amount);
+          if (!description) return { saved: false, note: "Ask what the payment is for." };
+          if (!Number.isFinite(amt) || amt <= 0) return { saved: false, note: "Ask how much it is." };
+          if (!["month", "week", "year"].includes(every)) every = "month";
+          if (day == null || day === "") return { saved: false, note: every === "week" ? "Ask which day of the week." : "Ask which day of the month it is due." };
+          const w = this.wallet(wallet);
+          if (!w) return { saved: false, ask: "wallet", wallets: this.wallets().map((x) => x.name), note: "Ask which wallet it is paid from, with the wallets as options." };
+          const c = category ? this.category(category) : null;
+          if (category && !c) return { saved: false, ask: "category", categories: this.categories().filter((x) => x.kind === kind).map((x) => x.name), note: `"${category}" is not one of the user's categories. Ask which one.` };
+          const dup = this.recurring().find((r2) => looksSame(r2.description, description) && r2.amount === amt);
+          if (dup) return { saved: false, note: `There is already a recurring "${dup.description}" for ${rp(dup.amount)}. Ask whether to change that one instead.` };
+          const r = {
+            id: "q" + newId(),
+            description: String(description).trim().slice(0, 80),
+            amount: amt,
+            kind: kind === "in" ? "in" : "out",
+            wallet: w.id,
+            category: c ? c.id : void 0,
+            every,
+            day: Number(day),
+            month: every === "year" ? Number(month) || 1 : void 0,
+            next: null,
+            updated: now()
+          };
+          r.next = _Money.nextDate(r, today());
+          this.d.recurring.push(r);
+          this.ensureRecurring();
+          this.save();
+          return { saved: true, recurring: this.recurringView(r) };
+        }
+        updateRecurring(id, fields = {}) {
+          const r = this.recurring().find((x) => x.id === id || looksSame(x.description, String(id)));
+          if (!r) throw new Error("No such recurring payment.");
+          if (fields.amount !== void 0) r.amount = parseAmount(fields.amount);
+          for (const k of ["description", "every", "day", "month"]) if (fields[k] !== void 0) r[k] = k === "day" || k === "month" ? Number(fields[k]) : fields[k];
+          if (fields.wallet) {
+            const w = this.wallet(fields.wallet);
+            if (w) r.wallet = w.id;
+          }
+          if (fields.stop) r.deleted = true;
+          r.next = _Money.nextDate(r, today());
+          r.updated = now();
+          for (const x of this.records().filter((x2) => x2.recurring === r.id && x2.planned && x2.date >= today())) {
+            x.deleted = true;
+            x.updated = now();
+          }
+          if (!r.deleted) this.ensureRecurring();
+          this.save();
+          return r.deleted ? { stopped: r.description } : this.recurringView(r);
+        }
+        recurringView(r) {
+          const w = this.wallet(r.wallet), c = r.category ? this.category(r.category) : null;
+          return { id: r.id, description: r.description, amount: rp(r.amount), kind: r.kind, wallet: w ? w.name : "?", category: c ? c.name : null, every: r.every, day: r.day, month: r.month, next: r.next };
+        }
+        // Puts the next payment of each recurring bill on the list as a planned payment, `ahead` days before it's due.
+        // Returns true when something was added (the caller saves).
+        ensureRecurring(ahead = 10) {
+          const t = today(), until = new Date(Date.parse(t + "T12:00:00Z") + ahead * 864e5).toISOString().slice(0, 10);
+          let added = false;
+          for (const r of this.recurring()) {
+            for (let guard = 0; guard < 6 && r.next && r.next <= until; guard++) {
+              const has = this.d.records.some((x) => x.recurring === r.id && x.date === r.next);
+              if (!has && r.next >= t) {
+                this.d.records.push({
+                  id: "r" + newId(),
+                  kind: r.kind,
+                  amount: r.amount,
+                  date: r.next,
+                  description: r.description,
+                  wallet: r.wallet,
+                  category: r.category,
+                  planned: true,
+                  recurring: r.id,
+                  source: "recurring",
+                  created: now(),
+                  updated: now()
+                });
+                added = true;
+              }
+              const after = new Date(Date.parse(r.next + "T12:00:00Z") + 864e5).toISOString().slice(0, 10);
+              r.next = _Money.nextDate(r, after);
+              r.updated = now();
+              added = true;
+            }
+          }
+          return added;
+        }
+        // A planned payment happened: it now counts (date = when it was paid, today unless given)
+        markPaid(id, date) {
+          const r = this.records().find((x) => x.id === id);
+          if (!r) throw new Error("No such record.");
+          r.planned = void 0;
+          r.date = /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date : r.date > today() ? today() : r.date;
+          r.updated = now();
+          this.save();
+          return { saved: true, record: this.recordView(r), wallet_balance: rp(this.balance(r.wallet)) };
+        }
+        // ---------------- split bills: who owes you (or you owe) ----------------
+        debts() {
+          return this.live("debts");
+        }
+        splitBill({ description, total, wallet, people = [], my_share, category, date }) {
+          const amt = parseAmount(total);
+          const names = (Array.isArray(people) ? people : String(people).split(/,|\band\b|\bdan\b|&/i)).map((x) => String(x).trim()).filter(Boolean);
+          if (!names.length) return { saved: false, note: "Ask who you split it with." };
+          if (!Number.isFinite(amt) || amt <= 0) return { saved: false, note: "Ask how much the whole bill was." };
+          const mine = my_share != null && my_share !== "" ? parseAmount(my_share) : Math.round(amt / (names.length + 1));
+          const each = Math.round((amt - mine) / names.length);
+          const rec = this.addRecord({ kind: "out", amount: amt, wallet, category, description: description || "Split bill", date, source: "split" });
+          if (!rec.saved) return rec;
+          const recId = rec.record && rec.record.id;
+          for (const n of names) this.d.debts.push({ id: "d" + newId(), person: n, amount: each, note: description || "", date: rec.record ? rec.record.date : today(), direction: "they_owe", record: recId, updated: now() });
+          this.save();
+          return { saved: true, record: rec.record, wallet_balance: rec.wallet_balance, your_share: rp(mine), owed_to_you: names.map((n) => `${n}: ${rp(each)}`), total_owed: rp(each * names.length) };
+        }
+        addDebt({ person, amount, note, direction = "they_owe" }) {
+          const amt = parseAmount(amount);
+          if (!person || !Number.isFinite(amt) || amt <= 0) return { saved: false, note: "Ask who and how much." };
+          const d = { id: "d" + newId(), person: String(person).trim(), amount: amt, note: note || "", date: today(), direction: direction === "i_owe" ? "i_owe" : "they_owe", updated: now() };
+          this.d.debts.push(d);
+          this.save();
+          return { saved: true, debt: this.debtView(d) };
+        }
+        // someone paid you back (all, or part): records the money coming in when a wallet is given
+        settleDebt({ person, amount, wallet }) {
+          const open = this.debts().filter((d) => !d.settled && norm(d.person) === norm(person || ""));
+          if (!open.length) return { saved: false, note: `Nobody called "${person}" owes anything. Open: ${this.debtsSummary().map((x) => x.person).join(", ") || "none"}.` };
+          let left = amount != null && amount !== "" ? parseAmount(amount) : open.reduce((a, d) => a + d.amount, 0);
+          const total = left;
+          for (const d of open) {
+            if (left <= 0) break;
+            const take = Math.min(d.amount, left);
+            d.amount -= take;
+            left -= take;
+            if (d.amount <= 0) {
+              d.settled = true;
+              d.amount = 0;
+            }
+            d.updated = now();
+          }
+          let rec = null;
+          if (wallet) {
+            const theyOwe = open[0].direction !== "i_owe";
+            const cat = this.categories().find((c) => c.kind === (theyOwe ? "in" : "out") && /repay|kembali|pinjam|other|lain/i.test(c.name));
+            rec = this.addRecord({ kind: theyOwe ? "in" : "out", amount: total, wallet, category: cat ? cat.id : void 0, description: `${theyOwe ? "Paid back by" : "Paid back to"} ${open[0].person}`, source: "split" });
+          }
+          this.save();
+          return { saved: true, settled: rp(total), still_open: this.debtsSummary().filter((x) => norm(x.person) === norm(person)), ...rec && rec.saved ? { record: rec.record, wallet_balance: rec.wallet_balance } : {} };
+        }
+        debtView(d) {
+          return { id: d.id, person: d.person, amount: rp(d.amount), note: d.note, date: d.date, direction: d.direction, settled: !!d.settled };
+        }
+        debtsSummary() {
+          const by = /* @__PURE__ */ new Map();
+          for (const d of this.debts().filter((x) => !x.settled && x.amount > 0)) {
+            const k = norm(d.person) + "|" + d.direction;
+            const o = by.get(k) || { person: d.person, direction: d.direction, amount: 0, items: [] };
+            o.amount += d.amount;
+            o.items.push(`${d.note || "\u2014"} ${rp(d.amount)} (${d.date})`);
+            by.set(k, o);
+          }
+          return [...by.values()].map((o) => ({ ...o, amount_rp: rp(o.amount) }));
+        }
+        // ---------------- savings goals ----------------
+        goals() {
+          return this.live("goals");
+        }
+        addGoal({ name, target, by, wallet, saved }) {
+          const amt = parseAmount(target);
+          if (!name || !Number.isFinite(amt) || amt <= 0) return { saved: false, note: "Ask what the goal is and how much it needs." };
+          if (this.goals().some((g2) => looksSame(g2.name, name))) return { saved: false, note: `There is already a goal like "${name}". Ask whether to change it instead.` };
+          const w = wallet ? this.wallet(wallet) : null;
+          const g = { id: "g" + newId(), name: String(name).trim(), target: amt, by: /^\d{4}-\d{2}-\d{2}$/.test(by || "") ? by : null, wallet: w ? w.id : void 0, saved: w ? void 0 : saved ? parseAmount(saved) : 0, created: today(), updated: now() };
+          this.d.goals.push(g);
+          this.save();
+          return { saved: true, goal: this.goalView(g) };
+        }
+        updateGoal(ref, fields = {}) {
+          const g = this.goals().find((x) => x.id === ref || looksSame(x.name, String(ref)));
+          if (!g) throw new Error(`No goal like "${ref}".`);
+          if (fields.add != null && fields.add !== "") {
+            if (g.wallet) throw new Error("This goal follows a wallet: move money into that wallet instead (a transfer).");
+            g.saved = (g.saved || 0) + parseAmount(fields.add);
+          }
+          if (fields.target != null) g.target = parseAmount(fields.target);
+          if (fields.by !== void 0) g.by = fields.by || null;
+          if (fields.name) g.name = fields.name;
+          if (fields.remove) g.deleted = true;
+          g.updated = now();
+          this.save();
+          return g.deleted ? { removed: g.name } : this.goalView(g);
+        }
+        goalView(g) {
+          const have = g.wallet ? Math.max(0, this.balance(g.wallet)) : g.saved || 0;
+          const left = Math.max(0, g.target - have);
+          let perWeek = null, weeks = null;
+          if (g.by) {
+            weeks = Math.max(1, Math.ceil((Date.parse(g.by) - Date.parse(today())) / (7 * 864e5)));
+            perWeek = Math.ceil(left / weeks);
+          }
+          const w = g.wallet ? this.wallet(g.wallet) : null;
+          return {
+            id: g.id,
+            name: g.name,
+            target: rp(g.target),
+            saved: rp(have),
+            left: rp(left),
+            percent: Math.min(100, Math.round(have / g.target * 100)),
+            by: g.by,
+            wallet: w ? w.name : null,
+            per_week_needed: perWeek != null ? rp(perWeek) : null,
+            weeks_left: weeks,
+            n: { target: g.target, have, left, perWeek }
+          };
+        }
         summary(ym = today().slice(0, 7)) {
           const m = this.month(ym);
           return {
@@ -5268,7 +5520,17 @@ ${groups[n].map(fmt).join("\n")}
             income_categories: m.categories.filter((c) => !c.hidden && c.kind === "in").map((c) => c.name),
             shops: m.shops.map((s) => `${s.match} \u2192 ${s.category}`),
             recent: m.records.slice(0, 15).map((r) => `${r.id} ${r.date} ${r.kind}${r.planned ? " (planned)" : ""} ${r.description} ${rp(r.amount)} ${r.wallet}${r.toWallet ? "\u2192" + r.toWallet : ""}${r.category ? " [" + r.category + "]" : ""}`),
-            outlook: this.outlook()
+            outlook: this.outlook(),
+            recurring: this.recurring().map((r) => {
+              const v = this.recurringView(r);
+              return `${v.id} ${v.description} ${v.amount} every ${v.every}${v.every === "week" ? " (day " + v.day + ")" : " on day " + v.day}${v.every === "year" ? "/" + v.month : ""} from ${v.wallet}, next ${v.next}`;
+            }),
+            upcoming_payments: this.records().filter((r) => r.planned && r.date >= today()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10).map((r) => `${r.id} ${r.date} ${r.description} ${rp(r.amount)}`),
+            owed: this.debtsSummary().map((o) => `${o.person} ${o.direction === "i_owe" ? "is owed by you" : "owes you"} ${o.amount_rp}: ${o.items.join("; ")}`),
+            goals: this.goals().map((g) => {
+              const v = this.goalView(g);
+              return `${v.name}: ${v.saved} of ${v.target} (${v.percent}%)${v.by ? `, by ${v.by}, needs ${v.per_week_needed}/week` : ""}${v.wallet ? ` (wallet ${v.wallet})` : ""}`;
+            })
           };
         }
       };
@@ -36156,10 +36418,50 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           name: "remember_shop",
           description: "Always put a shop or app into a category from now on (e.g. Shopee \u2192 Shopping).",
           input_schema: { type: "object", properties: { shop: { type: "string" }, category: { type: "string" } }, required: ["shop", "category"] }
+        },
+        {
+          name: "add_recurring",
+          description: `A bill or income that repeats: "BPJS 150rb every 10th from BCA", "Netflix 186rb tiap tanggal 5", "gaji tiap tanggal 25". Set once; before each due date it shows up as a planned payment with a reminder. every: month (day = day of month 1\u201331), week (day = 0 Sunday \u2026 6 Saturday) or year (day + month 1\u201312). Needs one of the user's wallets.`,
+          input_schema: { type: "object", properties: { description: { type: "string" }, amount: { type: "string" }, kind: { type: "string", enum: ["out", "in"] }, wallet: { type: "string" }, category: { type: "string" }, every: { type: "string", enum: ["month", "week", "year"] }, day: { type: "number" }, month: { type: "number" } }, required: ["description", "amount", "wallet", "every", "day"] }
+        },
+        {
+          name: "update_recurring",
+          description: "Change or stop a recurring bill (by its id or description from money_overview). stop: true ends it.",
+          input_schema: { type: "object", properties: { id: { type: "string" }, amount: { type: "string" }, day: { type: "number" }, every: { type: "string", enum: ["month", "week", "year"] }, wallet: { type: "string" }, stop: { type: "boolean" } }, required: ["id"] }
+        },
+        {
+          name: "mark_paid",
+          description: 'A planned payment happened ("udah bayar BPJS", "Paid already"): it now counts in the wallet. id from money_overview upcoming_payments; date only if it was paid on another day.',
+          input_schema: { type: "object", properties: { id: { type: "string" }, date: { type: "string" } }, required: ["id"] }
+        },
+        {
+          name: "split_bill",
+          description: `The user paid a bill for several people ("dinner 600rb split with Andi and Sari, pake BCA"): records the whole amount from their wallet and remembers what each person owes them. my_share only if it isn't an equal split.`,
+          input_schema: { type: "object", properties: { description: { type: "string" }, total: { type: "string" }, wallet: { type: "string" }, people: { type: "array", items: { type: "string" } }, my_share: { type: "string" }, category: { type: "string" }, date: { type: "string" } }, required: ["total", "wallet", "people"] }
+        },
+        {
+          name: "add_debt",
+          description: 'Remember money someone owes the user (they_owe) or the user owes someone (i_owe), without a record: "Andi masih utang 100rb".',
+          input_schema: { type: "object", properties: { person: { type: "string" }, amount: { type: "string" }, note: { type: "string" }, direction: { type: "string", enum: ["they_owe", "i_owe"] } }, required: ["person", "amount"] }
+        },
+        {
+          name: "settle_debt",
+          description: "Someone paid the user back (or the user paid someone back), all or part. Give wallet to also record the money moving in or out of that wallet (ask which wallet if they didn't say).",
+          input_schema: { type: "object", properties: { person: { type: "string" }, amount: { type: "string", description: "Leave out for everything they owe" }, wallet: { type: "string" } }, required: ["person"] }
+        },
+        {
+          name: "add_goal",
+          description: 'A savings goal: "save 5 juta for a new phone by March". by = target date YYYY-MM-DD (optional). wallet = a savings wallet whose balance IS the progress (optional); otherwise progress is added with update_goal.',
+          input_schema: { type: "object", properties: { name: { type: "string" }, target: { type: "string" }, by: { type: "string" }, wallet: { type: "string" }, saved: { type: "string", description: "Already saved, if any" } }, required: ["name", "target"] }
+        },
+        {
+          name: "update_goal",
+          description: "Add savings to a goal (add), or change its target / date / name, or remove it.",
+          input_schema: { type: "object", properties: { goal: { type: "string", description: "Goal name or id" }, add: { type: "string" }, target: { type: "string" }, by: { type: "string" }, name: { type: "string" }, remove: { type: "boolean" } }, required: ["goal"] }
         }
       ];
       var MONEY_NAMES = new Set(MONEY_TOOLS.map((t) => t.name));
-      var MONEY_WRITES = /* @__PURE__ */ new Set(["add_money_record", "update_money_record", "delete_money_record", "add_wallet", "set_wallet_balance", "add_category", "remember_shop"]);
+      var MONEY_WRITES = /* @__PURE__ */ new Set(["add_money_record", "update_money_record", "delete_money_record", "add_wallet", "set_wallet_balance", "add_category", "remember_shop", "add_recurring", "update_recurring", "mark_paid", "split_bill", "add_debt", "settle_debt", "add_goal", "update_goal"]);
       var MONEY_PROMPT = `
 
 Money: you also keep track of the user's money (spending, income, transfers between their own wallets, planned payments), with the money tools.
@@ -36171,7 +36473,10 @@ Money: you also keep track of the user's money (spending, income, transfers betw
 - A payment for later ("besok bayar internet 350rb") is a planned record with its date. Also offer to add a task for it.
 - Receipts and bank/e-wallet notifications: read the total, the shop and the date, then record it (source "receipt" or "notification"). Ask for the wallet unless the receipt shows it.
 - To offer choices the user can tap, end your message with one line: [[options: First | Second | Third]]. Use it whenever you ask which wallet or category (add "+ New wallet" or "+ New category" as the last option) and for the options a result gives you.
-- After saving, reply in one short line (the chat shows the record as a card with its new wallet balance). Mention a budget_note if there is one.`;
+- After saving, reply in one short line (the chat shows the record as a card with its new wallet balance). Mention a budget_note if there is one.
+- Bills that repeat (monthly BPJS, Netflix, rent, internet, salary) go in once with add_recurring; they then appear as planned payments before each date. When the user says a planned payment is done, use mark_paid. When asked about a bill that has come up, offer [[options: Paid already | Remind me later]].
+- Paying for a group ("split with Andi and Sari") is split_bill. Someone paying back is settle_debt (ask which wallet it came into). "Who owes me?" comes from money_overview owed.
+- Savings goals: add_goal, then update_goal to add savings (or tie it to a savings wallet). Tell them how much a week is needed to make it in time.`;
       var TONES = {
         mirror: "Match how the user writes in their latest messages: the same language (Indonesian, English or their mix), the same level of formality, the same length, the same kind of slang and emoji. Formal when they are formal, relaxed when they are relaxed. Use only slang the user uses themselves or that is plain everyday chat; never add trendy words they did not use. Emoji only if they use them. Keep replies short",
         polite: 'Be neat and polite. In Indonesian use clear, standard, friendly language (saya/kamu or Anda as fits the user, no slang, no "wkwk"); in English, polite and plain. No emoji. Keep replies short',
@@ -36273,6 +36578,26 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             case "remember_shop": {
               const s = m.rememberShop(input.shop, input.category);
               return s ? { saved: true } : { saved: false, note: "Unknown category." };
+            }
+            case "add_recurring":
+              return m.addRecurring(input);
+            case "update_recurring": {
+              const { id, ...rest } = input;
+              return m.updateRecurring(id, rest);
+            }
+            case "mark_paid":
+              return m.markPaid(input.id, input.date);
+            case "split_bill":
+              return m.splitBill(input);
+            case "add_debt":
+              return m.addDebt(input);
+            case "settle_debt":
+              return m.settleDebt(input);
+            case "add_goal":
+              return m.addGoal(input);
+            case "update_goal": {
+              const { goal, ...rest } = input;
+              return m.updateGoal(goal, rest);
             }
             default:
               throw new Error(`Unknown tool ${name}`);
@@ -36526,6 +36851,22 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             return `Category ${input.name || ""}`.trim();
           case "remember_shop":
             return `Remembered ${input.shop || "a shop"}`;
+          case "add_recurring":
+            return `Every ${input.every || "month"}: ${input.description || ""}`;
+          case "update_recurring":
+            return input.stop ? "Stopped a recurring payment" : "Changed a recurring payment";
+          case "mark_paid":
+            return "Marked a payment as paid";
+          case "split_bill":
+            return `Split ${input.description || "a bill"}`;
+          case "add_debt":
+            return `${input.person} owes`;
+          case "settle_debt":
+            return `${input.person} paid back`;
+          case "add_goal":
+            return `Goal ${input.name || ""}`.trim();
+          case "update_goal":
+            return `Goal ${input.goal || ""}`.trim();
           default:
             return name;
         }
@@ -37400,7 +37741,7 @@ Content-Type: application/octet-stream\r
         "I need an AI key to think, write notes and track your tasks. Pick one \u2014 it takes about a minute.": "Aku butuh kunci AI untuk berpikir, menulis catatan, dan melacak tugasmu. Pilih satu \u2014 cuma sekitar satu menit.",
         "Google Gemini": "Google Gemini",
         Free: "Gratis",
-        Paid: "Berbayar",
+        Paid: "Sudah bayar",
         "Free with any Google account. No credit card. Daily limits that are fine for personal use.": "Gratis dengan akun Google apa pun. Tanpa kartu kredit. Batas harian cukup untuk pemakaian pribadi.",
         Claude: "Claude",
         "The smartest at notes and tasks. Pay as you go: a few dollars of credit lasts a long time.": "Paling pintar untuk catatan dan tugas. Bayar sesuai pemakaian: kredit beberapa dolar bisa tahan lama.",
@@ -37744,7 +38085,7 @@ Content-Type: application/octet-stream\r
         "Log progress": "Catat progres",
         "Task #{0} (not found)": "Tugas #{0} (tidak ditemukan)",
         "Saved a note": "Menyimpan catatan",
-        "Looked through the notebook": "Melihat isi buku catatan",
+        "Looked through the notebook": "Melihat-lihat buku catatan",
         "Read {0}": "Membaca {0}",
         "Wrote {0}": "Menulis {0}",
         "Added to {0}": "Menambahkan ke {0}",
@@ -38313,7 +38654,58 @@ Content-Type: application/octet-stream\r
         "{#0} tasks are late": "{0} tugas telat",
         '"{0}" is due today and not started': '"{0}" tenggatnya hari ini dan belum dimulai',
         '"{0}" is due tomorrow and not started': '"{0}" tenggatnya besok dan belum dimulai',
-        "{0} open tasks, {1} working days left": "{0} tugas terbuka, sisa {1} hari kerja"
+        "{0} open tasks, {1} working days left": "{0} tugas terbuka, sisa {1} hari kerja",
+        "Bills coming up": "Tagihan mendatang",
+        'Tell your buddy about bills that repeat, like "BPJS 150rb every 10th from BCA".': 'Ceritakan tagihan rutin ke buddy-mu, misalnya "BPJS 150rb tiap tanggal 10 dari BCA".',
+        "It happened: count it in the wallet now": "Sudah terjadi: hitung di dompet sekarang",
+        Repeats: "Rutin",
+        "every week": "tiap minggu",
+        "every year": "tiap tahun",
+        "every month, day {0}": "tiap bulan, tanggal {0}",
+        Stop: "Hentikan",
+        Owed: "Utang-piutang",
+        'Split a bill with your buddy ("dinner 600rb split with Andi and Sari") and it keeps track of who owes you.': 'Bagi tagihan lewat buddy-mu ("makan malam 600rb dibagi sama Andi dan Sari") dan dia mencatat siapa yang berutang.',
+        "you owe": "kamu berutang",
+        "owes you": "berutang padamu",
+        "Paid back into\u2026": "Dibayar ke\u2026",
+        "Record the money in a wallet and clear it": "Catat uangnya di dompet dan lunaskan",
+        Goals: "Target",
+        'Tell your buddy what you are saving for, like "save 5 juta for a new phone by March".': 'Ceritakan target tabunganmu, misalnya "nabung 5 juta buat HP baru sampai Maret".',
+        "{0}% \xB7 {1} a week until {2}": "{0}% \xB7 {1} per minggu sampai {2}",
+        "+ add, e.g. 200rb": "+ tambah, mis. 200rb",
+        "Marked a payment as paid": "Menandai pembayaran sudah dibayar",
+        "Stopped a recurring payment": "Menghentikan pembayaran rutin",
+        "Settled up": "Melunasi",
+        "Changed a goal": "Mengubah target",
+        Read: "Membaca",
+        Wrote: "Menulis",
+        "Added to": "Menambahkan ke",
+        "Searched for": "Mencari",
+        "Added task": "Menambah tugas",
+        "Updated task": "Mengubah tugas",
+        "Deleted task": "Menghapus tugas",
+        "Started project": "Memulai proyek",
+        "Logged progress on": "Mencatat progres di",
+        "Checked your money": "Memeriksa keuanganmu",
+        Recorded: "Mencatat",
+        "Changed record": "Mengubah catatan",
+        "Deleted record": "Menghapus catatan",
+        "Added wallet": "Menambah dompet",
+        "Set the balance of": "Mengatur saldo",
+        "Added category": "Menambah kategori",
+        "Remembered shop": "Mengingat toko",
+        "Changed repeat": "Mengubah tagihan rutin",
+        "Marked paid": "Ditandai sudah bayar",
+        Split: "Membagi",
+        "Paid back": "Dilunasi",
+        "New goal": "Target baru",
+        "Savings goal": "Target tabungan",
+        "Picked what to do now": "Memilih yang dikerjakan sekarang",
+        "Planned the week": "Merencanakan minggu ini",
+        "Made a new plan for late tasks": "Membuat rencana baru untuk tugas yang telat",
+        "Moved tasks": "Memindahkan tugas",
+        "Opened the timeline": "Membuka linimasa",
+        "(not saved)": "(tidak disimpan)"
       };
     }
   });
@@ -38941,14 +39333,32 @@ Content-Type: application/octet-stream\r
         add_wallet: "Added wallet",
         set_wallet_balance: "Set the balance of",
         add_category: "Added category",
-        remember_shop: "Remembered shop"
+        remember_shop: "Remembered shop",
+        add_recurring: "Repeats",
+        update_recurring: "Changed repeat",
+        mark_paid: "Marked paid",
+        split_bill: "Split",
+        add_debt: "Owed",
+        settle_debt: "Paid back",
+        add_goal: "New goal",
+        update_goal: "Savings goal",
+        what_now: "Picked what to do now",
+        plan_week: "Planned the week",
+        reschedule_late: "Made a new plan for late tasks",
+        move_tasks: "Moved tasks",
+        show_timeline: "Opened the timeline"
       };
       function toolLabel(name, input = {}) {
-        const base = TOOL_LABELS[name] || name;
+        const base = I18n.t(TOOL_LABELS[name] || name);
         if (name === "money_overview" || name === "delete_money_record" || name === "update_money_record") return base;
         if (name === "add_money_record") return `${base} ${input.description || ""}`.trim();
         if (name === "set_wallet_balance") return `${base} ${input.wallet || ""}`.trim();
         if (name === "remember_shop") return `${base} ${input.shop || ""}`.trim();
+        if (name === "add_recurring" || name === "split_bill") return `${base}: ${input.description || ""}`.replace(/: $/, "");
+        if (name === "add_debt" || name === "settle_debt") return `${base}: ${input.person || ""}`;
+        if (name === "update_goal") return `${base}: ${input.goal || ""}`;
+        if (name === "move_tasks") return `${base} (${(input.changes || []).length})`;
+        if (["what_now", "plan_week", "reschedule_late", "show_timeline", "mark_paid", "update_recurring"].includes(name)) return base;
         const detail = input.path || input.page || input.query || input.title || input.name || (input.id ? `#${input.id}` : "");
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
       }
@@ -38988,7 +39398,7 @@ Content-Type: application/octet-stream\r
           } else {
             const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
             const uses = m.content.filter((b) => b.type === "tool_use");
-            const tools = uses.filter((b) => !moneyCards.has(b.id) && !asked.has(b.id)).map((b) => notSaved.has(b.id) ? `${toolLabel(b.name, b.input)} (not saved)` : toolLabel(b.name, b.input));
+            const tools = uses.filter((b) => !moneyCards.has(b.id) && !asked.has(b.id)).map((b) => notSaved.has(b.id) ? `${toolLabel(b.name, b.input)} ${I18n.t("(not saved)")}` : toolLabel(b.name, b.input));
             const money2 = uses.filter((b) => moneyCards.has(b.id)).map((b) => moneyCards.get(b.id));
             const last = out[out.length - 1];
             if (last && last.role === "assistant" && !last.text) {
@@ -40152,6 +40562,20 @@ In one short line say what it is, then offer what to do with it as options (add 
       ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b), "Merged categories"));
       ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat), "Remembered a shop"));
       ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id), "Forgot a shop"));
+      ipcMain.handle("money:plans", () => {
+        const m = money();
+        if (m.ensureRecurring()) m.save();
+        return {
+          recurring: m.recurring().map((r) => ({ ...m.recurringView(r), amountN: r.amount })),
+          upcoming: m.records().filter((r) => r.planned && r.date >= localDate()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 12).map((r) => ({ id: r.id, date: r.date, description: r.description, amount: r.amount, recurring: !!r.recurring })),
+          owed: m.debtsSummary(),
+          goals: m.goals().map((g) => m.goalView(g))
+        };
+      });
+      ipcMain.handle("money:markPaid", moneyOp((m, id) => m.markPaid(id), "Marked a payment as paid"));
+      ipcMain.handle("money:stopRecurring", moneyOp((m, id) => m.updateRecurring(id, { stop: true }), "Stopped a recurring payment"));
+      ipcMain.handle("money:settle", moneyOp((m, person, wallet) => m.settleDebt({ person, wallet }), "Settled up"));
+      ipcMain.handle("money:goal", moneyOp((m, id, f) => m.updateGoal(id, f), "Changed a goal"));
       ipcMain.handle("nb:tree", () => notebook.tree());
       ipcMain.handle("nb:nested", () => notebook.nestedTree());
       var nbOp = (fn) => async (_e, ...args) => {
@@ -40881,6 +41305,15 @@ ${lines.join("\n")}
         }
         if (config.money === true) {
           const m = money(), T = I18n.t;
+          if (st.lastRecurring !== today) {
+            if (m.ensureRecurring(Math.max(10, Number(r.billsAhead) || 0))) {
+              m.save();
+              sendPanel("money:changed");
+              scheduleSync(3e3);
+            }
+            st.lastRecurring = today;
+            changed = true;
+          }
           if (r.chatty !== "quiet") {
             const until = addDays(today, Number(r.billsAhead) || 0);
             const told = new Set(st.billsTold || []);
@@ -41167,6 +41600,11 @@ ${lines.join("\n")}
         moneyRememberShop: (s, c) => ipcRenderer.invoke("money:rememberShop", s, c),
         moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
         onMoneyChanged: (fn) => on("money:changed", fn),
+        moneyPlans: () => ipcRenderer.invoke("money:plans"),
+        moneyMarkPaid: (id) => ipcRenderer.invoke("money:markPaid", id),
+        moneyStopRecurring: (id) => ipcRenderer.invoke("money:stopRecurring", id),
+        moneySettle: (person, wallet) => ipcRenderer.invoke("money:settle", person, wallet),
+        moneyGoal: (id, f) => ipcRenderer.invoke("money:goal", id, f),
         onShowView: (fn) => on("ui:show", fn),
         snip: () => ipcRenderer.invoke("snip:start"),
         onQuickSend: (fn) => on("quick:send", fn),

@@ -4,7 +4,7 @@
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const S = new Proxy({}, { get: (_, k) => window.scribble[k] });     // the bridge may arrive after this file loads (Android)
-  const t = (s) => (window.I18n ? I18n.t(s) : s);
+  const t = (s, ...a) => (window.I18n ? I18n.t(s, ...a) : s);
   const loc = () => (window.I18n ? I18n.locale() : undefined);
   const thisMonth = () => new Date().toLocaleDateString('en-CA').slice(0, 7);
   const state = { month: thisMonth(), wallet: '', q: '', kind: '', cat: '', data: null, editing: null, sheet: null };
@@ -22,7 +22,66 @@
     try { d = await S.moneyMonth(state.month); } catch {}
     state.data = d || { totals: { in: 0, out: 0, nIn: 0, nOut: 0, planned: 0 }, wallets: [], records: [], categories: [], shops: [] };
     render();
+    plans();
     if (state.sheet) state.sheet();
+  }
+
+  // ---- Plans: bills coming up (and the ones that repeat), who owes you, savings goals
+  async function plans() {
+    const box = $('#mn-plans'); if (!box) return;
+    let p = null; try { p = await S.moneyPlans(); } catch {}
+    box.textContent = '';
+    if (!p) return;
+    const day = (d) => new Date(d + 'T12:00:00').toLocaleDateString(window.I18n ? I18n.locale() : undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const card = (title, hint) => { const c = h('div', 'mn-card mn-plan'); const hd = h('div', 'mn-card-head'); hd.append(h('h4', '', t(title))); c.append(hd); if (hint) c.append(h('small', 'mn-plan-hint', t(hint))); return c; };
+    const done = async (r) => { if (r && r.ok === false) window.toast && toast(r.error); show(); };
+
+    const bills = card('Bills coming up', p.upcoming.length || p.recurring.length ? null : 'Tell your buddy about bills that repeat, like "BPJS 150rb every 10th from BCA".');
+    for (const u of p.upcoming.slice(0, 6)) {
+      const row = h('div', 'mn-prow');
+      row.append(h('span', 'mn-pd', day(u.date)), h('span', 'mn-pt', (u.recurring ? '↻ ' : '') + u.description), h('b', '', rp(u.amount)));
+      const b = h('button', 'link', t('Paid')); b.title = t('It happened: count it in the wallet now');
+      b.addEventListener('click', async () => done(await S.moneyMarkPaid(u.id)));
+      row.append(b); bills.append(row);
+    }
+    if (p.recurring.length) {
+      const det = h('details', 'mn-rec'); det.append(h('summary', '', `${t('Repeats')} (${p.recurring.length})`));
+      for (const r of p.recurring) {
+        const row = h('div', 'mn-prow');
+        const when = r.every === 'week' ? t('every week') : r.every === 'year' ? t('every year') : t('every month, day {0}', r.day);
+        row.append(h('span', 'mn-pt', r.description), h('small', '', `${when} · ${r.wallet}`), h('b', '', r.amount));
+        const x = h('button', 'link', t('Stop')); x.addEventListener('click', async () => done(await S.moneyStopRecurring(r.id)));
+        row.append(x); det.append(row);
+      }
+      bills.append(det);
+    }
+
+    const owed = card('Owed', p.owed.length ? null : 'Split a bill with your buddy ("dinner 600rb split with Andi and Sari") and it keeps track of who owes you.');
+    for (const o of p.owed) {
+      const row = h('div', 'mn-prow');
+      row.append(h('span', 'mn-pt', o.person), h('small', '', t(o.direction === 'i_owe' ? 'you owe' : 'owes you')), h('b', o.direction === 'i_owe' ? 'out' : 'in', o.amount_rp));
+      const sel = h('select', 'mn-psel'); sel.append(new Option(t('Paid back into…'), ''));
+      for (const w of state.data.wallets) sel.append(new Option(w.name, w.id));
+      sel.title = t('Record the money in a wallet and clear it');
+      sel.addEventListener('change', async () => { if (sel.value) done(await S.moneySettle(o.person, sel.value)); });
+      row.append(sel); owed.append(row);
+    }
+
+    const goals = card('Goals', p.goals.length ? null : 'Tell your buddy what you are saving for, like "save 5 juta for a new phone by March".');
+    for (const g of p.goals) {
+      const row = h('div', 'mn-goal');
+      const top = h('div', 'mn-prow'); top.append(h('span', 'mn-pt', g.name), h('b', '', `${g.saved} / ${g.target}`));
+      const bar = h('div', 'mn-gbar'); const fill = h('i'); fill.style.width = g.percent + '%'; bar.append(fill);
+      const sub = h('small', '', g.by ? t('{0}% · {1} a week until {2}', g.percent, g.per_week_needed, day(g.by)) : `${g.percent}%` + (g.wallet ? ` · ${g.wallet}` : ''));
+      row.append(top, bar, sub);
+      if (!g.wallet) {
+        const add = h('input', 'mn-gadd'); add.placeholder = t('+ add, e.g. 200rb');
+        add.addEventListener('keydown', async (e) => { if (e.key === 'Enter' && add.value.trim()) done(await S.moneyGoal(g.id, { add: add.value.trim() })); });
+        row.append(add);
+      }
+      goals.append(row);
+    }
+    box.append(bills, owed, goals);
   }
 
   function render() {
