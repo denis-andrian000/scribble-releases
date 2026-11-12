@@ -251,7 +251,7 @@ function addMessage(m) {
     if (m.tools && m.tools.length || (m.undo && m.undo.length)) {
       const t = el('div', 'tools');
       for (const label of m.tools || []) {
-        const c = el('span', `tool${label.endsWith('(not saved)') ? ' skipped' : ''}`);
+        const c = el('span', `tool${label.endsWith(I18n.t('(not saved)')) ? ' skipped' : ''}`);
         c.textContent = label; t.append(c);
       }
       if (m.undo && m.undo.length) {

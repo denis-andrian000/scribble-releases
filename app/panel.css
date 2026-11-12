@@ -962,3 +962,21 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 
 .hdot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: middle; }
 .hdot.ok { background: #5DAA76; } .hdot.risk { background: #E39B2E; } .hdot.late { background: #D25A4E; }
+
+.mn-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 0 0 12px; }
+.mn-plan { display: flex; flex-direction: column; gap: 6px; }
+.mn-plan-hint { color: var(--ink-2); font-size: 12px; }
+.mn-prow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.mn-prow .mn-pd { color: var(--ink-2); font-size: 11.5px; white-space: nowrap; }
+.mn-prow .mn-pt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-prow small { color: var(--ink-2); font-size: 11.5px; white-space: nowrap; }
+.mn-prow b.in { color: var(--green); } .mn-prow b.out { color: var(--red); }
+.mn-rec summary { cursor: pointer; font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.mn-rec .mn-prow { margin-top: 4px; }
+.mn-psel { font: inherit; font-size: 11.5px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); max-width: 120px; }
+.mn-goal { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.mn-goal:last-child { border-bottom: 0; }
+.mn-goal small { color: var(--ink-2); font-size: 11.5px; }
+.mn-gbar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 12%, transparent); overflow: hidden; }
+.mn-gbar i { display: block; height: 100%; background: var(--green); border-radius: 4px; }
+.mn-gadd { font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
