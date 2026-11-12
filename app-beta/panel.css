@@ -980,3 +980,22 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .mn-gbar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 12%, transparent); overflow: hidden; }
 .mn-gbar i { display: block; height: 100%; background: var(--green); border-radius: 4px; }
 .mn-gadd { font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+
+/* meeting mode */
+.meet-ov { position: fixed; inset: 0; z-index: 1500; background: rgba(20, 18, 40, .45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.meet { width: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; }
+.meet-head { display: flex; align-items: center; gap: 10px; }
+.meet-head b { flex: 1; font-size: 15px; }
+.meet-time { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.meet-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-2); }
+.meet-ov.rec .meet-dot { background: var(--red); animation: micpulse 1.2s ease-in-out infinite; }
+.meet-title, .meet-text { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.meet-text { min-height: 220px; flex: 1; resize: vertical; font-size: 13.5px; line-height: 1.5; }
+.meet-hint { color: var(--ink-2); font-size: 12px; min-height: 16px; }
+.meet-btns { display: flex; gap: 8px; align-items: center; }
+.meet-ov.paused .meet-text { opacity: .8; }
+
+.wins-ov { position: fixed; inset: 0; z-index: 1500; background: rgba(20, 18, 40, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.wins { display: flex; flex-direction: column; gap: 10px; max-height: 100%; }
+.wins img { max-width: min(432px, 100%); max-height: calc(100vh - 110px); border-radius: 16px; box-shadow: var(--shadow); object-fit: contain; }
+.wins-btns { display: flex; gap: 8px; justify-content: flex-end; }

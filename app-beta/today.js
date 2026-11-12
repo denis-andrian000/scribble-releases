@@ -29,6 +29,7 @@
           <button type="button" data-sc="now">✨ ${t('What should I do now?')}<small>${t('One task to focus on, and why')}</small></button>
           <button type="button" data-sc="plan">☀️ ${t('Plan my day')}<small>${t('Order and time blocks for today')}</small></button>
           <button type="button" data-sc="week">🗓 ${t('Plan my week')}<small>${t('Spread your tasks over the week')}</small></button>
+          <button type="button" data-sc="meeting">🎙 ${t('Meeting notes')}<small>${t('Listen in, then summary, decisions and tasks')}</small></button>
           <button type="button" data-sc="recap">📝 ${t('Write my day recap')}<small>${t("For today's daily page")}</small></button>
           <button type="button" data-sc="weekly">📊 ${t('Weekly report')}<small>${t('Ready to paste into WhatsApp or email')}</small></button>
         </div></div>
@@ -118,6 +119,7 @@
     const sc = e.target.closest('[data-sc]');
     if (sc) {
       openChat();
+      if (sc.dataset.sc === 'meeting') return window.Meeting && window.Meeting.open();
       if (sc.dataset.sc === 'now') return window.send('What should I do now?', '✨ ' + t('What should I do now?'));
       if (sc.dataset.sc === 'week') return window.send('Plan my week (plan_week): which task on which day. Keep it short, then offer to apply it.', '🗓 ' + t('Plan my week'));
       if (sc.dataset.sc === 'plan') return window.send("Here's my day. Help me plan it: suggest an order for today's tasks with rough time blocks, and flag anything I should reschedule.", '☀️ ' + t('Plan my day'));

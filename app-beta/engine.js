@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.21.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.22.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36190,6 +36190,12 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
       var { localDate, localTime, missingFields } = require_notebook();
       var WRITE_TOOLS = /* @__PURE__ */ new Set(["capture_note", "write_page", "append_to_page", "add_task", "update_task", "delete_task", "create_project", "log_project", "move_tasks"]);
       var Planner = require_planner();
+      var { rp } = require_money();
+      var STOP = new Set("the and for what did does was were with that this from how much when where who which have has you your are not can about into last yang dan untuk apa ini itu dari ada kapan berapa siapa dengan atau juga sudah udah aku kamu saya di ke pada bulan".split(" "));
+      var normPri = (p) => {
+        const v = String(p || "").toLowerCase();
+        return v === "normal" ? "medium" : ["low", "medium", "high"].includes(v) ? v : null;
+      };
       var TOOLS = [
         {
           name: "capture_note",
@@ -36292,6 +36298,21 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               area: { type: "string" }
             }
           }
+        },
+        {
+          name: "ask_notes",
+          description: 'Answer a question from everything the user saved: pages, tasks (with their notes) and money records. Use for "what did the vendor quote last month?", "kapan terakhir aku ketemu Pak James?", "how much did I pay for internet in October?". Returns the best matching snippets with where they came from. Answer briefly from them, then cite the source as [Page title](page:path/of/page.md). If nothing matches, say so plainly; never guess.',
+          input_schema: { type: "object", properties: { question: { type: "string" }, keywords: { type: "array", items: { type: "string" }, description: '2\u20136 search words, including other spellings and the other language (e.g. "vendor", "quote", "penawaran", "harga")' } }, required: ["question", "keywords"] }
+        },
+        {
+          name: "save_template",
+          description: "Save a reusable project template (a list of tasks with when they start and how long they take, in days from the project start). From an existing project: give project. Or give tasks yourself. Saved as a page in Templates/ that the user can edit.",
+          input_schema: { type: "object", properties: { name: { type: "string" }, project: { type: "string", description: "Existing project to copy the tasks from" }, tasks: { type: "array", items: { type: "object", properties: { title: { type: "string" }, day: { type: "number", description: "Start, days after the project start (0 = first day)" }, days: { type: "number", description: "How many days it takes (1 = one day)" }, priority: { type: "string", enum: ["low", "medium", "high"] } }, required: ["title"] } } }, required: ["name"] }
+        },
+        {
+          name: "use_template",
+          description: 'Start a new project from a saved template: "start a new client onboarding for PT Maju from Monday". Creates the project and all its tasks with real dates. Without a matching template it returns the list of templates.',
+          input_schema: { type: "object", properties: { template: { type: "string" }, project: { type: "string", description: "Name of the new project" }, start: { type: "string", description: "Start date YYYY-MM-DD" }, area: { type: "string" } }, required: ["template", "project", "start"] }
         },
         {
           name: "what_now",
@@ -36637,6 +36658,62 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               return { deleted: nb.deleteTask(input.id) };
             case "list_tasks":
               return nb.listTasks(input);
+            case "ask_notes": {
+              const words = [...new Set([...input.keywords || [], ...String(input.question || "").split(/[^\p{L}\p{N}]+/u)].map((w) => String(w).toLowerCase().trim()).filter((w) => w.length >= 3 && !STOP.has(w)))].slice(0, 12);
+              const score = (txt) => {
+                const l = String(txt || "").toLowerCase();
+                return words.reduce((a, w) => a + (l.includes(w) ? 1 : 0), 0);
+              };
+              const pages = [];
+              for (const pg of nb.tree()) {
+                if (pg.path === "Tasks.md") continue;
+                let text = "";
+                try {
+                  text = nb.read(pg.path);
+                } catch {
+                  continue;
+                }
+                const lines = text.split("\n");
+                const hits = lines.map((l, i) => ({ i, s: score(l) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 3);
+                const total = hits.reduce((a, x) => a + x.s, 0) + score(pg.path) * 2;
+                if (total) pages.push({ page: pg.path, score: total, snippets: hits.map((h) => lines.slice(Math.max(0, h.i - 1), h.i + 2).join("\n").trim().slice(0, 400)) });
+              }
+              pages.sort((a, b) => b.score - a.score);
+              const tasks = nb.listTasks({ status: "all" }).map((t) => ({ t, s: score(`${t.title} ${t.notes || ""} ${t.project || ""}`) })).filter((x) => x.s).sort((a, b) => b.s - a.s).slice(0, 6).map(({ t }) => ({ id: t.id, title: t.title, project: t.project, status: t.status, start: t.start, due: t.due, notes: (t.notes || "").slice(0, 300), completed: t.completed }));
+              const m = this.getMoney();
+              const money = m ? m.records().map((r) => ({ r, s: score(r.description) })).filter((x) => x.s).sort((a, b) => b.s - a.s || b.r.date.localeCompare(a.r.date)).slice(0, 8).map(({ r }) => `${r.date} ${r.kind} ${r.description} ${rp(r.amount)}`) : [];
+              return { searched_for: words, pages: pages.slice(0, 5), tasks, money, ...pages.length || tasks.length || money.length ? {} : { note: "Nothing matches. Say so; do not guess." } };
+            }
+            case "save_template": {
+              let rows = input.tasks || [];
+              if (input.project) {
+                const ts = nb.listTasks({ status: "all" }).filter((t) => String(t.project || "").toLowerCase() === input.project.toLowerCase() && t.status !== "cancelled");
+                if (!ts.length) return { error: `No tasks in a project called "${input.project}".` };
+                const dn = (s) => Math.round(Date.parse(s + "T00:00:00Z") / 864e5);
+                const base = Math.min(...ts.map((t) => dn(t.start || t.due || localDate())));
+                rows = ts.sort((a, b) => String(a.start || a.due).localeCompare(String(b.start || b.due))).map((t) => ({ title: t.title, day: dn(t.start || t.due || localDate()) - base, days: t.start && t.due ? dn(t.due) - dn(t.start) + 1 : 1, priority: normPri(t.priority) || "medium" }));
+              }
+              if (!rows.length) return { error: "No tasks for the template. Ask which tasks it should have." };
+              const name2 = String(input.name).trim().replace(/[\\/:*?"<>|]/g, "-");
+              const body = `# ${name2}
+
+A project template. Each line: task (day it starts, how many days, priority). Tell your buddy "start a new ${name2} for \u2026 from Monday".
+
+` + rows.map((r) => `- ${String(r.title).trim()} (day ${Math.max(0, Math.round(r.day || 0))}, ${Math.max(1, Math.round(r.days || 1))} day${Math.round(r.days || 1) > 1 ? "s" : ""}, ${r.priority || "medium"})`).join("\n") + "\n";
+              return { saved_to: nb.write(`Templates/${name2}.md`, body), tasks: rows.length };
+            }
+            case "use_template": {
+              const list = nb.tree().filter((p) => p.path.startsWith("Templates/")).map((p) => p.path.replace(/^Templates\//, "").replace(/\.md$/, ""));
+              const hit = list.find((n) => n.toLowerCase() === String(input.template).toLowerCase()) || list.find((n) => n.toLowerCase().includes(String(input.template).toLowerCase()));
+              if (!hit) return { error: `No template like "${input.template}".`, templates: list };
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start || "")) return { error: "Ask when the project starts (a date)." };
+              const rows = nb.read(`Templates/${hit}.md`).split("\n").map((l) => l.match(/^\s*[-*]\s+(?:\[.\]\s+)?(.+?)\s*\(day\s+(\d+),\s*(\d+)\s*days?(?:,\s*(low|medium|high))?\)/i)).filter(Boolean);
+              if (!rows.length) return { error: `The template "${hit}" has no task lines like "- Kickoff call (day 0, 1 day, high)".` };
+              nb.ensureProject(input.project, { area: input.area });
+              const add = (s, n) => new Date(Date.parse(s + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+              const made = rows.map((m) => nb.addTask({ title: m[1], project: input.project, area: input.area || null, start: add(input.start, +m[2]), due: add(input.start, +m[2] + Math.max(1, +m[3]) - 1), priority: (m[4] || "medium").toLowerCase() }));
+              return { project: input.project, from_template: hit, tasks: made.map((t) => `${t.title}: ${t.start} \u2192 ${t.due}`) };
+            }
             case "what_now": {
               const d = /* @__PURE__ */ new Date(), now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
               return Planner.next(nb.listTasks({ status: "open" }), { today: localDate(), now, days: this.getRoutine().days });
@@ -36795,11 +36872,11 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               const input = d.input || block.input || {};
               const edited = d.input && JSON.stringify(d.input) !== JSON.stringify(block.input);
               onEvent({ type: "tool", name: block.name, input });
-              const writes = WRITE_TOOLS.has(block.name) || block.name === "undo_last_save";
+              const writes = WRITE_TOOLS.has(block.name) || block.name === "undo_last_save" || block.name === "save_template" || block.name === "use_template";
               if (writes) changed = true;
               if (MONEY_WRITES.has(block.name)) moneyChanged = true;
               try {
-                const tx = WRITE_TOOLS.has(block.name) || MONEY_WRITES.has(block.name);
+                const tx = WRITE_TOOLS.has(block.name) || MONEY_WRITES.has(block.name) || block.name === "save_template" || block.name === "use_template";
                 if (tx) this.nb.begin(describe(block.name, input));
                 const out = this.runTool(block.name, input);
                 if (tx) this.nb.commit();
@@ -36837,6 +36914,10 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             return `Log on ${input.name}`;
           case "move_tasks":
             return input.reason || `Moved ${(input.changes || []).length} tasks`;
+          case "save_template":
+            return `Template ${input.name}`;
+          case "use_template":
+            return `${input.project} from ${input.template}`;
           case "add_money_record":
             return `Recorded ${input.description || "money"}`;
           case "update_money_record":
@@ -38705,7 +38786,41 @@ Content-Type: application/octet-stream\r
         "Made a new plan for late tasks": "Membuat rencana baru untuk tugas yang telat",
         "Moved tasks": "Memindahkan tugas",
         "Opened the timeline": "Membuka linimasa",
-        "(not saved)": "(tidak disimpan)"
+        "(not saved)": "(tidak disimpan)",
+        "\u{1F399} Meeting notes": "\u{1F399} Catatan rapat",
+        "\u{1F3C6} My week": "\u{1F3C6} Mingguku",
+        "Meeting notes": "Catatan rapat",
+        "What is the meeting about? (optional)": "Rapat soal apa? (opsional)",
+        "Listening\u2026 You can also type notes here.": "Mendengarkan\u2026 Kamu juga bisa mengetik catatan di sini.",
+        "Finish: make notes": "Selesai: buat catatan",
+        Pause: "Jeda",
+        Resume: "Lanjut",
+        "Throw away these meeting notes?": "Buang catatan rapat ini?",
+        "Finishing\u2026": "Menyelesaikan\u2026",
+        "Listening with your phone. Keep Scribble open during the meeting.": "Mendengarkan lewat HP-mu. Biarkan Scribble terbuka selama rapat.",
+        "Listening. Words appear as people talk.": "Mendengarkan. Kata-kata muncul saat orang bicara.",
+        "To listen here, turn on Voice in Settings and add your OpenRouter key. You can still type your notes.": "Untuk mendengarkan di sini, nyalakan Suara di Pengaturan dan tambahkan kunci OpenRouter-mu. Kamu tetap bisa mengetik catatan.",
+        "Listening. Text appears every minute or so.": "Mendengarkan. Teks muncul kira-kira tiap menit.",
+        "Listen in, then summary, decisions and tasks": "Ikut mendengarkan, lalu ringkasan, keputusan, dan tugas",
+        "My week": "Mingguku",
+        "task done": "tugas selesai",
+        "tasks done": "tugas selesai",
+        "{0}-day streak": "{0} hari berturut-turut",
+        "Start a streak tomorrow": "Mulai beruntun besok",
+        "Busiest: {0} ({1})": "Tersibuk: {0} ({1})",
+        "A calm week": "Minggu yang santai",
+        "Moved {0} project(s) forward": "{0} proyek maju",
+        "No projects this week": "Belum ada proyek minggu ini",
+        "{0} under budget this month": "{0} di bawah anggaran bulan ini",
+        "{0} over budget this month": "{0} melebihi anggaran bulan ini",
+        "Spent {0} this week": "Terpakai {0} minggu ini",
+        "Done this week": "Selesai minggu ini",
+        "Made with Scribble \xB7 {0}": "Dibuat dengan Scribble \xB7 {0}",
+        "Save image": "Simpan gambar",
+        Share: "Bagikan",
+        "+ {0} more": "+ {0} lagi",
+        "Free to spend: {0} a day": "Bisa dipakai: {0} sehari",
+        "{0} \xB7 Today": "{0} \xB7 Hari ini"
       };
     }
   });
@@ -40562,6 +40677,58 @@ In one short line say what it is, then offer what to do with it as options (add 
       ipcMain.handle("money:mergeCategory", moneyOp((m, a, b) => m.mergeCategory(a, b), "Merged categories"));
       ipcMain.handle("money:rememberShop", moneyOp((m, shop, cat) => m.rememberShop(shop, cat), "Remembered a shop"));
       ipcMain.handle("money:forgetShop", moneyOp((m, id) => m.forgetShop(id), "Forgot a shop"));
+      ipcMain.handle("widget:data", () => {
+        const T = I18n.t, today = localDate();
+        const open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today).sort((a, b) => (a.due < today ? 0 : 1) - (b.due < today ? 0 : 1) || String(a.time || "99").localeCompare(String(b.time || "99")));
+        const lines = open.slice(0, 5).map((t2) => `${t2.due < today ? "\u26A0 " : t2.time ? t2.time + "  " : "\u2022  "}${t2.title}`);
+        if (open.length > 5) lines.push(T("+ {0} more", open.length - 5));
+        let moneyLine = "";
+        if (config.money === true) {
+          try {
+            const o = money().outlook();
+            moneyLine = T("Free to spend: {0} a day", o.per_day);
+          } catch {
+          }
+        }
+        const name = avatar().name || "Scribble";
+        return { title: T("{0} \xB7 Today", name), lines: lines.length ? lines.join("\n") : T("Nothing due today \u{1F389}"), money: moneyLine };
+      });
+      ipcMain.handle("stats:week", () => {
+        const today = localDate(), d = /* @__PURE__ */ new Date(today + "T12:00:00");
+        const monday = addDays(today, -((d.getDay() + 6) % 7));
+        const all = notebook.loadTasks();
+        const doneDay = (t2) => t2.status === "done" && t2.completed ? localDate(new Date(t2.completed)) : null;
+        const week = all.filter((t2) => {
+          const x = doneDay(t2);
+          return x && x >= monday && x <= today;
+        });
+        const byDay = {};
+        for (const t2 of week) {
+          const x = doneDay(t2);
+          byDay[x] = (byDay[x] || 0) + 1;
+        }
+        const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0] || null;
+        const days = new Set(all.map(doneDay).filter(Boolean));
+        let streak = 0, cur = days.has(today) ? today : addDays(today, -1);
+        while (days.has(cur)) {
+          streak++;
+          cur = addDays(cur, -1);
+        }
+        const projects = [...new Set(week.map((t2) => t2.project).filter(Boolean))];
+        let moneyOut = null, budget = null;
+        if (config.money === true) {
+          const m = money();
+          moneyOut = m.records().filter((r) => !r.planned && r.kind === "out" && r.date >= monday && r.date <= today).reduce((a, r) => a + r.amount, 0);
+          const ym = today.slice(0, 7);
+          const cats = m.categories().filter((c) => c.kind === "out" && c.budget != null);
+          if (cats.length) {
+            const total = cats.reduce((a, c) => a + c.budget, 0);
+            const spent = cats.reduce((a, c) => a + m.records().filter((r) => !r.planned && r.kind === "out" && r.category === c.id && r.date.startsWith(ym)).reduce((x, r) => x + r.amount, 0), 0);
+            budget = { total, spent };
+          }
+        }
+        return { from: monday, to: today, done: week.length, titles: week.slice(-6).map((t2) => t2.title), busiest, streak, projects, moneyOut, budget, name: avatar().name || "Scribble", look: avatar() };
+      });
       ipcMain.handle("money:plans", () => {
         const m = money();
         if (m.ensureRecurring()) m.save();
@@ -41601,6 +41768,8 @@ ${lines.join("\n")}
         moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
         onMoneyChanged: (fn) => on("money:changed", fn),
         moneyPlans: () => ipcRenderer.invoke("money:plans"),
+        weekStats: () => ipcRenderer.invoke("stats:week"),
+        widgetData: () => ipcRenderer.invoke("widget:data"),
         moneyMarkPaid: (id) => ipcRenderer.invoke("money:markPaid", id),
         moneyStopRecurring: (id) => ipcRenderer.invoke("money:stopRecurring", id),
         moneySettle: (person, wallet) => ipcRenderer.invoke("money:settle", person, wallet),
