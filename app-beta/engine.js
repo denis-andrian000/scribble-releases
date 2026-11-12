@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.26.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.26.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -39893,6 +39893,14 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           }, 500);
         });
       }
+      var APP_ICON = () => {
+        try {
+          const i = nativeImage.createFromPath(path.join(__dirname, "..", "assets", "icon.png"));
+          return i.isEmpty() ? void 0 : i;
+        } catch {
+          return void 0;
+        }
+      };
       function createPanel() {
         panelWin = new BrowserWindow({
           width: PANEL.w,
@@ -39908,6 +39916,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           hasShadow: true,
           backgroundColor: "#00000000",
           title: "Scribble",
+          icon: APP_ICON(),
           webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, autoplayPolicy: "no-user-gesture-required" }
         });
         panelWin.setAlwaysOnTop(true, "floating");
@@ -39939,6 +39948,10 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           const wa = workAreaFor(b.x + b.width / 2, b.y + b.height / 2);
           panelWin.setAlwaysOnTop(false);
           panelWin.setSkipTaskbar(false);
+          {
+            const ic = APP_ICON();
+            if (ic) panelWin.setIcon(ic);
+          }
           panelWin.setMinimumSize(760, 520);
           panelWin.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
         } else {
