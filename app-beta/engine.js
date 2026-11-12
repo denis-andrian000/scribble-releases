@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.17.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.17.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -35887,6 +35887,18 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           }
         },
         {
+          name: "show_timeline",
+          description: "Open the project timeline (Tasks \u2192 Timeline) on the user's screen and get a summary of every project over time: first start and last due date, percent done, open tasks, late tasks (with days late), what is due next, and tasks without dates. Use it when the user asks to see or review the timeline, a project's schedule, what is late or slipping, or how projects overlap. Pass project to open just one project. Pass open: false to only read the summary without switching their screen.",
+          input_schema: {
+            type: "object",
+            properties: {
+              project: { type: "string", description: "Exact project name from list_tasks, or leave empty for all projects" },
+              zoom: { type: "string", enum: ["week", "month", "quarter"] },
+              open: { type: "boolean", description: "Switch the user's screen to the timeline (default true)" }
+            }
+          }
+        },
+        {
           name: "create_project",
           description: "Start tracking a project: creates a page with status, goal and a log section, at <area>/<category>/<name>.md (or <area>/<name>.md without a category, Projects/<name>.md without an area). If a page for it already exists anywhere, that page is returned.",
           input_schema: {
@@ -36044,7 +36056,9 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
       var Agent = class {
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
         // onLimit(active, error, tried) -> another active model to retry with, or null (rate limits, no credit, overload)
-        constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null }) {
+        constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null, onShow = () => {
+        } }) {
+          this.onShow = onShow;
           this.getMoney = getMoney;
           this.onLimit = onLimit;
           this.nb = notebook;
@@ -36125,6 +36139,42 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               return { deleted: nb.deleteTask(input.id) };
             case "list_tasks":
               return nb.listTasks(input);
+            case "show_timeline": {
+              const today = localDate(), dn = (s) => Math.round(Date.parse(s + "T00:00:00Z") / 864e5);
+              const all = nb.listTasks({ status: "all" });
+              const want = input.project ? String(input.project).toLowerCase() : "";
+              const groups = /* @__PURE__ */ new Map();
+              for (const t of all) {
+                if (want && String(t.project || "").toLowerCase() !== want) continue;
+                const k = `${t.area || ""}|${t.project || ""}`;
+                if (!groups.has(k)) groups.set(k, { area: t.area || null, project: t.project || null, tasks: [] });
+                groups.get(k).tasks.push(t);
+              }
+              if (want && !groups.size) return { error: `No project called "${input.project}". Projects: ${[...new Set(all.map((t) => t.project).filter(Boolean))].join(", ") || "none yet"}.` };
+              const projects = [...groups.values()].map(({ area, project, tasks }) => {
+                const live = tasks.filter((t) => t.status !== "cancelled");
+                const open = live.filter((t) => t.status !== "done");
+                const dates = live.flatMap((t) => [t.start, t.due]).filter(Boolean).sort();
+                const late = open.filter((t) => t.status !== "hold" && t.due && t.due < today).map((t) => ({ id: t.id, title: t.title, due: t.due, days_late: dn(today) - dn(t.due) }));
+                const next = open.filter((t) => t.due && t.due >= today).sort((a, b) => a.due.localeCompare(b.due))[0];
+                return {
+                  area,
+                  project: project || "(no project)",
+                  starts: dates[0] || null,
+                  ends: dates[dates.length - 1] || null,
+                  percent_done: live.length ? Math.round((live.length - open.length) / live.length * 100) : 0,
+                  open: open.length,
+                  in_progress: open.filter((t) => t.status === "doing").length,
+                  on_hold: open.filter((t) => t.status === "hold").length,
+                  late,
+                  next_due: next ? { title: next.title, due: next.due } : null,
+                  without_dates: open.filter((t) => !t.due && !t.start).map((t) => t.title)
+                };
+              }).filter((p) => p.open || want);
+              const shown = input.open !== false;
+              if (shown) this.onShow("timeline", { project: input.project || "", zoom: input.zoom || null });
+              return { today, shown_on_screen: shown, projects };
+            }
             case "create_project":
               return { page: nb.ensureProject(input.name, { goal: input.goal, area: input.area, category: input.category }) };
             case "log_project": {
@@ -40408,7 +40458,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }) });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
@@ -40578,6 +40628,7 @@ ${lines.join("\n")}
         moneyRememberShop: (s, c) => ipcRenderer.invoke("money:rememberShop", s, c),
         moneyForgetShop: (id) => ipcRenderer.invoke("money:forgetShop", id),
         onMoneyChanged: (fn) => on("money:changed", fn),
+        onShowView: (fn) => on("ui:show", fn),
         voiceGet: () => ipcRenderer.invoke("voice:get"),
         voiceSet: (p) => ipcRenderer.invoke("voice:set", p),
         voiceTest: (key) => ipcRenderer.invoke("voice:test", key),

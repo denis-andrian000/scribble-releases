@@ -60,7 +60,7 @@
     all = await S.tasks();
     const today = todayStr();
     const projects = [...new Set(all.filter((t) => t.project).map((t) => t.project))].sort();
-    if (onlyProject && !projects.includes(onlyProject)) onlyProject = '';
+    if (onlyProject && !projects.includes(onlyProject)) onlyProject = projects.find((p) => p.toLowerCase() === onlyProject.toLowerCase()) || '';
     const visible = all.filter((t) => (showDone || !isClosedT(t)) && (!onlyProject || t.project === onlyProject));
     const dated = visible.filter((t) => span(t)), undated = visible.filter((t) => !span(t));
 
@@ -325,5 +325,14 @@
     });
   }
 
-  window.Timeline = { render };
+  // the buddy opened the timeline: one project (or all), maybe a zoom
+  function focus({ project = '', zoom: z = null } = {}) {
+    onlyProject = project || '';
+    if (z && ZOOM[z]) { zoom = z; store.set('zoom', z); }
+    if (project) {
+      const hit = all.find((t) => String(t.project || '').toLowerCase() === project.toLowerCase());
+      if (hit) onlyProject = hit.project;
+    }
+  }
+  window.Timeline = { render, focus };
 })();
