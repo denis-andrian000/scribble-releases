@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.26.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.26.2";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -39951,6 +39951,12 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           {
             const ic = APP_ICON();
             if (ic) panelWin.setIcon(ic);
+          }
+          if (process.platform === "win32" && panelWin.setAppDetails) {
+            try {
+              panelWin.setAppDetails({ appId: "id.scribble.buddy", appIconPath: process.execPath, appIconIndex: 0, relaunchCommand: `"${process.execPath}"`, relaunchDisplayName: "Scribble" });
+            } catch {
+            }
           }
           panelWin.setMinimumSize(760, 520);
           panelWin.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height });
