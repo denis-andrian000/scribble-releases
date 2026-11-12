@@ -198,7 +198,7 @@
     place(a, b);
     if (!one) { const tx = el('span'); tx.textContent = label(t, k, today); bar.append(tx); }
     else { const tx = el('span', 'tl-dlab'); tx.textContent = t.title; bar.append(tx); }
-    bar.title = `${t.title}\n${t.start ? fmt(t.start) : '?'} → ${t.due ? fmt(t.due) : '?'} · ${label(t, k, today)}${t.priority ? ' · ' + T(cap(normPri(t.priority) || '')) : ''}\n${T('Drag to move, drag the ends to change the dates. Click to open.')}`;
+    bar.title = `${t.title}\n${t.start ? fmt(t.start) : '?'} → ${t.due ? fmt(t.due) : '?'}${t.time ? ' ' + t.time : ''} · ${label(t, k, today)}${t.priority ? ' · ' + T(cap(normPri(t.priority) || '')) : ''}\n${T('Drag to move, drag the ends to change the dates. Click to open.')}`;
     if (!isClosedT(t)) {
       if (!one) bar.append(el('i', 'tl-h l'), el('i', 'tl-h r'));
       drag(bar, t, a, b, place);
@@ -232,8 +232,7 @@
         if (s === a && en === b) return;
         const patch = { start: n2d(s), due: n2d(en) };
         const r = await updTask(t.id, patch);
-        if (r && r.ok === false) toast(r.error);
-        else toast(T('{0}: {1} → {2}', t.title, fmt(patch.start), fmt(patch.due)));
+        if (r && r.ok === false) toast(r.error);   // a good change shows its own toast with Undo
         render();
       };
       bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
@@ -293,18 +292,20 @@
     const row = (lab, input) => { const l = el('label'); const s = el('span'); s.textContent = T(lab); l.append(s, input); return l; };
     const st = el('input'); st.type = 'date'; st.value = t.start || '';
     const du = el('input'); du.type = 'date'; du.value = t.due || '';
+    const tm = el('input'); tm.type = 'time'; tm.value = t.time || '';
     const ss = el('select'); for (const [v, s] of Object.entries(STATUS)) { const o = el('option'); o.value = v; o.textContent = T(s); ss.append(o); } ss.value = t.status || 'todo';
     const pr = el('select'); for (const v of ['low', 'medium', 'high']) { const o = el('option'); o.value = v; o.textContent = T(cap(v)); pr.append(o); } pr.value = normPri(t.priority) || 'medium';
     const btns = el('div', 'tl-pbtns');
     const cancel = el('button', 'ghost'); cancel.type = 'button'; cancel.textContent = T('Cancel');
     const save = el('button', 'primary'); save.type = 'button'; save.textContent = T('Save');
     btns.append(cancel, save);
-    p.append(h, sub, row('Start', st), row('Due', du), row('Status', ss), row('Priority', pr), btns);
+    p.append(h, sub, row('Start', st), row('Due', du), row('Time', tm), row('Status', ss), row('Priority', pr), btns);
     cancel.addEventListener('click', () => p.remove());
     save.addEventListener('click', async () => {
       const patch = {};
       if (st.value && st.value !== t.start) patch.start = st.value;
       if (du.value && du.value !== t.due) patch.due = du.value;
+      if ((tm.value || null) !== (t.time || null)) patch.time = tm.value || null;
       if (ss.value !== t.status) patch.status = ss.value;
       if (pr.value !== normPri(t.priority)) patch.priority = pr.value;
       p.remove();

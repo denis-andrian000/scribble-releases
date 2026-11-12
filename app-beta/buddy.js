@@ -398,7 +398,8 @@ function setTargets(mood, t) {
     if (k === 'blush' && base.blush === 0) v = mood === 'happy' || mood === 'giggle' || mood === 'pressed' ? 0.5 : 0;
     F[k].t = v;
   }
-  if (t < talkUntil) { F.mOpen.t = 0.15 + 0.5 * Math.abs(Math.sin(t / 95)) * (0.6 + 0.4 * Math.sin(t / 410)); F.mCurve.t = Math.max(F.mCurve.t, 0.5); }
+  if (document.body.classList.contains('hungry')) { F.mOpen.t = 0.75; F.mCurve.t = 0.6; }
+  else if (t < talkUntil) { F.mOpen.t = 0.15 + 0.5 * Math.abs(Math.sin(t / 95)) * (0.6 + 0.4 * Math.sin(t / 410)); F.mCurve.t = Math.max(F.mCurve.t, 0.5); }
 
   // eyelids: blinking, drowsiness, sleep
   let open = 1;
@@ -674,3 +675,28 @@ function frame(t) {
 window.__buddy = { st, B, F, get rig() { return rig; }, get pose() { return rigLast; }, input: { press: pressStart, dragStart: dragBegin, dragEnd: () => { dragFinish(); dragging = false; }, click: () => { tapped(); dragging = false; }, cancel: () => { st.pressed = false; dragging = false; } } };
 
 S.getAvatar().then((a) => { window.ScribbleSound?.configure(a); render(a); requestAnimationFrame(frame); });
+
+// ---------------------------------------------------------------- drop anything on the buddy
+// Files, pictures or selected text dragged onto the buddy: it opens its mouth, "eats" it, and the chat asks what to do.
+(() => {
+  if (!S || !S.dropOnBuddy) return;
+  const MAX = 15e6;
+  const read = (f) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => res(null); r.readAsDataURL(f); });
+  let over = 0;
+  addEventListener('dragenter', (e) => { e.preventDefault(); if (over++ === 0) document.body.classList.add('hungry'); });
+  addEventListener('dragleave', () => { if (--over <= 0) { over = 0; document.body.classList.remove('hungry'); } });
+  addEventListener('dragover', (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+  addEventListener('drop', async (e) => {
+    e.preventDefault(); over = 0; document.body.classList.remove('hungry');
+    const dt = e.dataTransfer; if (!dt) return;
+    const files = [];
+    for (const f of [...dt.files].slice(0, 10)) {
+      if (f.size > MAX) continue;
+      const data = await read(f);
+      if (data != null) files.push({ name: f.name, type: f.type, data });
+    }
+    const text = files.length ? '' : (dt.getData('text/plain') || '').trim().slice(0, 20000);
+    if (!files.length && !text) return;
+    S.dropOnBuddy({ files, text });
+  });
+})();
