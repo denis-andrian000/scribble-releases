@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.22.3";
+globalThis.__SCRIBBLE_VERSION__ = "1.23.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4882,7 +4882,7 @@ ${groups[n].map(fmt).join("\n")}
         }
         walletView(w) {
           const balance = this.balance(w.id);
-          return { id: w.id, name: w.name, type: w.type, color: w.color, start: w.start || 0, low: w.low ?? null, salary: !!w.salary, balance, isLow: w.low != null && balance < w.low };
+          return { id: w.id, name: w.name, type: w.type, color: w.color, image: w.image || null, start: w.start || 0, low: w.low ?? null, salary: !!w.salary, balance, isLow: w.low != null && balance < w.low };
         }
         // ---- changes
         touch(it) {
@@ -4930,6 +4930,11 @@ ${groups[n].map(fmt).join("\n")}
             w.start = n;
           }
           if (fields.low !== void 0) w.low = fields.low === null || fields.low === "" ? null : parseAmount(fields.low);
+          if (fields.image !== void 0) {
+            if (fields.image === null || fields.image === "") delete w.image;
+            else if (/^data:image\/(png|jpeg|webp);base64,/.test(fields.image) && fields.image.length < 12e4) w.image = fields.image;
+            else throw new Error("That picture is too big.");
+          }
           if (fields.salary !== void 0) {
             if (fields.salary) {
               for (const o of this.wallets()) if (o.salary && o.id !== w.id) {
@@ -38872,7 +38877,11 @@ Content-Type: application/octet-stream\r
         "\u{1F4CB} What's on my plate today?": "\u{1F4CB} Apa saja agendaku hari ini?",
         "\u{1F9FE} Summarize my day": "\u{1F9FE} Rangkum hariku",
         "\u{1F5E3}\uFE0F Write my stand-up for today": "\u{1F5E3}\uFE0F Tulis laporan stand-up hari ini",
-        "\u{1F4C1} Show my projects and where they stand": "\u{1F4C1} Tampilkan proyekku dan progresnya"
+        "\u{1F4C1} Show my projects and where they stand": "\u{1F4C1} Tampilkan proyekku dan progresnya",
+        "Set picture": "Pasang gambar",
+        "Change picture": "Ganti gambar",
+        "Remove picture": "Hapus gambar",
+        "That picture is too big.": "Gambarnya terlalu besar."
       };
     }
   });

@@ -16,6 +16,42 @@
   const dayLabel = (d) => new Date(d + 'T12:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' });
   function toast(msg) { if (window.toast) window.toast(msg); }
 
+  // ---- wallet badges: your own picture, or the familiar colour + initials of well-known wallets and banks (no logos)
+  const BRANDS = [
+    [/gopay|gojek/, '#00AED6', '#fff', 'GP'], [/\bdana\b/, '#118EEA', '#fff', 'DA'], [/\bovo\b/, '#4C3494', '#fff', 'OVO'],
+    [/shopee ?pay|spay/, '#EE4D2D', '#fff', 'SP'], [/link ?aja/, '#E82127', '#fff', 'LA'], [/isaku|i\.saku/, '#E30613', '#fff', 'iS'],
+    [/\bbca\b|blu by bca|\bblu\b/, '#0060AF', '#fff', 'BCA'], [/mandiri|livin/, '#003D79', '#FFB700', 'M'], [/\bbri\b|brimo/, '#00529C', '#fff', 'BRI'],
+    [/\bbni\b/, '#F15A23', '#fff', 'BNI'], [/\bbsi\b|syariah indonesia/, '#00A39D', '#fff', 'BSI'], [/\bbtn\b/, '#0064A8', '#FFD200', 'BTN'],
+    [/cimb|octo/, '#7B1113', '#fff', 'CN'], [/permata/, '#00843D', '#fff', 'PB'], [/\bjago\b/, '#FDB813', '#222', 'J'], [/jenius|\bbtpn\b/, '#00A6E2', '#fff', 'Je'],
+    [/seabank|sea bank/, '#FF5A00', '#fff', 'SB'], [/danamon/, '#F7A600', '#222', 'D'], [/\bocbc\b/, '#E2001A', '#fff', 'OC'], [/\bmega\b/, '#F4A300', '#222', 'MG'],
+    [/maybank/, '#FFC600', '#222', 'MB'], [/\buob\b/, '#0B3B8C', '#fff', 'UOB'], [/neo ?bank|\bbnc\b/, '#FFC107', '#222', 'neo'], [/allo/, '#6C2BD9', '#fff', 'Al'],
+    [/flip/, '#FF6C2F', '#fff', 'F'], [/paypal/, '#003087', '#fff', 'PP'],
+  ];
+  function walletBadge(w, cls = '') {
+    if (w.image) { const im = h('img', 'mn-badge img ' + cls); im.src = w.image; im.alt = ''; return im; }
+    const n = String(w.name || '').toLowerCase();
+    const b = BRANDS.find(([re]) => re.test(n));
+    if (b) { const s = h('span', 'mn-badge ' + cls, b[3]); s.style.background = b[1]; s.style.color = b[2]; if (b[3].length > 2) s.classList.add('long'); return s; }
+    const d = h('i', 'mn-badge dot ' + cls); d.style.background = w.color || 'var(--ink-2)'; return d;
+  }
+  // a picture you pick → a small square image kept with the wallet
+  function pickPicture() {
+    return new Promise((res) => {
+      const inp = h('input'); inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0]; if (!f) return res(null);
+        try {
+          const bmp = await createImageBitmap(f);
+          const c = document.createElement('canvas'); c.width = c.height = 96;
+          const k = Math.max(96 / bmp.width, 96 / bmp.height), w = bmp.width * k, hh = bmp.height * k;
+          const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 96, 96); x.drawImage(bmp, (96 - w) / 2, (96 - hh) / 2, w, hh);
+          res(c.toDataURL('image/webp', 0.85).startsWith('data:image/webp') ? c.toDataURL('image/webp', 0.85) : c.toDataURL('image/png'));
+        } catch { res(null); }
+      };
+      inp.click();
+    });
+  }
+
   async function show() {
     $('#mn-mlabel').textContent = monthLabel(state.month);
     let d = null;
@@ -100,7 +136,7 @@
     box.textContent = '';
     for (const w of d.wallets) {
       const b = h('button', 'mn-wallet' + (state.wallet === w.id ? ' on' : ''));
-      const dot = h('i'); dot.style.background = w.color || 'var(--ink-2)';
+      const dot = walletBadge(w);
       const bal = h('span', w.isLow || w.balance < 0 ? 'low' : '', rp(w.balance) + (w.isLow ? ' · ' + t('running low') : ''));
       b.append(dot, h('b', '', w.name), bal);
       b.title = t('Show only this wallet');
@@ -306,7 +342,7 @@
       const list = h('div', 'mn-list');
       for (const w of state.data.wallets) {
         const it = h('div', 'mn-item' + (w.isLow ? ' low' : ''));
-        const dot = h('i'); dot.style.background = w.color;
+        const dot = walletBadge(w, 'big');
         const nm = h('div', 'mn-item-name');
         nm.append(h('b', '', w.name), h('small', '', t({ cash: 'Cash', bank: 'Bank account', ewallet: 'E-wallet', card: 'Credit card' }[w.type] || 'Cash') + (w.salary ? ' · ' + t('salary') : '') + (w.low != null ? ' · ' + t('warn below') + ' ' + rp(w.low) : '')));
         const bal = h('span', 'mn-item-amt', rp(w.balance));
@@ -338,6 +374,17 @@
     const low = inputEl('text', w && w.low != null ? String(w.low) : '', t('optional, e.g. 100.000')); low.inputMode = 'numeric';
     const sal = h('label', 'toggle'); const salI = inputEl('checkbox'); salI.checked = !!(w && w.salary); sal.append(salI, h('span', '', t('My salary goes here')));
     f.append(field(t('Name'), name), field(t('Type'), type), field(w ? t('Balance now') : t('Starting balance'), bal), field(t('Warn me below'), low), sal);
+    if (w) {
+      // your own picture for this wallet (e.g. the logo saved from your bank's site); otherwise a colour badge
+      const pr = h('div', 'mn-pic-row');
+      const prev = walletBadge(w, 'big');
+      const set = h('button', 'link', w.image ? t('Change picture') : t('Set picture'));
+      set.type = 'button';
+      set.addEventListener('click', async () => { const img = await pickPicture(); if (!img) return; const r = await S.moneyUpdateWallet(w.id, { image: img }); if (!r.ok) return err(f, r.error); show(); });
+      pr.append(prev, set);
+      if (w.image) { const rm = h('button', 'link', t('Remove picture')); rm.type = 'button'; rm.addEventListener('click', async () => { await S.moneyUpdateWallet(w.id, { image: null }); show(); }); pr.append(rm); }
+      f.append(field(t('Picture'), pr));
+    }
     const row = h('div', 'mn-form-actions');
     if (w) {
       const del = h('button', 'link danger', t('Delete'));
