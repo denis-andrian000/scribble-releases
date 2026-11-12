@@ -953,3 +953,12 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .undo-run { font: inherit; font-size: 11.5px; font-weight: 700; color: var(--blue); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
 .cell-time { width: 86px; margin-left: 4px; font-size: 12px; color: var(--ink-2); }
 .cell-time:invalid, .cell-time[value=""] { color: var(--ink-2); }
+
+.mv-list { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; max-height: 260px; overflow: auto; }
+.mv-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.mv-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-from { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.mv-row input[type=date] { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); }
+
+.hdot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: middle; }
+.hdot.ok { background: #5DAA76; } .hdot.risk { background: #E39B2E; } .hdot.late { background: #D25A4E; }
