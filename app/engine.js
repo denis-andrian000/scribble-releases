@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.28.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.28.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -39218,6 +39218,9 @@ Content-Type: application/octet-stream\r
         "New {0} here": "{0} baru di sini",
         "New {0} in {1}": "{0} baru di {1}",
         "New {0}": "{0} baru",
+        "All: {0}": "Semua: {0}",
+        task: "tugas",
+        "Nothing here yet: right-click to add a {0}": "Masih kosong: klik kanan untuk menambah {0}",
         "Delete {0}?": "Hapus {0}?",
         "Its {0} task(s)": "{0} tugas di dalamnya",
         "Keep them as loose tasks": "Simpan sebagai tugas lepas",
