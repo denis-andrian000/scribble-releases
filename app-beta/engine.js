@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.27.3";
+globalThis.__SCRIBBLE_VERSION__ = "1.28.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36647,6 +36647,7 @@ Money: you also keep track of the user's money (spending, income, transfers betw
       function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false, withMemory = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
         const tone = TONES[persona.tone] || TONES.mirror;
+        const LV = { area: "Section", category: "Project", project: "Sub project", ...persona.levels || {} };
         const pretty = (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
         return `You are ${name}, a tiny note-taking buddy that floats on the user's desktop. The user clicks you, types a line, and goes back to work. ${tone} (1\u20133 sentences unless they ask for a summary or a list).
 
@@ -36659,6 +36660,9 @@ You own a notebook: a folder of markdown files the user can open in any editor.
 - Notes/<topic>.md: longer-lived topic notes (ideas, how-tos, meeting notes)
 - Area folders the user creates (for example "Work/"). An area holds project pages, usually grouped in category sub-folders: <Area>/<Category>/<Project>.md. Use list_pages to see what exists. New work projects go in the best-fitting existing category; ask if none fits.
 - Tasks.md: generated from the task tracker; change tasks only with the task tools
+
+Names: the user calls the three folder levels "${LV.area}" (the top folder; tools call it area), "${LV.category}" (a folder inside it; tools call it category) and "${LV.project}" (the project page with tasks; tools call it project). Always say the user's names when you talk to them; keep area/category/project in tool inputs. They can change these names in Settings \u2192 App \u2192 Tasks.
+Every task should sit in a ${LV.project} inside a ${LV.category}: ${LV.area} \u203A ${LV.category} \u203A ${LV.project} \u203A task. When you add a task, give it a project (and its area); if none fits, suggest one (or creating one) instead of leaving it loose. Tasks with no ${LV.project} show under General with a warning; when the user asks to tidy up or file them, propose where each one goes.
 
 Areas: when the user creates an area folder, give it a README.md that says what it is for. When a project or task belongs to an area (the user says so, or the project page already lives in that folder), pass area="<folder name>" to create_project and add_task. If you're unsure which area a new project belongs to and areas exist, ask once.
 
@@ -39197,6 +39201,23 @@ Content-Type: application/octet-stream\r
         "Chat (free models)": "Mengobrol (model gratis)",
         "Buddy voice": "Suara buddy",
         "The best at following your instructions and writing. Paid, pay as you go.": "Paling jago mengikuti instruksi dan menulis. Berbayar, sesuai pemakaian.",
+        "Sub project": "Sub proyek",
+        "What you call the folder levels": "Nama untuk tiap tingkat folder",
+        "Top folder": "Folder teratas",
+        "Inside it": "Di dalamnya",
+        "With the tasks": "Berisi tugas",
+        "The Tasks tree, cards, menus and your buddy all use these names. Every task should sit in the last level; tasks that don't are shown under General with a warning.": "Pohon Tugas, kartu, menu, dan buddy-mu memakai nama-nama ini. Setiap tugas sebaiknya ada di tingkat terakhir; tugas yang belum akan tampil di Umum dengan peringatan.",
+        "Not inside a {0} yet. Drag it into one.": "Belum ada di dalam {0}. Seret ke salah satunya.",
+        "{#0} task(s) have no {#1}.": "{0} tugas belum punya {1}.",
+        "Every task should sit in a {0} \u203A {1} \u203A {2}. Drag them in, or": "Setiap tugas sebaiknya ada di {0} \u203A {1} \u203A {2}. Seret ke sana, atau",
+        "Ask the buddy to file them": "Minta buddy merapikannya",
+        "File my tasks that have no {0}: put each one in the best-fitting {0} (inside a {1}), or suggest a new one. Show me the plan first.": "Rapikan tugasku yang belum punya {0}: masukkan masing-masing ke {0} yang paling cocok (di dalam {1}), atau usulkan yang baru. Tunjukkan rencananya dulu.",
+        "no {0}": "belum ada {0}",
+        "In {0}, but not in a {1} yet. Drag it into one.": "Di {0}, tapi belum ada di {1}. Seret ke salah satunya.",
+        "Not in a {0} yet. Drag it into one.": "Belum ada di {0}. Seret ke salah satunya.",
+        "New {0} here": "{0} baru di sini",
+        "New {0} in {1}": "{0} baru di {1}",
+        "New {0}": "{0} baru",
         "Delete {0}?": "Hapus {0}?",
         "Its {0} task(s)": "{0} tugas di dalamnya",
         "Keep them as loose tasks": "Simpan sebagai tugas lepas",
@@ -41737,6 +41758,7 @@ ${brief}` }, ...blocks];
         gravity: config.gravity !== false,
         theme: config.theme || "system",
         confirmSaves: config.confirmSaves !== false,
+        levels: config.levels || null,
         autoFallback: config.autoFallback !== false,
         onboarded: !!config.onboarded,
         money: config.money === true,
@@ -41777,6 +41799,15 @@ ${brief}` }, ...blocks];
         let shortcuts = null;
         if (s.shortcut || s.captureShortcut || s.quickShortcut || s.captureEnabled !== void 0) shortcuts = registerShortcut();
         if (s.openAtLogin !== void 0) setOpenAtLogin(!!s.openAtLogin);
+        if (s.levels !== void 0) {
+          const L = {};
+          for (const k of ["area", "category", "project"]) {
+            const v = String((s.levels || {})[k] || "").replace(/\s+/g, " ").trim().slice(0, 24);
+            if (v) L[k] = v;
+          }
+          if (Object.keys(L).length) config.levels = L;
+          else delete config.levels;
+        }
         if (s.callListen !== void 0) {
           config.callListen = !!s.callListen;
           if (!config.callListen && callOn) stopCall();
@@ -42488,7 +42519,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();

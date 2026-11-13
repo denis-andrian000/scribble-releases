@@ -865,6 +865,14 @@ $('#btn-undo').addEventListener('click', async () => {
 S.onNotebookChanged(() => refreshUndo());
 
 // ---------------- confirmation cards (two-way saving) ----------------
+// What the user calls the three folder levels (Settings → App → Tasks)
+let LEVELS = null;
+const LV_DEFAULT = { area: 'Section', category: 'Project', project: 'Sub project' };
+const lv = (k) => (LEVELS && LEVELS[k]) || I18n.t(LV_DEFAULT[k]);
+function loadLevels() { return S.getSettings().then((s) => { LEVELS = s.levels || null; }).catch(() => {}); }
+loadLevels();
+// card labels that name a level follow those names
+const LV_LABEL = { Area: 'area', Category: 'category', Section: 'category', Project: 'project' };
 const FIELDS = {
   capture_note: [['text', 'long', 'Note'], ['page', 'page', 'Save to']],
   append_to_page: [['content', 'long', 'Add'], ['path', 'page', 'Page'], ['heading', 'text', 'Under heading']],
@@ -932,7 +940,7 @@ function renderCard(card) {
     if (onlyPresent && card.input[key] === undefined) continue;
     const required = (REQUIRED[card.tool] || []).includes(key);
     const row = el('label', `field-row ${kind === 'long' ? 'stack' : 'cell'}${required ? ' req' : ''}`);
-    const lab = el('span', 'f-label'); lab.textContent = label;
+    const lab = el('span', 'f-label'); lab.textContent = LV_LABEL[label] ? lv(LV_LABEL[label]) : label;
     let inp;
     let val = card.input[key] ?? '';
     if (kind === 'priority') val = normPri(val);
@@ -1634,7 +1642,7 @@ async function loadTaskTree() {
   }
   for (const t of list) {
     if (t.project) proj(t.area, t.project).tasks.push(t);
-    else areaOf(t.area).loose.push(t);
+    else areaOf('').loose.push(t);          // every task needs a sub project; the ones without wait in General
   }
 
   const box = $('#task-list');
@@ -1647,6 +1655,7 @@ async function loadTaskTree() {
   const projectNode = (p, area, depth) => {
     const key = `p:${area}/${p.name}`;
     const n = groupNode(p.name, p.tasks.length, depth, key, { area: area || null, project: p.name }, 'project', showDone, { kind: 'project', name: p.name, area: area || null, rel: pageOf.get(`${area || ''}|${p.name.toLowerCase()}`) || null });
+    if (!showDone && !p.category) { const w = el('span', 'lvwarn', '⚠'); w.title = I18n.t('Not inside a {0} yet. Drag it into one.', lv('category')); n.row.querySelector('.tname').after(w); }
     if (!showDone && window.Planner && p.tasks.length) healthDot(n.row, all.filter((t) => t.project && t.project.toLowerCase() === p.name.toLowerCase() && (t.area || '') === (area || '')));
     for (const t of sortT(p.tasks)) n.kids.append(taskRow(t, depth + 1));
     return n.wrap;
@@ -1680,6 +1689,21 @@ async function loadTaskTree() {
     if (showDone && !total) continue;
     if (!area && !total && !projs.length) continue;
     const node = groupNode(area || 'General', total, 0, `a:${area}`, { area: area || null, project: null }, area ? 'area' : 'general', showDone, area ? { kind: 'area', name: area, area, rel: area, folder: area } : { kind: 'general', area: null, folder: 'Projects' });
+    const homeless = !area && !showDone ? A.loose.filter((t) => !isClosedT(t)).length : 0;
+    if (homeless) {
+      const w = el('div', 'parent-warn');
+      const b = el('b'); b.textContent = '⚠ ' + I18n.t('{0} task(s) have no {1}.', homeless, lv('project'));
+      const p = el('span'); p.textContent = ' ' + I18n.t('Every task should sit in a {0} › {1} › {2}. Drag them in, or', lv('area'), lv('category'), lv('project'));
+      const go = el('button', 'btn'); go.type = 'button'; go.textContent = '✨ ' + I18n.t('Ask the buddy to file them');
+      go.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const prompt = I18n.t('File my tasks that have no {0}: put each one in the best-fitting {0} (inside a {1}), or suggest a new one. Show me the plan first.', lv('project'), lv('category'));
+        if (typeof showTab === 'function' && !document.body.classList.contains('wide')) showTab('chat');
+        window.send && window.send(prompt);
+      });
+      w.append(b, p, el('br'), go);
+      node.kids.append(w);
+    }
     for (const t of sortT(A.loose)) node.kids.append(taskRow(t, 1));
     appendProjects(node.kids, projs.filter((p) => !p.category), area, 1, `${area}/`);
     const cats = [...new Set(projs.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -1772,7 +1796,7 @@ function renderTaskTable() {
 
   $('#tf-count').textContent = `${rows.length} task${rows.length === 1 ? '' : 's'}`;
   const cols = [
-    ['title', 'Task'], ['project', 'Project'], ['status', 'Status'], ['priority', 'Priority'],
+    ['title', 'Task'], ['project', lv('project')], ['status', 'Status'], ['priority', 'Priority'],
     ['start', 'Start'], ['due', 'Due'], ...(showDone ? [['completed', 'Finished']] : []),
   ];
   const table = el('table', 'ttable');
@@ -1886,7 +1910,9 @@ function groupNode(label, count, depth, key, target, kind, collapsibleDefaultClo
   const icon = el('span', `ticon ${kind === 'project' ? 'proj' : kind === 'category' ? 'cat' : 'area'}`, kind === 'project' ? '◆' : ICON.folder);
   const name = el('span', 'tname'); name.textContent = label;
   const cnt = el('span', 'tcount'); cnt.textContent = count || '';
-  row.append(caret, icon, name, cnt);
+  row.append(caret, icon, name);
+  if (edit && ['area', 'category', 'project'].includes(edit.kind)) row.append(el('span', 'lvtag', lv(edit.kind)));
+  row.append(cnt);
   const kids = el('div', 'tkids');
   kids.hidden = !open;
   row.addEventListener('click', () => {
@@ -2030,6 +2056,11 @@ function taskRow(t, depth) {
       p.addEventListener('click', (e) => { e.stopPropagation(); toggleEditor(); });
       meta.append(p);
     }
+    if (!t.project) {
+      const np = el('span', 'pill need-parent'); np.textContent = '⚠ ' + I18n.t('no {0}', lv('project'));
+      np.title = t.area ? I18n.t('In {0}, but not in a {1} yet. Drag it into one.', t.area, lv('project')) : I18n.t('Not in a {0} yet. Drag it into one.', lv('project'));
+      meta.append(np);
+    }
     const p = el('span', `pill ${t.status}`);
     p.textContent = { doing: 'in progress', hold: 'on hold', todo: 'start' }[t.status] || 'start';
     p.title = { doing: 'Move back to to-do', hold: 'Resume (back to to-do)', todo: 'Mark in progress' }[t.status] || '';
@@ -2145,6 +2176,8 @@ async function loadSettings() {
   $('#s-login').checked = s.openAtLogin;
   $('#s-call').checked = s.callListen; $('#s-call-row').hidden = s.platform !== 'win32';
   $('#s-money').checked = !!s.money;
+  LEVELS = s.levels || null;
+  for (const k of ['area', 'category', 'project']) { const i = $('#lv-' + k); if (i) { i.placeholder = I18n.t(LV_DEFAULT[k]); i.value = (s.levels && s.levels[k]) || ''; } }
   platform = s.platform;
   $('#k-panel').textContent = prettyAccel(s.shortcut);
   $('#k-panel').dataset.accel = s.shortcut;
@@ -2169,6 +2202,16 @@ $('#s-save').addEventListener('click', async () => {
 // the toggles save as soon as they change (they live in different sections now)
 for (const id of ['s-gravity', 's-confirm', 's-login', 's-money', 's-call']) $('#' + id).addEventListener('change', () => $('#s-save').click());
 
+// level names save when you leave the box
+for (const k of ['area', 'category', 'project']) {
+  const i = $('#lv-' + k);
+  if (i) i.addEventListener('change', async () => {
+    const levels = {}; for (const j of ['area', 'category', 'project']) levels[j] = $('#lv-' + j).value.trim();
+    await S.setSettings({ levels });
+    LEVELS = Object.values(levels).some(Boolean) ? levels : null;
+    toast(I18n.t('Saved ✓')); loadTasks();
+  });
+}
 // ---------------- settings sections: each opens and closes, and stays the way you left it ----------------
 const openSecs = (() => { try { return new Set(JSON.parse(localStorage.getItem('scribble.openSecs') || '["a-acct","b-look"]')); } catch { return new Set(['a-acct', 'b-look']); } })();
 function wireSec(d) {
@@ -3278,7 +3321,7 @@ async function newTaskAt(x, y, where) {
   loadTasks();
 }
 async function newProjectAt(x, y, area, category) {
-  const v = await askForm(x, y, I18n.t('New project'), [{ key: 'name', label: I18n.t('Name') }]);
+  const v = await askForm(x, y, I18n.t('New {0}', lv('project')), [{ key: 'name', label: I18n.t('Name') }]);
   if (!v) return;
   const r = await S.createProject(v.name, area || null, category || null);
   if (r && r.ok === false) return toast(r.error);
@@ -3299,7 +3342,7 @@ function treeMenu(x, y, edit, nameEl) {
     items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
     items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else if (edit.kind === 'category') {
-    items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, edit.name) });
+    items.push({ label: '◆ ' + T('New {0} here', lv('project')), fn: () => newProjectAt(x, y, edit.area, edit.name) });
     items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
     items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else if (edit.kind === 'task') {
@@ -3307,16 +3350,15 @@ function treeMenu(x, y, edit, nameEl) {
     items.push({ label: '✓ ' + T('Mark done'), fn: async () => { await updTask(edit.id, { status: 'done' }); loadTasks(); } });
     items.push('-', { label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else if (edit.kind === 'area') {
-    items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, null) });
-    items.push({ label: '➕ ' + T('New task here'), fn: () => newTaskAt(x, y, { area: edit.area }) });
-    items.push({ label: '🗂 ' + T('New section here'), fn: () => newFolderAt(x, y, edit.area, T('New section in {0}', edit.name)) });
-    items.push('-', { label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
+    items.push({ label: '🗂 ' + T('New {0} here', lv('category')), fn: () => newFolderAt(x, y, edit.area, T('New {0} in {1}', lv('category'), edit.name)) });
+    items.push({ label: '◆ ' + T('New {0} here', lv('project')), fn: () => newProjectAt(x, y, edit.area, null) });
+    items.push('-', { label: '📁 ' + T('New {0}', lv('area')), fn: () => newFolderAt(x, y, '', T('New {0}', lv('area'))) });
     items.push({ label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
     items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else {
-    items.push({ label: '◆ ' + T('New project'), fn: () => newProjectAt(x, y, null, null) });
+    items.push({ label: '📁 ' + T('New {0}', lv('area')), fn: () => newFolderAt(x, y, '', T('New {0}', lv('area'))) });
+    items.push({ label: '◆ ' + T('New {0}', lv('project')), fn: () => newProjectAt(x, y, null, null) });
     items.push({ label: '➕ ' + T('New task'), fn: () => newTaskAt(x, y, {}) });
-    items.push({ label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
   }
   ctxMenu(x, y, items);
 }
