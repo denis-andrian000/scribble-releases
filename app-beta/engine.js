@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.27.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.27.2";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36216,7 +36216,8 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
       var Anthropic = require_sdk();
       var { chatOpenAI, PROVIDERS } = require_providers();
       var { localDate, localTime, missingFields } = require_notebook();
-      var WRITE_TOOLS = /* @__PURE__ */ new Set(["capture_note", "write_page", "append_to_page", "add_task", "update_task", "delete_task", "create_project", "log_project", "move_tasks"]);
+      var fs2 = require_vfs();
+      var WRITE_TOOLS = /* @__PURE__ */ new Set(["capture_note", "write_page", "append_to_page", "add_task", "update_task", "delete_task", "create_project", "log_project", "move_tasks", "create_folder", "remove_project"]);
       var Planner = require_planner();
       var { rp } = require_money();
       var STOP = new Set("the and for what did does was were with that this from how much when where who which have has you your are not can about into last yang dan untuk apa ini itu dari ada kapan berapa siapa dengan atau juga sudah udah aku kamu saya di ke pada bulan".split(" "));
@@ -36368,6 +36369,21 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
             },
             required: ["changes"]
           }
+        },
+        {
+          name: "create_folder",
+          description: 'Create a folder: an area at the top level (like "Monitoring", "Work", "Personal"), or a section inside an area (parent = the area). Projects and tasks can then go in it (create_project / add_task with area = the folder name).',
+          input_schema: { type: "object", properties: { name: { type: "string" }, parent: { type: "string", description: "Area folder to put it in, for a section; leave out for a new area" } }, required: ["name"] }
+        },
+        {
+          name: "remove_project",
+          description: `Remove a project: its page goes away (undo can bring it back). tasks: "delete" removes its tasks too, "keep" keeps them as loose tasks in the same area. Ask which if the project has open tasks and the user didn't say. To move a project to another folder instead, use move_project.`,
+          input_schema: { type: "object", properties: { name: { type: "string" }, tasks: { type: "string", enum: ["delete", "keep"] } }, required: ["name"] }
+        },
+        {
+          name: "move_project",
+          description: 'Move a project (its page and all its tasks) into another folder (area), or rename it. area = target area folder name ("" for no area); category = a section inside that area (optional); new_name to rename.',
+          input_schema: { type: "object", properties: { name: { type: "string" }, area: { type: "string" }, category: { type: "string" }, new_name: { type: "string" } }, required: ["name"] }
         },
         {
           name: "show_on_screen",
@@ -36599,7 +36615,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
 - Polish what you save: fix spelling and grammar, make it clear and concise, use tidy markdown (short bullets, bold for key names), and keep the user's facts, names, numbers and meaning. Never add details they didn't give. Save in the language they wrote in.
 - Choose the most fitting destination: an existing project, area folder or page. If the user has projects or areas, check list_pages / list_tasks first so you pick real names. Put the next-best destinations in "options" so they can switch with one tap.
 - A message that mixes several things (an update, a to-do, a decision) can become several proposals at once: one tool call each.
-- Before the tool calls, write one short line (for example "Here's how I'd file that:"). Don't repeat the content in chat; the card shows it.
+- Don't write anything before the tool calls: the card shows what you propose. After the tools have run, reply with one short line saying what was actually done (for example "Done: project Zabbix is set up under Monitoring."), or what was skipped. Never end your turn with an intro line like "Here's how I'd file that:".
 - If a result says the user skipped it, acknowledge in a few words and don't retry. If it says they replied instead, follow their reply and propose again with the change.
 - If you genuinely can't tell where something belongs (several projects fit equally), ask one short question instead of proposing.
 - Tasks: every task MUST have a start date, a due date and a priority (low, medium or high). These are needed for reports, so never guess them.
@@ -36910,6 +36926,69 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             }
             case "create_project":
               return { page: nb.ensureProject(input.name, { goal: input.goal, area: input.area, category: input.category }) };
+            case "create_folder": {
+              const parent = input.parent ? String(input.parent).trim() : "";
+              const isDir = (r) => {
+                try {
+                  return fs2.statSync(nb.resolveAny(r)).isDirectory();
+                } catch {
+                  return false;
+                }
+              };
+              if (parent && !isDir(parent)) nb.mkdir("", parent);
+              try {
+                return { folder: nb.mkdir(parent, input.name) };
+              } catch (e) {
+                return /exists/.test(e.message) ? { folder: parent ? `${parent}/${input.name}` : input.name, note: "It was already there." } : { error: e.message };
+              }
+            }
+            case "remove_project": {
+              const page = nb.findProject(input.name);
+              const tasks = nb.loadTasks();
+              const mine = tasks.filter((t) => String(t.project || "").toLowerCase() === String(input.name).toLowerCase());
+              if (!page && !mine.length) return { error: `No project called "${input.name}".` };
+              const open = mine.filter((t) => !["done", "cancelled"].includes(t.status));
+              if (open.length && !input.tasks) return { error: `"${input.name}" has ${open.length} open task(s). Ask whether to delete them too or keep them as loose tasks, then call again with tasks.` };
+              if (page) {
+                const full = nb.resolve(page);
+                nb._touch(full);
+                fs2.unlinkSync(full);
+              }
+              if (mine.length) {
+                const left = input.tasks === "delete" ? tasks.filter((t) => !mine.includes(t)) : tasks.map((t) => mine.includes(t) ? { ...t, project: null } : t);
+                nb._saveTasks(left);
+              }
+              return { removed: input.name, page: page || null, tasks: mine.length ? input.tasks === "delete" ? `deleted ${mine.length}` : `kept ${mine.length} as loose tasks` : "none" };
+            }
+            case "move_project": {
+              const page = nb.findProject(input.name);
+              let name2 = input.name, rel = page;
+              if (input.new_name && input.new_name !== input.name) {
+                if (rel) rel = nb.rename(rel, input.new_name);
+                else nb.renameProjectTasks(input.name, null, input.new_name);
+                name2 = input.new_name;
+              }
+              if (input.area !== void 0 || input.category) {
+                const area = String(input.area || "").trim();
+                const folder = area ? input.category ? `${area}/${input.category}` : area : "Projects";
+                const isDir = (r) => {
+                  try {
+                    return fs2.statSync(nb.resolveAny(r)).isDirectory();
+                  } catch {
+                    return false;
+                  }
+                };
+                if (area && !isDir(area)) nb.mkdir("", area);
+                if (input.category && !isDir(folder)) nb.mkdir(area, input.category);
+                if (!area && !isDir("Projects")) nb.mkdir("", "Projects");
+                if (rel) rel = nb.move(rel, folder);
+                else {
+                  const t = nb.loadTasks().find((x) => String(x.project || "").toLowerCase() === name2.toLowerCase());
+                  nb.moveProjectTasks(name2, t ? t.area || null : null, area || null);
+                }
+              }
+              return { project: name2, page: rel || null };
+            }
             case "log_project": {
               const p = nb.findProject(input.name) || nb.ensureProject(input.name, { area: input.area });
               nb.append(p, `- **${localDate()}** \u2014 ${input.entry}`, { heading: "Log" });
@@ -37060,6 +37139,12 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             return `Deleted task #${input.id}`;
           case "create_project":
             return `Project ${input.name}`;
+          case "create_folder":
+            return `Folder ${input.name}`;
+          case "remove_project":
+            return `Removed project ${input.name}`;
+          case "move_project":
+            return `Moved project ${input.name}`;
           case "log_project":
             return `Log on ${input.name}`;
           case "move_tasks":
@@ -39097,7 +39182,18 @@ Content-Type: application/octet-stream\r
         "New folder": "Folder baru",
         "New section in {0}": "Bagian baru di {0}",
         "+ New": "+ Baru",
-        "Add a folder, project or task": "Tambah folder, proyek, atau tugas"
+        "Add a folder, project or task": "Tambah folder, proyek, atau tugas",
+        "Remove project": "Hapus proyek",
+        "Move project": "Pindahkan proyek",
+        "Made folder": "Membuat folder",
+        "Removed project": "Menghapus proyek",
+        "Moved project": "Memindahkan proyek",
+        Folder: "Folder",
+        Inside: "Di dalam",
+        "Its tasks (delete / keep)": "Tugasnya (hapus / simpan)",
+        "Move to": "Pindah ke",
+        Section: "Bagian",
+        "New name": "Nama baru"
       };
     }
   });
@@ -39868,7 +39964,10 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         show_on_screen: "\u{1F441} Showing",
         save_template: "Saved a template",
         use_template: "Started from a template",
-        ask_notes: "Searched your notes"
+        ask_notes: "Searched your notes",
+        create_folder: "Made folder",
+        remove_project: "Removed project",
+        move_project: "Moved project"
       };
       function toolLabel(name, input = {}) {
         const base = I18n.t(TOOL_LABELS[name] || name);
@@ -40664,7 +40763,10 @@ In one short line say what it is, then offer what to do with it as options (add 
         delete_task: "Delete task",
         create_project: "New project",
         log_project: "Log progress",
-        move_tasks: "Move tasks"
+        move_tasks: "Move tasks",
+        create_folder: "New folder",
+        remove_project: "Remove project",
+        move_project: "Move project"
       };
       function approve(call) {
         if (config.confirmSaves === false) return Promise.resolve({ decision: "approve" });
