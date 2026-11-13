@@ -57,13 +57,71 @@ function applyMoney(on) {
 }
 S.getSettings().then((s) => applyMoney(s.money)).catch(() => {});
 // the buddy can open a view for you ("show me the timeline")
-if (S.onShowView) S.onShowView((opts = {}) => {
-  if (opts.view !== 'timeline') return;
-  try { localStorage.setItem(viewKey(), 'timeline'); } catch {}
-  if (window.Timeline) Timeline.focus(opts);
+// The buddy presents on the left (full screen) or switches to the view (small window): tasks of one project, the
+// timeline, Money filtered, or a page. A dark bar says what it's showing, with "Show everything" to clear it.
+function presentBar(viewSel, html, clear) {
+  document.querySelectorAll('.present-bar').forEach((b) => b.remove());
+  if (!html) return;
+  const b = el('div', 'present-bar');
+  const s = el('span'); s.innerHTML = html;
+  const x = el('button'); x.type = 'button'; x.textContent = '✕ ' + I18n.t('Show everything');
+  x.addEventListener('click', () => { b.remove(); clear(); });
+  b.append(s, el('span', 'sp'), x);
+  const v = $(viewSel); v.insertBefore(b, v.firstChild);
+}
+const escH = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function clearTaskFocus() { taskFocus = null; if (window.Timeline) Timeline.focus({}); loadTasks(); }
+if (S.onShowView) S.onShowView(async (opts = {}) => {
+  const who = escH((await S.getAvatar().catch(() => ({}))).name || 'Scribble');
+  if (opts.view === 'money') {
+    lastWork = 'money'; showTab('money');
+    const got = window.Money && Money.focus ? await Money.focus(opts) : {};
+    const what = [got.category, got.wallet, opts.month].filter(Boolean).join(' · ');
+    presentBar('#view-money', I18n.t('{0} is showing:', who) + ` <b>${escH(what || I18n.t('Money'))}</b>`, () => window.Money && Money.clearFocus && Money.clearFocus());
+    return;
+  }
+  if (opts.view === 'page' && opts.page) { lastWork = 'notebook'; showTab('notebook'); let p = opts.page; if (!/\.md$/.test(p)) p += '.md'; setTimeout(() => openPage(p), 150); return; }
+  // tasks: tree, table or timeline, maybe one project / area
+  const view = opts.view === 'timeline' || opts.view === 'table' || opts.view === 'tree' ? opts.view : opts.view === 'tasks' ? null : 'timeline';
+  if (view) try { localStorage.setItem(viewKey(), view); } catch {}
+  if (opts.which && ['open', 'done', 'all'].includes(opts.which)) { taskFilter = opts.which; $$('#view-tasks .seg button[data-filter]').forEach((x) => x.classList.toggle('on', x.dataset.filter === taskFilter)); }
+  taskFocus = opts.project || opts.area ? { project: opts.project || null, area: opts.area || null } : null;
+  if (window.Timeline) Timeline.focus({ project: opts.project || '', zoom: opts.zoom || null });
   lastWork = 'tasks';
   showTab('tasks');
+  if (taskFocus) presentBar('#view-tasks', I18n.t('{0} is showing:', who) + ` <b>${escH(opts.project || opts.area)}</b>`, clearTaskFocus);
+  else presentBar('#view-tasks', null);
 });
+
+// A suggested move of several tasks (the Save card): in full screen the timeline on the left shows it first, striped,
+// with where each task was. Dragging a striped bar changes the card; Save / Discard on either side decides.
+async function previewMoves(card, cEl) {
+  if (!wideMode || !window.Timeline || card.tool !== 'move_tasks' || !card.rows || !card.rows.length) return;
+  const all = await S.tasks();
+  const projects = [...new Set(card.rows.map((r) => (all.find((t) => t.id === r.id) || {}).project).filter(Boolean))];
+  const rowsEl = [...cEl.querySelectorAll('.mv-row')];
+  const changes = new Map();
+  const sync = () => {
+    changes.clear();
+    card.rows.forEach((r, i) => { const re = rowsEl[i]; if (!re) return; const cb = re.querySelector('input[type=checkbox]'), d = re.querySelector('input[type=date]'); if (cb.checked && d.value) changes.set(r.id, { due: d.value, start: r.start || null }); });
+  };
+  sync();
+  const who = (await S.getAvatar().catch(() => ({}))).name || 'Scribble';
+  const p = {
+    changes, who, project: projects.length === 1 ? projects[0] : '',
+    onDrag: (id, start, due) => { const i = card.rows.findIndex((r) => r.id === id); if (i < 0 || !rowsEl[i]) return; card.rows[i].start = start; rowsEl[i].querySelector('input[type=date]').value = due; },
+    onSave: () => cEl.querySelector('.card-actions .btn:not(.ghost)')?.click(),
+    onDiscard: () => cEl.querySelector('.card-actions .btn.ghost')?.click(),
+  };
+  rowsEl.forEach((re) => re.querySelectorAll('input').forEach((i) => i.addEventListener('change', () => { sync(); Timeline.setPreview(p); })));
+  try { localStorage.setItem(viewKey(), 'timeline'); } catch {}
+  taskFocus = p.project ? { project: p.project } : null;
+  Timeline.setPreview(p);
+  lastWork = 'tasks'; showTab('tasks');
+  if (p.project) presentBar('#view-tasks', I18n.t('{0} is showing:', escH(who)) + ` <b>${escH(p.project)}</b>`, clearTaskFocus);
+  // the card was answered (or went away): the preview ends
+  const watch = setInterval(() => { if (!cEl.isConnected || !cEl.classList.contains('open')) { clearInterval(watch); Timeline.setPreview(null); loadTasks(); } }, 400);
+}
 if (S.onMoneyChanged) S.onMoneyChanged(() => { if (currentTab === 'money' && window.Money) Money.show(); });
 $('#btn-settings').addEventListener('click', () => showTab(currentTab === 'settings' ? (wideMode ? lastLeft : 'chat') : 'settings'));
 $('#btn-close').addEventListener('click', () => S.hide());
@@ -985,6 +1043,7 @@ function setComposerHint() {
 function showCard(card) {
   if (document.querySelector(`.card[data-id="${card.id}"]`)) return;
   const c = renderCard(card);
+  setTimeout(() => previewMoves(card, c), 50);
   c.dataset.title = `${card.title}: `;
   const typing = $('.typing');
   msgsEl.insertBefore(c, typing || null);
@@ -1500,6 +1559,9 @@ S.onNotebookChanged(() => {
 
 // ---------------- tasks (tree: Area > Project > Task, drag and drop) ----------------
 let taskFilter = 'open';
+// what the buddy is showing on the left ("only the Chatwoot project"); empty = everything
+let taskFocus = null;
+const inFocus = (t) => !taskFocus || ((!taskFocus.project || String(t.project || '').toLowerCase() === taskFocus.project.toLowerCase()) && (!taskFocus.area || String(t.area || '').toLowerCase() === taskFocus.area.toLowerCase()));
 const taskCollapsed = loadSet('taskCollapsed', []);
 $$('#view-tasks .seg button[data-filter]').forEach((b) => b.addEventListener('click', () => {
   taskFilter = b.dataset.filter;
@@ -1544,8 +1606,8 @@ function healthDot(row, tasks) {
 }
 async function loadTaskTree() {
   const [all, nodes] = await Promise.all([S.tasks(), S.nested()]);
-  const showDone = taskFilter === 'done';
-  const list = all.filter((t) => (showDone ? isClosedT(t) : !isClosedT(t)));
+  const showDone = taskFilter === 'done', showAll = taskFilter === 'all';
+  const list = all.filter((t) => (showAll || (showDone ? isClosedT(t) : !isClosedT(t))) && inFocus(t));
 
   // area -> { loose: [], projects: Map(project -> {category, tasks}) }
   const areas = new Map();
@@ -1559,9 +1621,9 @@ async function loadTaskTree() {
   };
   for (const { area, category, project } of projectsFromTree(nodes)) {
     catOf.set(`${area || ''}|${project.toLowerCase()}`, category);
-    if (!showDone) proj(area, project, category);
+    if (!showDone && (!taskFocus || !taskFocus.project || taskFocus.project.toLowerCase() === project.toLowerCase())) proj(area, project, category);
   }
-  if (!showDone) {
+  if (!showDone && !taskFocus) {
     areaOf('');
     for (const top of nodes) if (top.type === 'dir' && !BUILT_IN.includes(top.name) && top.name !== 'Inbox files') areaOf(top.name);
   }
@@ -1575,7 +1637,7 @@ async function loadTaskTree() {
   if (!list.length && showDone) { box.append(el('div', 'none', 'Nothing finished yet.')); return; }
   const sortT = (ts) => (showDone
     ? ts.sort((a, b) => String(b.completed || '').localeCompare(String(a.completed || '')))
-    : ts.sort((a, b) => (a.status === 'hold') - (b.status === 'hold') || ord(a) - ord(b)));
+    : ts.sort((a, b) => isClosedT(a) - isClosedT(b) || (a.status === 'hold') - (b.status === 'hold') || ord(a) - ord(b)));
 
   const projectNode = (p, area, depth) => {
     const key = `p:${area}/${p.name}`;
@@ -1686,7 +1748,7 @@ function renderTaskTable() {
   const showDone = taskFilter === 'done';
   const q = $('#tf-q').value.trim().toLowerCase();
   const fs = $('#tf-status').value, fp = $('#tf-pri').value, fc = $('#tf-cat').value, need = $('#tf-need').checked;
-  let rows = tblCache.filter((t) => (showDone ? isClosedT(t) : !isClosedT(t)));
+  let rows = tblCache.filter((t) => (taskFilter === 'all' || (showDone ? isClosedT(t) : !isClosedT(t))) && inFocus(t));
   if (q) rows = rows.filter((t) => `${t.title} ${t.project || ''} ${t.area || ''} ${t._cat} ${t.notes || ''}`.toLowerCase().includes(q));
   if (fs && !showDone) rows = rows.filter((t) => t.status === fs);
   if (fp) rows = rows.filter((t) => (fp === 'none' ? !PRI_RANK.hasOwnProperty(normPri(t.priority)) : normPri(t.priority) === fp));
