@@ -1615,6 +1615,21 @@ function healthDot(row, tasks) {
   const name = row.querySelector('.tname') || row;
   name.after ? name.after(d) : row.append(d);
 }
+// what was just added from the tree: open its parents, scroll to it and flash it
+let flashNext = null;
+function revealNew(key, open = []) {
+  for (const k of open) { taskCollapsed.delete(k); }
+  saveSet('taskCollapsed', taskCollapsed);
+  flashNext = key;
+}
+function flashRow() {
+  if (!flashNext) return;
+  const row = [...document.querySelectorAll('#task-list [data-key]')].find((r) => r.dataset.key === flashNext);
+  flashNext = null;
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 2200);
+}
 async function loadTaskTree() {
   const [all, nodes] = await Promise.all([S.tasks(), S.nested()]);
   const showDone = taskFilter === 'done', showAll = taskFilter === 'all';
@@ -1631,6 +1646,7 @@ async function loadTaskTree() {
     return A.projects.get(k);
   };
   const pageOf = new Map();
+  const catDirs = (a) => { const top = nodes.find((n) => n.type === 'dir' && n.name === a); return top ? top.children.filter((c) => c.type === 'dir').map((c) => c.name) : []; };
   for (const { area, category, project, path: rel } of projectsFromTree(nodes)) {
     pageOf.set(`${area || ''}|${project.toLowerCase()}`, rel);
     catOf.set(`${area || ''}|${project.toLowerCase()}`, category);
@@ -1706,11 +1722,12 @@ async function loadTaskTree() {
     }
     for (const t of sortT(A.loose)) node.kids.append(taskRow(t, 1));
     appendProjects(node.kids, projs.filter((p) => !p.category), area, 1, `${area}/`);
-    const cats = [...new Set(projs.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const cats = [...new Set([...projs.map((p) => p.category).filter(Boolean), ...(!showDone && area ? catDirs(area) : [])])].sort((a, b) => a.localeCompare(b));
     for (const cat of cats) {
       const cp = projs.filter((p) => p.category === cat);
       const n = cp.reduce((s, p) => s + p.tasks.length, 0);
       if (showDone && !n) continue;
+      if (!cp.length) { const cn = groupNode(cat, 0, 1, `c:${area}/${cat}`, null, 'category', showDone, { kind: 'category', name: cat, area, rel: `${area}/${cat}`, folder: `${area}/${cat}`, projects: [] }); const e = el('div', 'tempty', I18n.t('Nothing here yet: right-click to add a {0}', lv('project'))); e.style.paddingLeft = '46px'; cn.kids.append(e); node.kids.append(cn.wrap); continue; }
       const cn = groupNode(cat, n, 1, `c:${area}/${cat}`, null, 'category', showDone, { kind: 'category', name: cat, area, rel: `${area}/${cat}`, folder: `${area}/${cat}`, projects: cp.map((p) => p.name.toLowerCase()) });
       cn.row.title = `${cp.length} project${cp.length > 1 ? 's' : ''}`;
       appendProjects(cn.kids, cp, area, 2, `${area}/${cat}`);
@@ -1724,6 +1741,7 @@ async function loadTaskTree() {
     box.append(node.wrap);
   }
   if (!list.length) box.prepend(el('div', 'none', 'No open tasks. Tell the buddy what you need to do.'));
+  flashRow();
 }
 
 // ---------------- tasks: view switch (tree / table) ----------------
@@ -1902,6 +1920,7 @@ $('#tf-q').addEventListener('input', () => { clearTimeout(tfTimer); tfTimer = se
 function groupNode(label, count, depth, key, target, kind, collapsibleDefaultClosed = false, edit = null) {
   const wrap = el('div', 'tnode');
   const row = el('div', `trow dir group-${kind}`);
+  row.dataset.key = key;
   row.style.paddingLeft = `${8 + depth * 16}px`;
   const store = collapsibleDefaultClosed ? doneOpen : taskCollapsed;
   const isOpen = () => (collapsibleDefaultClosed ? doneOpen.has(key) : !taskCollapsed.has(key));
@@ -2021,6 +2040,7 @@ function taskRow(t, depth) {
   const wrap = el('div', 'task-wrap');
   const row = el('div', `task trow${isClosedT(t) ? ' done' : ''}${t.status === 'cancelled' ? ' cancelled' : ''}${t.status === 'hold' ? ' hold' : ''}`);
   row.style.paddingLeft = `${8 + depth * 16}px`;
+  row.dataset.key = `t:${t.id}`;
   row.draggable = true;
   const grip = el('span', 'grip', '⋮⋮');
   grip.title = 'Drag to move';
@@ -3318,21 +3338,29 @@ async function newTaskAt(x, y, where) {
   if (!v) return;
   const r = await S.addTaskManual({ ...v, project: where.project || null, area: where.area || null });
   if (r && r.ok === false) return toast(r.error);
-  loadTasks();
+  const t = r && (r.result || r.task || r);
+  if (t && t.id != null) revealNew(`t:${t.id}`, where.project ? [`a:${where.area || ''}`, `p:${where.area || ''}/${where.project}`] : ['a:']);
+  await loadTasks();
 }
 async function newProjectAt(x, y, area, category) {
   const v = await askForm(x, y, I18n.t('New {0}', lv('project')), [{ key: 'name', label: I18n.t('Name') }]);
   if (!v) return;
   const r = await S.createProject(v.name, area || null, category || null);
   if (r && r.ok === false) return toast(r.error);
-  loadTasks();
+  const rel = String((r && r.result) || ''), name = rel ? rel.split('/').pop().replace(/\.md$/, '') : v.name;
+  // a new one has no open tasks yet, so open the "+ N with no open tasks" list it lands in
+  expandedEmpty.add(`idle:${area || ''}/${category || ''}`);
+  revealNew(`p:${area || ''}/${name}`, [`a:${area || ''}`, `c:${area || ''}/${category || ''}`]);
+  await loadTasks();
 }
 async function newFolderAt(x, y, parent, title) {
   const v = await askForm(x, y, title, [{ key: 'name', label: I18n.t('Name') }]);
   if (!v) return;
   const r = await S.mkdir(parent || '', v.name);
   if (r && r.ok === false) return toast(r.error);
-  loadTasks();
+  const name = String((r && r.result) || v.name).split('/').pop();
+  revealNew(parent ? `c:${parent}/${name}` : `a:${name}`, parent ? [`a:${parent}`] : []);
+  await loadTasks();
 }
 function treeMenu(x, y, edit, nameEl) {
   const T = I18n.t, items = [];
@@ -3387,4 +3415,3 @@ async function removeAt(x, y, edit) {
 }
 // right-click on empty space in the tree, and a "+ New" button for touch screens
 $('#task-list').addEventListener('contextmenu', (e) => { if (e.target.closest('.trow')) return; e.preventDefault(); treeMenu(e.clientX, e.clientY, { kind: 'general' }); });
-if ($('#task-new')) $('#task-new').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); treeMenu(r.left, r.bottom + 4, { kind: 'general' }); });

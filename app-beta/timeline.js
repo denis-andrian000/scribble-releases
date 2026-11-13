@@ -47,24 +47,32 @@
     return T(STATUS[t.status] || 'To do');
   }
 
-  // area → project → tasks
+  // Section (area) → Project (category folder) → Sub project → tasks, the same as the Tree.
+  // Tasks with no sub project wait in General.
+  let catOf = new Map();
+  const LV = (k) => (typeof lv === 'function' ? lv(k) : ({ area: 'Section', category: 'Project', project: 'Sub project' })[k]);
+  const catFor = (a, p) => (p ? catOf.get(`${a}|${p.toLowerCase()}`) || '' : '');
   function groups(list) {
     const areas = new Map();
     for (const t of list) {
-      const a = t.area || '', p = t.project || '';
+      const p = t.project || '', a = p ? t.area || '' : '';
       if (!areas.has(a)) areas.set(a, new Map());
       const ps = areas.get(a);
       if (!ps.has(p)) ps.set(p, []);
       ps.get(p).push(t);
     }
     const out = [...areas.entries()].sort((x, y) => (x[0] === '') - (y[0] === '') || x[0].localeCompare(y[0]));
-    return out.map(([a, ps]) => [a, [...ps.entries()].sort((x, y) => (x[0] === '') - (y[0] === '') || x[0].localeCompare(y[0]))]);
+    return out.map(([a, ps]) => [a, [...ps.entries()].map(([p, ts]) => [p, ts, catFor(a, p)])
+      .sort((x, y) => (x[0] === '') - (y[0] === '') || (x[2] === '') - (y[2] === '') || x[2].localeCompare(y[2]) || x[0].localeCompare(y[0]))]);
   }
   const byStart = (x, y) => ((span(x) || [1e9])[0] - (span(y) || [1e9])[0]) || String(x.due || '').localeCompare(String(y.due || ''));
 
   async function render() {
     const box = $('#task-timeline');
-    all = await S.tasks();
+    const [ts, nodes] = await Promise.all([S.tasks(), S.nested ? S.nested().catch(() => []) : []]);
+    all = ts;
+    catOf = new Map();
+    if (typeof projectsFromTree === 'function') for (const { area, category, project } of projectsFromTree(nodes || [])) catOf.set(`${area || ''}|${project.toLowerCase()}`, category || '');
     const today = todayStr();
     const projects = [...new Set(all.filter((t) => t.project).map((t) => t.project))].sort();
     if (onlyProject && !projects.includes(onlyProject)) onlyProject = projects.find((p) => p.toLowerCase() === onlyProject.toLowerCase()) || '';
@@ -83,7 +91,7 @@
     const tb = el('button', 'tl-today'); tb.type = 'button'; tb.textContent = T('Today');
     tb.addEventListener('click', () => scrollToday(true));
     const ps = el('select', 'tl-psel');
-    ps.innerHTML = `<option value="">${T('All projects')}</option>`;
+    ps.innerHTML = ''; { const o = el('option'); o.value = ''; o.textContent = T('All: {0}', LV('project')); ps.append(o); }
     for (const p of projects) { const o = el('option'); o.value = p; o.textContent = p; ps.append(o); }
     ps.value = onlyProject;
     ps.addEventListener('change', () => { onlyProject = ps.value; render(); });
@@ -148,7 +156,7 @@
     g.style.setProperty('--tl-w', W + 'px');
     // header
     const head = el('div', 'tl-row tl-head');
-    const hn = el('div', 'tl-name'); hn.textContent = T('Project / task');
+    const hn = el('div', 'tl-name'); hn.textContent = `${LV('project')} / ${T('task')}`;
     const hl = el('div', 'tl-lane');
     for (let n = lo; n <= hi; n++) {
       const d = new Date(n * DAY), dow = d.getUTCDay(), dom = d.getUTCDate();
@@ -172,9 +180,20 @@
     body.append(grid);
 
     for (const [area, projects] of groups(list)) {
-      const ar = el('div', 'tl-row tl-area'); const an = el('div', 'tl-name'); an.textContent = area || T('Other'); ar.append(an, el('div', 'tl-lane')); body.append(ar);
-      for (const [proj, tasks] of projects) {
+      const ar = el('div', 'tl-row tl-area'); const an = el('div', 'tl-name'); an.textContent = area || T('General'); ar.append(an, el('div', 'tl-lane')); body.append(ar);
+      let lastCat = null;
+      for (const [proj, tasks, cat] of projects) {
         const key = `${area}|${proj}`;
+        if (proj && cat && cat !== lastCat) {
+          const cr = el('div', 'tl-row tl-cat'); const cn = el('div', 'tl-name'); cn.textContent = '🗂 ' + cat; cn.title = `${LV('category')}: ${cat}`;
+          cr.append(cn, el('div', 'tl-lane')); body.append(cr);
+        }
+        lastCat = cat;
+        if (!proj) {
+          const wr = el('div', 'tl-row tl-proj tl-nop'); const wn = el('div', 'tl-name'); wn.textContent = '⚠ ' + T('no {0}', LV('project'));
+          wn.title = T('Not in a {0} yet. Drag it into one.', LV('project'));
+          wr.append(wn, el('div', 'tl-lane')); body.append(wr);
+        }
         if (proj) {
           const everything = all.filter((t) => t.project === proj && (t.area || '') === area);
           const done = everything.filter((t) => t.status === 'done').length;
@@ -184,7 +203,8 @@
           const pr = el('div', 'tl-row tl-proj');
           const pn = el('button', 'tl-name'); pn.type = 'button';
           pn.innerHTML = `<span class="tl-car">${collapsed.has(key) ? '▸' : '▾'}</span><span class="tl-pn"></span><span class="tl-pct">${pct}%</span>`;
-          pn.querySelector('.tl-pn').textContent = proj; pn.title = proj;
+          pn.querySelector('.tl-pn').textContent = proj; pn.title = `${LV('project')}: ${proj}`;
+          if (cat) pn.classList.add('in');
           if (window.Planner) {
             const h = Planner.health(everything, { today });
             if (h.state !== 'done') { const d = el('span', `hdot ${h.state}`); d.title = `${T({ ok: 'On track', risk: 'At risk', late: 'Late' }[h.state])}: ${T(h.key, ...h.args)}`; pn.querySelector('.tl-pn').after(d); }
@@ -200,7 +220,7 @@
           pr.append(pn, pl); body.append(pr);
           if (collapsed.has(key)) continue;
         }
-        for (const t of tasks.sort(byStart)) body.append(taskRow(t, today, x, !!proj));
+        for (const t of tasks.sort(byStart)) body.append(taskRow(t, today, x, proj ? (cat ? 2 : 1) : 1));
       }
     }
     g.append(body);
@@ -209,7 +229,7 @@
 
   function taskRow(t, today, x, indent) {
     const r = el('div', 'tl-row tl-task');
-    const n = el('button', 'tl-name' + (indent ? ' in' : '')); n.type = 'button'; n.textContent = t.title; n.title = t.title;
+    const n = el('button', 'tl-name' + (indent === 2 ? ' in2' : indent ? ' in' : '')); n.type = 'button'; n.textContent = t.title; n.title = t.title;
     n.addEventListener('click', (e) => pop(t, e.currentTarget));
     const lane = el('div', 'tl-lane');
     if (preview && preview.changes.has(t.id)) return previewRow(t, today, x, r, n, lane);
@@ -294,8 +314,11 @@
   function cards(box, list, today) {
     const t0 = d2n(today);
     for (const [area, projects] of groups(list)) {
-      if (area || groups(list).length > 1) { const h = el('div', 'tl-carea'); h.textContent = area || T('Other'); box.append(h); }
-      for (const [proj, tasks] of projects) {
+      if (area || groups(list).length > 1) { const h = el('div', 'tl-carea'); h.textContent = area || T('General'); box.append(h); }
+      let lastCat = null;
+      for (const [proj, tasks, cat] of projects) {
+        if (proj && cat && cat !== lastCat) { const h = el('div', 'tl-ccat'); h.textContent = '🗂 ' + cat; box.append(h); }
+        lastCat = cat;
         const ss = tasks.map(span);
         let a = Math.min(...ss.map((s) => s[0]), t0), b = Math.max(...ss.map((s) => s[1]), t0);
         if (b - a < 13) b = a + 13;
@@ -305,7 +328,7 @@
         const pct = everything.length ? Math.round(everything.filter((t) => t.status === 'done').length / everything.length * 100) : 0;
         const ends = Math.max(...ss.map((s) => s[1]));
         const h = el('div', 'tl-ch'); h.innerHTML = '<b></b><span></span>';
-        h.firstChild.textContent = proj || T('No project');
+        h.firstChild.textContent = proj || '⚠ ' + T('no {0}', LV('project'));
         h.lastChild.textContent = T('{0}% · ends {1}', pct, fmt(n2d(ends)));
         c.append(h);
         const ax = el('div', 'tl-cax');
