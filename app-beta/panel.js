@@ -1581,9 +1581,9 @@ function projectsFromTree(nodes) {
     if (n.type !== 'dir' || ['Daily', 'Notes', 'Inbox files'].includes(n.name)) continue;
     const area = n.name === 'Projects' ? null : n.name;
     for (const c of n.children) {
-      if (c.type === 'file' && !SKIP_PAGE(c.name)) out.push({ area, category: null, project: c.name });
+      if (c.type === 'file' && !SKIP_PAGE(c.name)) out.push({ area, category: null, project: c.name, path: c.path });
       if (c.type === 'dir' && area) {
-        for (const f of c.children) if (f.type === 'file' && !SKIP_PAGE(f.name)) out.push({ area, category: c.name, project: f.name });
+        for (const f of c.children) if (f.type === 'file' && !SKIP_PAGE(f.name)) out.push({ area, category: c.name, project: f.name, path: f.path });
       }
     }
   }
@@ -1619,7 +1619,9 @@ async function loadTaskTree() {
     if (!A.projects.has(k)) A.projects.set(k, { name: p, category: category ?? catOf.get(`${a || ''}|${k}`) ?? null, tasks: [] });
     return A.projects.get(k);
   };
-  for (const { area, category, project } of projectsFromTree(nodes)) {
+  const pageOf = new Map();
+  for (const { area, category, project, path: rel } of projectsFromTree(nodes)) {
+    pageOf.set(`${area || ''}|${project.toLowerCase()}`, rel);
     catOf.set(`${area || ''}|${project.toLowerCase()}`, category);
     if (!showDone && (!taskFocus || !taskFocus.project || taskFocus.project.toLowerCase() === project.toLowerCase())) proj(area, project, category);
   }
@@ -1641,7 +1643,7 @@ async function loadTaskTree() {
 
   const projectNode = (p, area, depth) => {
     const key = `p:${area}/${p.name}`;
-    const n = groupNode(p.name, p.tasks.length, depth, key, { area: area || null, project: p.name }, 'project', showDone);
+    const n = groupNode(p.name, p.tasks.length, depth, key, { area: area || null, project: p.name }, 'project', showDone, { kind: 'project', name: p.name, area: area || null, rel: pageOf.get(`${area || ''}|${p.name.toLowerCase()}`) || null });
     if (!showDone && window.Planner && p.tasks.length) healthDot(n.row, all.filter((t) => t.project && t.project.toLowerCase() === p.name.toLowerCase() && (t.area || '') === (area || '')));
     for (const t of sortT(p.tasks)) n.kids.append(taskRow(t, depth + 1));
     return n.wrap;
@@ -1674,7 +1676,7 @@ async function loadTaskTree() {
     const total = A.loose.length + projs.reduce((n, p) => n + p.tasks.length, 0);
     if (showDone && !total) continue;
     if (!area && !total && !projs.length) continue;
-    const node = groupNode(area || 'General', total, 0, `a:${area}`, { area: area || null, project: null }, area ? 'area' : 'general', showDone);
+    const node = groupNode(area || 'General', total, 0, `a:${area}`, { area: area || null, project: null }, area ? 'area' : 'general', showDone, area ? { kind: 'area', name: area, area, rel: area, folder: area } : { kind: 'general', area: null, folder: 'Projects' });
     for (const t of sortT(A.loose)) node.kids.append(taskRow(t, 1));
     appendProjects(node.kids, projs.filter((p) => !p.category), area, 1, `${area}/`);
     const cats = [...new Set(projs.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -1682,7 +1684,7 @@ async function loadTaskTree() {
       const cp = projs.filter((p) => p.category === cat);
       const n = cp.reduce((s, p) => s + p.tasks.length, 0);
       if (showDone && !n) continue;
-      const cn = groupNode(cat, n, 1, `c:${area}/${cat}`, null, 'category', showDone);
+      const cn = groupNode(cat, n, 1, `c:${area}/${cat}`, null, 'category', showDone, { kind: 'category', name: cat, area, rel: `${area}/${cat}`, folder: `${area}/${cat}` });
       cn.row.title = `${cp.length} project${cp.length > 1 ? 's' : ''}`;
       appendProjects(cn.kids, cp, area, 2, `${area}/${cat}`);
       node.kids.append(cn.wrap);
@@ -1870,7 +1872,7 @@ let tfTimer = null;
 $('#tf-q').addEventListener('input', () => { clearTimeout(tfTimer); tfTimer = setTimeout(renderTaskTable, 120); });
 
 // collapsibleDefaultClosed: in the Done view groups start closed (there can be hundreds of finished tasks)
-function groupNode(label, count, depth, key, target, kind, collapsibleDefaultClosed = false) {
+function groupNode(label, count, depth, key, target, kind, collapsibleDefaultClosed = false, edit = null) {
   const wrap = el('div', 'tnode');
   const row = el('div', `trow dir group-${kind}`);
   row.style.paddingLeft = `${8 + depth * 16}px`;
@@ -1892,8 +1894,71 @@ function groupNode(label, count, depth, key, target, kind, collapsibleDefaultClo
     else { nowOpen ? taskCollapsed.delete(key) : taskCollapsed.add(key); saveSet('taskCollapsed', taskCollapsed); }
   });
   if (target) taskDropTarget(row, target, () => { if (kids.hidden) row.click(); });
+  if (edit) groupEditing(row, name, edit);
   wrap.append(row, kids);
   return { wrap, kids, row };
+}
+
+// Folders (areas, categories) and projects in the Tree: ✎ or double-click renames them; drag a project onto a
+// folder to move it there, drag a category onto an area. Their tasks follow along.
+const NODE_DRAG = 'application/x-scribble-node';
+function groupEditing(row, nameEl, edit) {
+  if (edit.kind !== 'general') {
+    const pen = el('button', 'tedit', '✎'); pen.type = 'button'; pen.title = I18n.t('Rename');
+    const go = (e) => { e.stopPropagation(); e.preventDefault(); renameInline(nameEl, edit); };
+    pen.addEventListener('click', go);
+    nameEl.addEventListener('dblclick', go);
+    row.insertBefore(pen, nameEl.nextSibling);
+    if (edit.kind === 'project' && edit.rel) {
+      const open = el('button', 'tedit', '📄'); open.type = 'button'; open.title = I18n.t('Open the project page');
+      open.addEventListener('click', (e) => { e.stopPropagation(); showTab('notebook'); setTimeout(() => openPage(edit.rel), 150); });
+      row.insertBefore(open, pen.nextSibling);
+    }
+  }
+  row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); treeMenu(e.clientX, e.clientY, edit, nameEl); });
+  if (edit.kind === 'project' || edit.kind === 'category') {
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData(NODE_DRAG, JSON.stringify(edit)); e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
+  }
+  if (edit.folder) {
+    row.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes(NODE_DRAG)) return;
+      e.preventDefault(); row.classList.add('drop');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drop'));
+    row.addEventListener('drop', async (e) => {
+      if (!e.dataTransfer.types.includes(NODE_DRAG)) return;
+      e.preventDefault(); e.stopPropagation(); row.classList.remove('drop');
+      let d; try { d = JSON.parse(e.dataTransfer.getData(NODE_DRAG)); } catch { return; }
+      if (d.kind === 'category' && edit.kind !== 'area') return toast(I18n.t('Drop a category on a folder.'));
+      let r;
+      if (d.rel) r = await S.move(d.rel, edit.folder);
+      else r = await S.moveProjectTasks(d.name, d.area, edit.area || null);   // a project that only exists on its tasks
+      if (r && r.ok === false) return toast(r.error);
+      toast(I18n.t('Moved "{0}" to {1}', d.name, edit.name || I18n.t('General')));
+      loadTasks();
+    });
+  }
+}
+function renameInline(nameEl, edit) {
+  if (nameEl.querySelector('input')) return;
+  const old = edit.name;
+  const inp = el('input', 'tname-in'); inp.value = old;
+  nameEl.textContent = ''; nameEl.append(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    if (!save || !v || v === old) { nameEl.textContent = old; return; }
+    const r = edit.rel ? await S.rename(edit.rel, v) : await S.renameProjectTasks(old, edit.area, v);
+    if (r && r.ok === false) { toast(r.error); nameEl.textContent = old; return; }
+    loadTasks();
+  };
+  inp.addEventListener('click', (e) => e.stopPropagation());
+  inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(true));
 }
 
 function taskDropTarget(elm, target, onHover) {
@@ -3145,3 +3210,99 @@ if ($('#m-on')) {
   $('#m-clear').addEventListener('click', async () => { if (!confirm(I18n.t('Forget everything your buddy knows about you? You can undo it right after.'))) return; await S.memoryClear(); loadMemory(); });
   S.onNotebookChanged(() => { if (currentTab === 'settings') loadMemory(); });
 }
+
+// ---------------- Tree: right-click (or "+ New") to add folders, sections, projects and tasks right there ----------------
+function ctxMenu(x, y, items) {
+  document.querySelector('.ctx-menu')?.remove();
+  const m = el('div', 'ctx-menu');
+  for (const it of items) {
+    if (it === '-') { m.append(el('div', 'ctx-sep')); continue; }
+    const b = el('button'); b.type = 'button'; b.textContent = it.label;
+    b.addEventListener('click', () => { m.remove(); it.fn(); });
+    m.append(b);
+  }
+  document.body.append(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(x, innerWidth - r.width - 8) + 'px'; m.style.top = Math.min(y, innerHeight - r.height - 8) + 'px';
+  setTimeout(() => { const off = (e) => { if (!m.contains(e.target)) { m.remove(); removeEventListener('pointerdown', off, true); } }; addEventListener('pointerdown', off, true); });
+}
+// a small form at the pointer: [{ key, label, type, value, options }] → values, or null when cancelled
+function askForm(x, y, title, fields) {
+  return new Promise((resolve) => {
+    document.querySelector('.ask-form')?.remove();
+    const f = el('form', 'ask-form');
+    const h = el('b'); h.textContent = title; f.append(h);
+    const ins = {};
+    for (const d of fields) {
+      const l = el('label'); const s = el('span'); s.textContent = d.label; l.append(s);
+      let i;
+      if (d.options) { i = el('select'); for (const [v, t] of d.options) i.append(new Option(t, v)); }
+      else { i = el('input'); i.type = d.type || 'text'; }
+      i.value = d.value || ''; ins[d.key] = i; l.append(i); f.append(l);
+    }
+    const row = el('div', 'ask-btns');
+    const no = el('button', 'btn ghost'); no.type = 'button'; no.textContent = I18n.t('Cancel');
+    const ok = el('button', 'btn'); ok.type = 'submit'; ok.textContent = I18n.t('Add');
+    row.append(no, ok); f.append(row);
+    document.body.append(f);
+    const r = f.getBoundingClientRect();
+    f.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px'; f.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+    const end = (v) => { f.remove(); resolve(v); };
+    no.addEventListener('click', () => end(null));
+    f.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); end(null); } });
+    f.addEventListener('submit', (e) => { e.preventDefault(); const v = {}; for (const [k, i] of Object.entries(ins)) v[k] = i.value.trim(); if (!v[fields[0].key]) return; end(v); });
+    ins[fields[0].key].focus();
+  });
+}
+const plusDays = (n) => { const d = new Date(Date.now() + n * 86400000); return d.toLocaleDateString('en-CA'); };
+async function newTaskAt(x, y, where) {
+  const v = await askForm(x, y, where.project ? I18n.t('New task in {0}', where.project) : I18n.t('New task'), [
+    { key: 'title', label: I18n.t('Task') },
+    { key: 'start', label: I18n.t('Start'), type: 'date', value: plusDays(0) },
+    { key: 'due', label: I18n.t('Due'), type: 'date', value: plusDays(7) },
+    { key: 'priority', label: I18n.t('Priority'), value: 'medium', options: [['low', I18n.t('Low')], ['medium', I18n.t('Medium')], ['high', I18n.t('High')]] },
+  ]);
+  if (!v) return;
+  const r = await S.addTaskManual({ ...v, project: where.project || null, area: where.area || null });
+  if (r && r.ok === false) return toast(r.error);
+  loadTasks();
+}
+async function newProjectAt(x, y, area, category) {
+  const v = await askForm(x, y, I18n.t('New project'), [{ key: 'name', label: I18n.t('Name') }]);
+  if (!v) return;
+  const r = await S.createProject(v.name, area || null, category || null);
+  if (r && r.ok === false) return toast(r.error);
+  loadTasks();
+}
+async function newFolderAt(x, y, parent, title) {
+  const v = await askForm(x, y, title, [{ key: 'name', label: I18n.t('Name') }]);
+  if (!v) return;
+  const r = await S.mkdir(parent || '', v.name);
+  if (r && r.ok === false) return toast(r.error);
+  loadTasks();
+}
+function treeMenu(x, y, edit, nameEl) {
+  const T = I18n.t, items = [];
+  if (edit.kind === 'project') {
+    items.push({ label: '➕ ' + T('New task here'), fn: () => newTaskAt(x, y, { project: edit.name, area: edit.area }) });
+    if (edit.rel) items.push({ label: '📄 ' + T('Open the project page'), fn: () => { showTab('notebook'); setTimeout(() => openPage(edit.rel), 150); } });
+    items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+  } else if (edit.kind === 'category') {
+    items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, edit.name) });
+    items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+  } else if (edit.kind === 'area') {
+    items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, null) });
+    items.push({ label: '➕ ' + T('New task here'), fn: () => newTaskAt(x, y, { area: edit.area }) });
+    items.push({ label: '🗂 ' + T('New section here'), fn: () => newFolderAt(x, y, edit.area, T('New section in {0}', edit.name)) });
+    items.push('-', { label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
+    items.push({ label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+  } else {
+    items.push({ label: '◆ ' + T('New project'), fn: () => newProjectAt(x, y, null, null) });
+    items.push({ label: '➕ ' + T('New task'), fn: () => newTaskAt(x, y, {}) });
+    items.push({ label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
+  }
+  ctxMenu(x, y, items);
+}
+// right-click on empty space in the tree, and a "+ New" button for touch screens
+$('#task-list').addEventListener('contextmenu', (e) => { if (e.target.closest('.trow')) return; e.preventDefault(); treeMenu(e.clientX, e.clientY, { kind: 'general' }); });
+if ($('#task-new')) $('#task-new').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); treeMenu(r.left, r.bottom + 4, { kind: 'general' }); });

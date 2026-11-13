@@ -1052,3 +1052,19 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .present-bar b { color: var(--accent); }
 .present-bar .sp { flex: 1; }
 .present-bar button { font: inherit; font-size: 12px; color: var(--bg); background: none; border: 0; opacity: .85; cursor: pointer; }
+
+.trow .tedit { visibility: hidden; border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 12px; padding: 0 3px; }
+.trow:hover .tedit { visibility: visible; }
+.tname-in { font: inherit; font-weight: inherit; width: min(240px, 60%); padding: 1px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.trow.dragging { opacity: .5; }
+
+.ctx-menu { position: fixed; z-index: 1600; min-width: 190px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; display: flex; flex-direction: column; }
+.ctx-menu button { font: inherit; font-size: 13px; text-align: left; padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); cursor: pointer; }
+.ctx-menu button:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.ctx-sep { height: 1px; background: var(--line); margin: 3px 4px; }
+.ask-form { position: fixed; z-index: 1601; width: 280px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ask-form label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.ask-form label span { width: 64px; color: var(--ink-2); }
+.ask-form input, .ask-form select { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+.ask-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
+#task-new { margin-left: 4px; }
