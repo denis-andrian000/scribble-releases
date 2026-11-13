@@ -873,6 +873,9 @@ const FIELDS = {
   update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
   delete_task: [],
   create_project: [['name', 'text', 'Project'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['goal', 'long', 'Goal']],
+  create_folder: [['name', 'text', 'Folder'], ['parent', 'area', 'Inside']],
+  remove_project: [['name', 'text', 'Project'], ['tasks', 'text', 'Its tasks (delete / keep)']],
+  move_project: [['name', 'text', 'Project'], ['area', 'area', 'Move to'], ['category', 'category', 'Section'], ['new_name', 'text', 'New name']],
   log_project: [['entry', 'long', 'Progress'], ['name', 'project', 'Project'], ['area', 'area', 'Area (only if new)']],
 };
 // Which field the "options" chips fill in

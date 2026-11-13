@@ -1,6 +1,6 @@
 // Scribble on the web: keeps the app's files on the device so it opens instantly, also offline.
 // Only the app's own files are cached; Google, Drive and the AI services are never touched here.
-const VERSION = '1.27.1-be6667d9';
+const VERSION = '1.27.2-1fdd8943';
 const CACHE = 'scribble-' + VERSION;
 const FILES = ["./","avatar.js","buddy-bridge.js","buddy-life.js","buddy.js","chars.js","engine.js","i18n-id.js","i18n.js","icon-180.png","icon-192.png","icon-32.png","icon-512.png","icon-maskable.png","index.html","keyboard.js","manifest.webmanifest","markdown.js","meeting.js","mobile.css","money-view.js","page-buddy.html","panel.css","panel.js","planner.js","pwa.js","reconnect.js","rig.js","sounds.js","theme.js","timeline.js","today.css","today.js","voice.js","wins.js","brand/omniz.png","brand/omniz-dark.png"];
 self.addEventListener('install', (e) => {
