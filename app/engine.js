@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.27.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.27.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4598,6 +4598,29 @@ ${groups[n].map(fmt).join("\n")}
           return t;
         }
         // Drag and drop in the Tasks tab: re-file under an area/project, optionally before another task.
+        // a project that only lives on its tasks (no page): rename it, or move all its tasks to another area
+        renameProjectTasks(name, area, to) {
+          const tasks = this.loadTasks();
+          let n = 0;
+          for (const t of tasks) if (String(t.project || "").toLowerCase() === String(name).toLowerCase() && (t.area || null) === (area || null)) {
+            t.project = String(to).trim();
+            n++;
+          }
+          if (!n) throw new Error("No tasks in that project.");
+          this._saveTasks(tasks);
+          return n;
+        }
+        moveProjectTasks(name, fromArea, toArea) {
+          const tasks = this.loadTasks();
+          let n = 0;
+          for (const t of tasks) if (String(t.project || "").toLowerCase() === String(name).toLowerCase() && (t.area || null) === (fromArea || null)) {
+            t.area = toArea || null;
+            n++;
+          }
+          if (!n) throw new Error("No tasks in that project.");
+          this._saveTasks(tasks);
+          return n;
+        }
         moveTask(id, { area = null, project = null, beforeId = null } = {}) {
           const tasks = this.loadTasks();
           const t = tasks.find((x) => x.id === Number(id));
@@ -39064,7 +39087,17 @@ Content-Type: application/octet-stream\r
         "\u{1F441} Showing": "\u{1F441} Menampilkan",
         "Saved a template": "Menyimpan template",
         "Started from a template": "Memulai dari template",
-        "Searched your notes": "Mencari di catatanmu"
+        "Searched your notes": "Mencari di catatanmu",
+        "Open the project page": "Buka halaman proyek",
+        "Drop a category on a folder.": "Taruh kategori di sebuah folder.",
+        "New task in {0}": "Tugas baru di {0}",
+        "New project here": "Proyek baru di sini",
+        "New task here": "Tugas baru di sini",
+        "New section here": "Bagian baru di sini",
+        "New folder": "Folder baru",
+        "New section in {0}": "Bagian baru di {0}",
+        "+ New": "+ Baru",
+        "Add a folder, project or task": "Tambah folder, proyek, atau tugas"
       };
     }
   });
@@ -41421,6 +41454,20 @@ ${brief}` }, ...blocks];
       }));
       ipcMain.handle("nb:destinations", () => notebook.destinations());
       ipcMain.handle("tasks:move", nbOp((id, where) => notebook.moveTask(id, where)));
+      ipcMain.handle("tasks:add", nbOp((f) => {
+        notebook.begin(I18n.t("New task"));
+        try {
+          const t2 = notebook.addTask(f);
+          notebook.commit();
+          return t2;
+        } catch (e) {
+          notebook.rollback();
+          throw e;
+        }
+      }));
+      ipcMain.handle("project:create", nbOp((name, area, category) => notebook.ensureProject(name, { area: area || void 0, category: category || void 0 })));
+      ipcMain.handle("tasks:renameProject", nbOp((name, area, to) => notebook.renameProjectTasks(name, area, to)));
+      ipcMain.handle("tasks:moveProject", nbOp((name, from, to) => notebook.moveProjectTasks(name, from, to)));
       ipcMain.handle("nb:read", (_e, p) => notebook.read(p));
       ipcMain.handle("nb:stat", (_e, p) => {
         try {
@@ -42388,6 +42435,10 @@ ${lines.join("\n")}
         trash: (rel) => ipcRenderer.invoke("nb:trash", rel),
         destinations: () => ipcRenderer.invoke("nb:destinations"),
         moveTask: (id, where) => ipcRenderer.invoke("tasks:move", id, where),
+        addTaskManual: (f) => ipcRenderer.invoke("tasks:add", f),
+        createProject: (name, area, category) => ipcRenderer.invoke("project:create", name, area, category),
+        renameProjectTasks: (name, area, to) => ipcRenderer.invoke("tasks:renameProject", name, area, to),
+        moveProjectTasks: (name, from, to) => ipcRenderer.invoke("tasks:moveProject", name, from, to),
         getAvatar: () => ipcRenderer.invoke("avatar:get"),
         avatarDefaults: () => ipcRenderer.invoke("avatar:defaults"),
         setAvatar: (patch) => ipcRenderer.invoke("avatar:set", patch),
