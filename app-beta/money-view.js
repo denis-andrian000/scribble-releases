@@ -563,5 +563,20 @@
     show().then(() => { const tr = document.querySelector(`#mn-rows tr[data-id="${id}"]`); if (tr) tr.scrollIntoView({ block: 'center' }); setTimeout(() => { state.editing = null; }, 4000); });
   }
 
-  window.Money = { show, edit };
+  // the buddy shows part of Money ("my food spending this month"): set the filters by name
+  async function focus(f = {}) {
+    if (f.month && /^\d{4}-\d{2}$/.test(f.month)) state.month = f.month;
+    await show();
+    const d = state.data || { categories: [], wallets: [] };
+    const by = (arr, n) => { if (!n) return null; const l = String(n).toLowerCase(); return arr.find((x) => x.name.toLowerCase() === l) || arr.find((x) => x.name.toLowerCase().includes(l)) || null; };
+    const c = by(d.categories, f.category), w = by(d.wallets, f.wallet);
+    state.cat = c ? c.id : ''; state.wallet = w ? w.id : ''; state.kind = ['in', 'out', 'transfer'].includes(f.kind) ? f.kind : ''; state.q = '';
+    if ($('#mn-f-cat')) $('#mn-f-cat').value = state.cat;
+    if ($('#mn-f-kind')) $('#mn-f-kind').value = state.kind;
+    if ($('#mn-q')) $('#mn-q').value = '';
+    render();
+    return { category: c && c.name, wallet: w && w.name };
+  }
+  function clearFocus() { state.cat = ''; state.wallet = ''; state.kind = ''; state.q = ''; state.month = thisMonth(); show(); }
+  window.Money = { show, edit, focus, clearFocus };
 })();

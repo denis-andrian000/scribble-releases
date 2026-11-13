@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.26.3";
+globalThis.__SCRIBBLE_VERSION__ = "1.27.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36347,6 +36347,25 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           }
         },
         {
+          name: "show_on_screen",
+          description: 'Show something to the user next to the chat (in full screen it appears on the left, like presenting; in the small window it switches to that view). Use it whenever the user asks to see, show, list or open something: "show me only the Chatwoot project" (view tasks, project), "list my tasks in the table" (view table), "show the timeline for X" (view timeline, project), "show my food spending this month" (view money, category), "open the vendor page" (view page). Then talk about what is shown in one or two lines and point to it ("on the left \u{1F448}" in full screen). When you then suggest new dates for those tasks, use move_tasks: in full screen the user sees your plan on the timeline before saving.',
+          input_schema: {
+            type: "object",
+            properties: {
+              view: { type: "string", enum: ["tasks", "table", "timeline", "money", "page"] },
+              project: { type: "string", description: "Only this project (exact name from list_tasks)" },
+              area: { type: "string" },
+              which: { type: "string", enum: ["open", "done", "all"], description: "Tasks: open (default), done, or all" },
+              category: { type: "string", description: "Money: a category name" },
+              wallet: { type: "string", description: "Money: a wallet name" },
+              month: { type: "string", description: "Money: YYYY-MM (default this month)" },
+              kind: { type: "string", enum: ["in", "out", "transfer"] },
+              page: { type: "string", description: "Page path, e.g. Projects/Vendor.md" }
+            },
+            required: ["view"]
+          }
+        },
+        {
           name: "show_timeline",
           description: "Open the project timeline (Tasks \u2192 Timeline) on the user's screen and get a summary of every project over time: first start and last due date, percent done, open tasks, late tasks (with days late), what is due next, and tasks without dates. Use it when the user asks to see or review the timeline, a project's schedule, what is late or slipping, or how projects overlap. Pass project to open just one project. Pass open: false to only read the summary without switching their screen.",
           input_schema: {
@@ -36757,6 +36776,53 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             }
             case "search_chats":
               return this.searchChats ? this.searchChats(input.keywords || []) : { results: [] };
+            case "show_on_screen": {
+              const v = input.view;
+              if (v === "money") {
+                const m = this.getMoney();
+                if (!m) return { error: "Money is off in Settings." };
+                this.onShow("present", { view: "money", category: input.category, wallet: input.wallet, month: input.month, kind: input.kind });
+                const sum = m.summary(input.month || void 0);
+                const cat = input.category ? String(input.category).toLowerCase() : "";
+                return {
+                  shown_on_screen: true,
+                  month: sum.month,
+                  money_in: sum.money_in,
+                  money_out: sum.money_out,
+                  spending_categories: sum.spending_categories,
+                  records: cat ? sum.recent.filter((r) => r.toLowerCase().includes(cat)) : sum.recent.slice(0, 10)
+                };
+              }
+              if (v === "page") {
+                if (!input.page) return { error: "Which page?" };
+                let p = String(input.page);
+                if (!/\.md$/.test(p)) p += ".md";
+                if (!nb.exists(p)) {
+                  const hit = nb.tree().find((x) => x.path.toLowerCase().includes(String(input.page).toLowerCase().replace(/\.md$/, "")));
+                  if (!hit) return { error: `No page like "${input.page}".` };
+                  p = hit.path;
+                }
+                this.onShow("present", { view: "page", page: p });
+                return { shown_on_screen: true, page: p, starts_with: nb.read(p).slice(0, 1200) };
+              }
+              const all = nb.listTasks({ status: "all" });
+              let proj = input.project || "";
+              if (proj) {
+                const hit = all.find((t) => String(t.project || "").toLowerCase() === proj.toLowerCase()) || all.find((t) => String(t.project || "").toLowerCase().includes(proj.toLowerCase()));
+                if (!hit) return { error: `No project like "${proj}". Projects: ${[...new Set(all.map((t) => t.project).filter(Boolean))].join(", ")}` };
+                proj = hit.project;
+              }
+              const which = input.which || "open";
+              const tasks = all.filter((t) => (!proj || t.project === proj) && (!input.area || String(t.area || "").toLowerCase() === input.area.toLowerCase()) && (which === "all" || (which === "done" ? ["done", "cancelled"].includes(t.status) : !["done", "cancelled"].includes(t.status))));
+              this.onShow("present", { view: v === "tasks" ? "tree" : v, project: proj, area: input.area || "", which });
+              const today = localDate();
+              return {
+                shown_on_screen: true,
+                project: proj || null,
+                count: tasks.length,
+                tasks: tasks.slice(0, 40).map((t) => ({ id: t.id, title: t.title, status: t.status, start: t.start || null, due: t.due || null, priority: t.priority || null, late: !!(t.due && t.due < today && !["done", "cancelled", "hold"].includes(t.status)) }))
+              };
+            }
             case "what_now": {
               const d = /* @__PURE__ */ new Date(), now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
               return Planner.next(nb.listTasks({ status: "open" }), { today: localDate(), now, days: this.getRoutine().days });
@@ -38986,7 +39052,19 @@ Content-Type: application/octet-stream\r
         "Add a Groq or Gemini key first": "Tambahkan kunci Groq atau Gemini dulu",
         "Listening to meetings turns speech into text with one of your AI keys. A free Groq or Gemini key works: Settings \u2192 App \u2192 AI.": "Mendengarkan rapat mengubah suara jadi teks dengan salah satu kunci AI-mu. Kunci Groq atau Gemini gratis bisa: Pengaturan \u2192 Aplikasi \u2192 AI.",
         "To talk here, add a free Groq or Gemini key in Settings \u2192 App \u2192 AI.": "Untuk bicara di sini, tambahkan kunci Groq atau Gemini gratis di Pengaturan \u2192 Aplikasi \u2192 AI.",
-        "To listen here, add a free Groq or Gemini key in Settings \u2192 App \u2192 AI. You can still type your notes.": "Untuk mendengarkan di sini, tambahkan kunci Groq atau Gemini gratis di Pengaturan \u2192 Aplikasi \u2192 AI. Kamu tetap bisa mengetik catatan."
+        "To listen here, add a free Groq or Gemini key in Settings \u2192 App \u2192 AI. You can still type your notes.": "Untuk mendengarkan di sini, tambahkan kunci Groq atau Gemini gratis di Pengaturan \u2192 Aplikasi \u2192 AI. Kamu tetap bisa mengetik catatan.",
+        All: "Semua",
+        "Show everything": "Tampilkan semua",
+        "{0} is showing:": "{0} sedang menampilkan:",
+        "\u{1F440} Preview from {0}, not saved yet: {1} task(s) get new dates": "\u{1F440} Pratinjau dari {0}, belum disimpan: {1} tugas dapat tanggal baru",
+        Discard: "Buang",
+        "Save all": "Simpan semua",
+        "Now: {0} \u2192 {1}": "Sekarang: {0} \u2192 {1}",
+        "Suggested by your buddy. Drag to adjust before saving.": "Saran dari buddy-mu. Geser untuk menyesuaikan sebelum disimpan.",
+        "\u{1F441} Showing": "\u{1F441} Menampilkan",
+        "Saved a template": "Menyimpan template",
+        "Started from a template": "Memulai dari template",
+        "Searched your notes": "Mencari di catatanmu"
       };
     }
   });
@@ -39753,7 +39831,11 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         show_timeline: "Opened the timeline",
         remember: "\u{1F9E0} Remembered",
         forget: "\u{1F9E0} Forgot",
-        search_chats: "\u{1F50E} Searched past chats"
+        search_chats: "\u{1F50E} Searched past chats",
+        show_on_screen: "\u{1F441} Showing",
+        save_template: "Saved a template",
+        use_template: "Started from a template",
+        ask_notes: "Searched your notes"
       };
       function toolLabel(name, input = {}) {
         const base = I18n.t(TOOL_LABELS[name] || name);
@@ -39768,6 +39850,10 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         if (name === "remember") return `${base}: ${input.text || ""}`;
         if (name === "forget") return `${base}: ${input.match || ""}`;
         if (name === "search_chats") return base;
+        if (name === "save_template") return `${base}: ${input.name || ""}`;
+        if (name === "use_template") return `${base}: ${input.project || ""}`;
+        if (name === "ask_notes") return base;
+        if (name === "show_on_screen") return `${base}: ${input.project || input.category || input.page || input.wallet || I18n.t(input.view === "money" ? "Money" : "Tasks")}`;
         if (["what_now", "plan_week", "reschedule_late", "show_timeline", "mark_paid", "update_recurring"].includes(name)) return base;
         const detail = input.path || input.page || input.query || input.title || input.name || (input.id ? `#${input.id}` : "");
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;

@@ -15,6 +15,13 @@
   let onlyProject = '';
   const collapsed = new Set(store.get('collapsed', []));
   let all = [];
+  // a plan the buddy suggested but nothing is saved yet: id → { start, due }, shown as striped bars
+  let preview = null;
+  const eff = (t) => {
+    const c = preview && preview.changes.get(t.id);
+    if (!c) return t;
+    return { ...t, due: c.due, start: c.start || (t.start && t.start <= c.due ? t.start : c.due) };
+  };
 
   const d2n = (s) => Math.round(Date.parse(s + 'T00:00:00Z') / DAY);            // date → day number
   const n2d = (n) => new Date(n * DAY).toISOString().slice(0, 10);
@@ -62,7 +69,7 @@
     const projects = [...new Set(all.filter((t) => t.project).map((t) => t.project))].sort();
     if (onlyProject && !projects.includes(onlyProject)) onlyProject = projects.find((p) => p.toLowerCase() === onlyProject.toLowerCase()) || '';
     const visible = all.filter((t) => (showDone || !isClosedT(t)) && (!onlyProject || t.project === onlyProject));
-    const dated = visible.filter((t) => span(t)), undated = visible.filter((t) => !span(t));
+    const dated = visible.filter((t) => span(eff(t))), undated = visible.filter((t) => !span(eff(t)));
 
     box.innerHTML = '';
     // toolbar: zoom · today · project · show done
@@ -85,6 +92,14 @@
     dl.append(dc, document.createTextNode(' ' + T('Show done')));
     bar.append(zs, tb, el('span', 'tl-sp'), ps, dl);
     box.append(bar);
+    if (preview) {
+      const pb = el('div', 'tl-preview');
+      const s = el('span'); s.textContent = T('👀 Preview from {0}, not saved yet: {1} task(s) get new dates', preview.who || 'your buddy', preview.changes.size);
+      const d = el('button', 'btn ghost'); d.type = 'button'; d.textContent = T('Discard'); d.addEventListener('click', () => preview && preview.onDiscard && preview.onDiscard());
+      const ok = el('button', 'btn'); ok.type = 'button'; ok.textContent = T('Save all'); ok.addEventListener('click', () => preview && preview.onSave && preview.onSave());
+      pb.append(s, el('span', 'tl-sp'), d, ok);
+      box.append(pb);
+    }
 
     if (!dated.length && !undated.length) { box.append(el('div', 'none', T('No open tasks. Tell the buddy what you need to do.'))); return; }
     const narrow = box.clientWidth < 620;
@@ -102,7 +117,9 @@
       box.append(u);
     }
     legend(box);
-    scrollToday(false);
+    // previewing: bring the suggested dates into view; otherwise around today
+    const firstDraft = preview && scroller && scroller.querySelector('.tl-draft');
+    if (firstDraft) scroller.scrollTo({ left: Math.max(0, firstDraft.offsetLeft - 240 - 7 * pxDay) }); else scrollToday(false);
   }
 
   function legend(box) {
@@ -120,7 +137,7 @@
     pxDay = ZOOM[zoom];
     const t0 = d2n(today);
     let lo = t0 - 14, hi = t0 + 45;
-    for (const t of list) { const s = span(t); lo = Math.min(lo, s[0] - 5); hi = Math.max(hi, s[1] + 10); }
+    for (const t of list) for (const s of [span(eff(t)), span(t)]) if (s) { lo = Math.min(lo, s[0] - 5); hi = Math.max(hi, s[1] + 10); }
     const minDays = Math.ceil((box.clientWidth - 240) / pxDay) + 2;
     if (hi - lo < minDays) hi = lo + minDays;
     day0 = lo;
@@ -163,7 +180,7 @@
           const done = everything.filter((t) => t.status === 'done').length;
           const live = everything.filter((t) => t.status !== 'cancelled');
           const pct = live.length ? Math.round(done / live.length * 100) : 0;
-          const ss = everything.map(span).filter(Boolean);
+          const ss = everything.map((t) => span(eff(t))).filter(Boolean);
           const pr = el('div', 'tl-row tl-proj');
           const pn = el('button', 'tl-name'); pn.type = 'button';
           pn.innerHTML = `<span class="tl-car">${collapsed.has(key) ? '▸' : '▾'}</span><span class="tl-pn"></span><span class="tl-pct">${pct}%</span>`;
@@ -195,6 +212,7 @@
     const n = el('button', 'tl-name' + (indent ? ' in' : '')); n.type = 'button'; n.textContent = t.title; n.title = t.title;
     n.addEventListener('click', (e) => pop(t, e.currentTarget));
     const lane = el('div', 'tl-lane');
+    if (preview && preview.changes.has(t.id)) return previewRow(t, today, x, r, n, lane);
     const [a, b] = span(t), k = kind(t, today);
     const one = a === b;
     const bar = el('div', `tl-b ${k}${one ? ' dia' : ''}`);
@@ -213,7 +231,29 @@
   }
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-  function drag(bar, t, a, b, place) {
+  // a task the buddy wants to move: where it was (dashed) and where it would go (striped, draggable)
+  function previewRow(t, today, x, r, n, lane) {
+    const old = span(t);
+    if (old) {
+      const g = el('div', 'tl-b tl-ghost'); g.style.left = x(old[0]) + 'px'; g.style.width = (old[1] - old[0] + 1) * pxDay + 'px';
+      g.title = T('Now: {0} → {1}', t.start ? fmt(t.start) : '?', t.due ? fmt(t.due) : '?');
+      lane.append(g);
+    }
+    const e = eff(t), [a, b] = span(e);
+    const bar = el('div', 'tl-b tl-draft');
+    const place = (s, en) => { bar.style.left = x(s) + 'px'; bar.style.width = (en - s + 1) * pxDay + 'px'; bar.firstChild && (bar.firstChild.textContent = `${fmt(n2d(s))} → ${fmt(n2d(en))}`); };
+    bar.append(el('span'));
+    place(a, b);
+    bar.append(el('i', 'tl-h l'), el('i', 'tl-h r'));
+    bar.title = T('Suggested by your buddy. Drag to adjust before saving.');
+    drag(bar, t, a, b, place, (s, en) => { preview.changes.set(t.id, { start: n2d(s), due: n2d(en) }); if (preview.onDrag) preview.onDrag(t.id, n2d(s), n2d(en)); render(); });
+    lane.append(bar);
+    r.classList.add('tl-changed');
+    r.append(n, lane);
+    return r;
+  }
+
+  function drag(bar, t, a, b, place, commit = null) {
     bar.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -232,8 +272,9 @@
       const up = async () => {
         bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up);
         bar.classList.remove('dragging'); delete bar.dataset.tip;
-        if (!moved) { pop(t, bar); return; }
+        if (!moved) { if (!commit) pop(t, bar); return; }
         if (s === a && en === b) return;
+        if (commit) return commit(s, en);
         const patch = { start: n2d(s), due: n2d(en) };
         const r = await updTask(t.id, patch);
         if (r && r.ok === false) toast(r.error);   // a good change shows its own toast with Undo
@@ -339,5 +380,7 @@
       if (hit) onlyProject = hit.project;
     }
   }
-  window.Timeline = { render, focus };
+  // the buddy's suggested dates, shown before anything is saved (null clears it)
+  function setPreview(p) { preview = p && p.changes && p.changes.size ? p : null; if (p && 'project' in p) onlyProject = p.project || ''; const box = $('#task-timeline'); if (box && !box.hidden) render(); }
+  window.Timeline = { render, focus, setPreview, hasPreview: () => !!preview };
 })();
