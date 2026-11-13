@@ -1687,7 +1687,7 @@ async function loadTaskTree() {
       const cp = projs.filter((p) => p.category === cat);
       const n = cp.reduce((s, p) => s + p.tasks.length, 0);
       if (showDone && !n) continue;
-      const cn = groupNode(cat, n, 1, `c:${area}/${cat}`, null, 'category', showDone, { kind: 'category', name: cat, area, rel: `${area}/${cat}`, folder: `${area}/${cat}` });
+      const cn = groupNode(cat, n, 1, `c:${area}/${cat}`, null, 'category', showDone, { kind: 'category', name: cat, area, rel: `${area}/${cat}`, folder: `${area}/${cat}`, projects: cp.map((p) => p.name.toLowerCase()) });
       cn.row.title = `${cp.length} project${cp.length > 1 ? 's' : ''}`;
       appendProjects(cn.kids, cp, area, 2, `${area}/${cat}`);
       node.kids.append(cn.wrap);
@@ -2104,6 +2104,7 @@ function taskRow(t, depth) {
     (missing[0] ? f(missing[0]) : f('title')).focus();
   }
   row.addEventListener('click', (e) => { if (!e.target.closest('.pill, input')) toggleEditor(); });
+  row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); treeMenu(e.clientX, e.clientY, { kind: 'task', id: t.id, name: t.title, open: () => { if (!editor) toggleEditor(); } }); });
   if (openTaskEditors.has(t.id)) { openTaskEditors.delete(t.id); setTimeout(toggleEditor); }
 
   row.addEventListener('dragstart', (e) => {
@@ -2192,7 +2193,7 @@ let aiState = null;
 let aiDraft = null;          // result of the last successful test of the key in the form
 // What each kind of key does for you (Settings → AI). Your buddy picks the right key for each job by itself.
 const AI_ABOUT = {
-  anthropic: { name: 'Claude', uses: ['Chatting'], note: 'The best at following your instructions and writing. Paid, pay as you go.', free: false },
+  anthropic: { name: 'Claude', uses: ['Chatting'], note: 'The best at following your instructions and writing. Uses Haiku, the cheapest Claude. Paid, pay as you go.', free: false },
   gemini: { name: 'Gemini', uses: ['Chatting', 'Photos & PDFs', 'Mic & meetings'], note: 'Free tier from Google. Good all-rounder.', free: true },
   groq: { name: 'Groq', uses: ['Backup chat', 'Mic & meetings'], note: 'Free. Very fast, and the best at Bahasa Indonesia speech for the mic and meeting notes.', free: true },
   openrouter: { name: 'OpenRouter', uses: ['Chat (free models)', 'Buddy voice', 'Mic & meetings'], note: 'Free models for chat; the buddy\'s voice is pay as you go.', free: true },
@@ -2222,7 +2223,13 @@ async function loadAI() {
     const acts = el('div', 'ai-acts');
     if (c.id !== chatConn && c.models.length && !/Backup/.test(about.uses[0])) {
       const use = el('button', 'link'); use.type = 'button'; use.textContent = I18n.t('Chat with this');
-      use.addEventListener('click', async () => { const best = c.models[0]; await S.aiSetModel(`${c.id}::${best.id}`); toast(I18n.t('Your buddy now chats with {0}', about.name)); loadAI(); });
+      use.addEventListener('click', async () => {
+        if (use.disabled) return;
+        use.disabled = true;
+        const r = await S.aiSetModel(`${c.id}::*`);
+        if (r && r.ok) toast(I18n.t('Your buddy now chats with {0}', about.name)); else use.disabled = false;
+        loadAI();
+      });
       acts.append(use);
     }
     const test = el('button', 'link'); test.type = 'button'; test.textContent = I18n.t('Test');
@@ -3230,7 +3237,7 @@ function ctxMenu(x, y, items) {
   setTimeout(() => { const off = (e) => { if (!m.contains(e.target)) { m.remove(); removeEventListener('pointerdown', off, true); } }; addEventListener('pointerdown', off, true); });
 }
 // a small form at the pointer: [{ key, label, type, value, options }] → values, or null when cancelled
-function askForm(x, y, title, fields) {
+function askForm(x, y, title, fields, okLabel) {
   return new Promise((resolve) => {
     document.querySelector('.ask-form')?.remove();
     const f = el('form', 'ask-form');
@@ -3241,11 +3248,11 @@ function askForm(x, y, title, fields) {
       let i;
       if (d.options) { i = el('select'); for (const [v, t] of d.options) i.append(new Option(t, v)); }
       else { i = el('input'); i.type = d.type || 'text'; }
-      i.value = d.value || ''; ins[d.key] = i; l.append(i); f.append(l);
+      if (d.value || !d.options) i.value = d.value || ''; ins[d.key] = i; l.append(i); f.append(l);
     }
     const row = el('div', 'ask-btns');
     const no = el('button', 'btn ghost'); no.type = 'button'; no.textContent = I18n.t('Cancel');
-    const ok = el('button', 'btn'); ok.type = 'submit'; ok.textContent = I18n.t('Add');
+    const ok = el('button', 'btn'); ok.type = 'submit'; ok.textContent = okLabel || I18n.t('Add'); if (okLabel) ok.classList.add('btn-danger');
     row.append(no, ok); f.append(row);
     document.body.append(f);
     const r = f.getBoundingClientRect();
@@ -3290,21 +3297,51 @@ function treeMenu(x, y, edit, nameEl) {
     items.push({ label: '➕ ' + T('New task here'), fn: () => newTaskAt(x, y, { project: edit.name, area: edit.area }) });
     if (edit.rel) items.push({ label: '📄 ' + T('Open the project page'), fn: () => { showTab('notebook'); setTimeout(() => openPage(edit.rel), 150); } });
     items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+    items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else if (edit.kind === 'category') {
     items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, edit.name) });
     items.push('-', { label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+    items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
+  } else if (edit.kind === 'task') {
+    items.push({ label: '✎ ' + T('Edit'), fn: () => edit.open() });
+    items.push({ label: '✓ ' + T('Mark done'), fn: async () => { await updTask(edit.id, { status: 'done' }); loadTasks(); } });
+    items.push('-', { label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else if (edit.kind === 'area') {
     items.push({ label: '◆ ' + T('New project here'), fn: () => newProjectAt(x, y, edit.area, null) });
     items.push({ label: '➕ ' + T('New task here'), fn: () => newTaskAt(x, y, { area: edit.area }) });
     items.push({ label: '🗂 ' + T('New section here'), fn: () => newFolderAt(x, y, edit.area, T('New section in {0}', edit.name)) });
     items.push('-', { label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
     items.push({ label: '✎ ' + T('Rename'), fn: () => renameInline(nameEl, edit) });
+    items.push({ label: '🗑 ' + T('Delete'), fn: () => removeAt(x, y, edit) });
   } else {
     items.push({ label: '◆ ' + T('New project'), fn: () => newProjectAt(x, y, null, null) });
     items.push({ label: '➕ ' + T('New task'), fn: () => newTaskAt(x, y, {}) });
     items.push({ label: '📁 ' + T('New folder'), fn: () => newFolderAt(x, y, '', T('New folder')) });
   }
   ctxMenu(x, y, items);
+}
+// Delete from the tree. A task goes straight away (Undo is in the toast); a project or folder with tasks asks
+// whether its tasks go too.
+async function removeAt(x, y, edit) {
+  const T = I18n.t;
+  let what = { kind: edit.kind, id: edit.id, name: edit.name, area: edit.area || null, rel: edit.rel || null };
+  if (edit.kind !== 'task') {
+    const all = await S.tasks();
+    const low = (v) => String(v || '').toLowerCase();
+    const n = edit.kind === 'project' ? all.filter((t) => low(t.project) === low(edit.name) && (t.area || null) === (edit.area || null)).length
+      : edit.kind === 'area' ? all.filter((t) => (t.area || null) === edit.area).length
+      : all.filter((t) => (t.area || null) === (edit.area || null) && t.project && (edit.projects || []).includes(low(t.project))).length;
+    const fields = n
+      ? [{ key: 'tasks', label: T('Its {0} task(s)', n), options: [['keep', edit.kind === 'project' ? T('Keep them as loose tasks') : edit.kind === 'area' ? T('Keep them (move to General)') : T('Keep them')], ['delete', T('Delete them too')]] }]
+      : [{ key: 'tasks', label: T('Nothing else is inside.'), options: [['keep', T('Delete it')]] }];
+    const v = await askForm(x, y, T('Delete {0}?', edit.name), fields, T('Delete'));
+    if (!v) return;
+    what.tasks = v.tasks;
+  }
+  const r = await S.treeRemove(what);
+  if (!r || !r.ok) { toast(r && r.error || T('Couldn\'t delete that.')); return; }
+  loadTasks();
+  if (edit.kind !== 'task') loadTree && loadTree();
 }
 // right-click on empty space in the tree, and a "+ New" button for touch screens
 $('#task-list').addEventListener('contextmenu', (e) => { if (e.target.closest('.trow')) return; e.preventDefault(); treeMenu(e.clientX, e.clientY, { kind: 'general' }); });

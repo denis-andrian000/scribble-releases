@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.27.2";
+globalThis.__SCRIBBLE_VERSION__ = "1.27.3";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4620,6 +4620,56 @@ ${groups[n].map(fmt).join("\n")}
           if (!n) throw new Error("No tasks in that project.");
           this._saveTasks(tasks);
           return n;
+        }
+        // Remove something from the Tasks tree. Undoable: every file is remembered before it goes.
+        //   { kind:'task', id } | { kind:'project', name, area, rel } | { kind:'category'|'area', rel, area, name }
+        //   tasks: 'delete' removes the tasks inside too, 'keep' leaves them (loose tasks / in General)
+        removeNode({ kind, id, name, area = null, rel = null, tasks: what = "keep" } = {}) {
+          if (kind === "task") {
+            const t = this.deleteTask(id);
+            return { tasks: 1, title: t.title };
+          }
+          const low = (x) => String(x || "").toLowerCase();
+          const all = this.loadTasks();
+          let pages = [], mine;
+          const filesIn = (dirRel) => {
+            const out = [], walk = (full) => {
+              for (const e of fs2.readdirSync(full, { withFileTypes: true })) {
+                const f = path.join(full, e.name);
+                if (e.isDirectory()) walk(f);
+                else out.push(f);
+              }
+            };
+            walk(this.resolveAny(dirRel));
+            return out;
+          };
+          if (kind === "project") {
+            if (rel) pages = [this.resolve(rel)];
+            mine = all.filter((t) => low(t.project) === low(name) && (t.area || null) === (area || null));
+          } else if (kind === "category" || kind === "area") {
+            if (!rel || ["Tasks.md", "Inbox.md", "Daily", "Projects", "Notes", "Meetings"].includes(rel)) throw new Error("That one stays.");
+            const dir = this.resolveAny(rel);
+            if (!fs2.existsSync(dir) || !fs2.statSync(dir).isDirectory()) throw new Error("No such folder.");
+            pages = filesIn(rel);
+            const inside = new Set(pages.filter((f) => f.endsWith(".md")).map((f) => low(path.basename(f, ".md"))));
+            mine = kind === "area" ? all.filter((t) => (t.area || null) === area) : all.filter((t) => (t.area || null) === (area || null) && t.project && inside.has(low(t.project)));
+          } else throw new Error("Nothing to remove.");
+          for (const f of pages) {
+            if (fs2.existsSync(f)) {
+              this._touch(f);
+              fs2.unlinkSync(f);
+            }
+          }
+          if (kind !== "project") try {
+            fs2.rmSync(this.resolveAny(rel), { recursive: true, force: true });
+          } catch {
+          }
+          if (mine.length) {
+            const set = new Set(mine);
+            const left = what === "delete" ? all.filter((t) => !set.has(t)) : all.map((t) => !set.has(t) ? t : kind === "project" ? { ...t, project: null } : kind === "area" ? { ...t, area: null } : t);
+            this._saveTasks(left);
+          }
+          return { pages: pages.length, tasks: mine.length };
         }
         moveTask(id, { area = null, project = null, beforeId = null } = {}) {
           const tasks = this.loadTasks();
@@ -35741,6 +35791,7 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
       }
       function preferredModel(conn, models) {
         if (conn.provider === "gemini") return models.find((m) => m.id === "gemini-flash-latest") || models.find((m) => isFree(conn, m) && !/lite/.test(m.id)) || models.find((m) => isFree(conn, m)) || models[0];
+        if (conn.provider === "anthropic") return models.find((m) => /haiku/i.test(m.id)) || models.find((m) => /sonnet/i.test(m.id)) || models[0];
         return models.find((m) => isFree(conn, m) && supportsTools(conn, m.id)) || models[0];
       }
       function sortModels(list) {
@@ -39146,6 +39197,18 @@ Content-Type: application/octet-stream\r
         "Chat (free models)": "Mengobrol (model gratis)",
         "Buddy voice": "Suara buddy",
         "The best at following your instructions and writing. Paid, pay as you go.": "Paling jago mengikuti instruksi dan menulis. Berbayar, sesuai pemakaian.",
+        "Delete {0}?": "Hapus {0}?",
+        "Its {0} task(s)": "{0} tugas di dalamnya",
+        "Keep them as loose tasks": "Simpan sebagai tugas lepas",
+        "Keep them (move to General)": "Simpan (pindah ke Umum)",
+        "Keep them": "Simpan",
+        "Delete them too": "Hapus juga",
+        "Nothing else is inside.": "Tidak ada isi lain.",
+        "Delete it": "Hapus",
+        "Couldn't delete that.": "Tidak bisa menghapus itu.",
+        'Deleted "{0}"': 'Menghapus "{0}"',
+        "Removed {0}": "Menghapus {0}",
+        "The best at following your instructions and writing. Uses Haiku, the cheapest Claude. Paid, pay as you go.": "Paling jago mengikuti instruksi dan menulis. Memakai Haiku, Claude yang paling murah. Berbayar, sesuai pemakaian.",
         "Free tier from Google. Good all-rounder.": "Jatah gratis dari Google. Serba bisa.",
         "Free. Very fast, and the best at Bahasa Indonesia speech for the mic and meeting notes.": "Gratis. Sangat cepat, dan paling bagus mengenali suara Bahasa Indonesia untuk mikrofon dan catatan rapat.",
         "Free models for chat; the buddy's voice is pay as you go.": "Model gratis untuk mengobrol; suara buddy dibayar sesuai pemakaian.",
@@ -39546,6 +39609,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         if (config.model && !config.model.includes("::")) config.model = config.connections[0] ? `${config.connections[0].id}::${config.model}` : void 0;
         delete config.prices;
         repairGeminiModels();
+        useCheapClaude();
       }
       function repairGeminiModels() {
         for (const c of config.connections || []) {
@@ -39557,6 +39621,20 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           const [cid, mid] = String(config.model || "").split("::");
           if (cid === c.id && !clean.some((m) => m.id === mid)) config.model = `${c.id}::${AI.preferredModel(c, clean).id}`;
         }
+      }
+      function useCheapClaude() {
+        if (config.claudeHaiku) return;
+        const [cid, mid] = String(config.model || "").split("::");
+        const c = (config.connections || []).find((x) => x.id === cid);
+        if (c && c.provider === "anthropic" && !/haiku/i.test(mid || "")) {
+          const h = AI.preferredModel(c, c.models || []);
+          if (h && h.id !== mid) {
+            logLine("model", `${mid} -> ${h.id} (cheapest Claude)`);
+            config.model = `${c.id}::${h.id}`;
+          }
+        }
+        config.claudeHaiku = 1;
+        saveConfig();
       }
       function connections() {
         const list = [...config.connections || []];
@@ -39840,7 +39918,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
       ipcMain.handle("account:syncNow", async () => sync ? sync.run() : { state: "signed-out" });
       var cooldown = /* @__PURE__ */ new Map();
       var coolingFor = (key) => Math.max(0, ((cooldown.get(key) || 0) - Date.now()) / 1e3);
-      var REROUTE = /* @__PURE__ */ new Set([429, 402, 503, 529]);
+      var REROUTE = /* @__PURE__ */ new Set([429, 402, 500, 502, 503, 504, 529]);
       function freeCandidates(fromConnId, skip = /* @__PURE__ */ new Set()) {
         const list = connections();
         const ordered = [...list.filter((c) => c.id === fromConnId), ...list.filter((c) => c.id !== fromConnId)];
@@ -39857,12 +39935,13 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           const p = AI.preferredModel(x.c, x.c.models || []);
           return p && p.id === x.m.id ? 1 : 0;
         };
-        return out.sort((a, b) => b.tools - a.tools || (a.c.id === fromConnId ? 0 : 1) - (b.c.id === fromConnId ? 0 : 1) || pref(b) - pref(a) || size(b.m.id) - size(a.m.id));
+        return out.sort((a, b) => b.tools - a.tools || pref(b) - pref(a) || (a.c.id === fromConnId ? 0 : 1) - (b.c.id === fromConnId ? 0 : 1) || size(b.m.id) - size(a.m.id));
       }
       function onLimit(active, e, tried) {
         const key = `${active.conn.id}::${active.model}`;
         const status = e?.status;
-        if (!REROUTE.has(status)) return null;
+        const onFallback = tried && tried.size > 1 && status !== 401 && status !== 403;
+        if (!REROUTE.has(status) && !onFallback) return null;
         const msg = String(e?.message || "");
         const wait = AI.retryAfterOf(e?.headers) ?? e?.retryAfter ?? (/day|daily|quota|exhaust|credit/i.test(msg) || status === 402 ? 3600 : 60);
         cooldown.set(key, Date.now() + Math.min(wait, 6 * 3600) * 1e3);
@@ -41007,25 +41086,22 @@ In one short line say what it is, then offer what to do with it as options (add 
         return /^(AIza[\w-]{20,}|AQ\.[\w.-]{20,}|sk-ant-[\w-]{20,})$/.test(t2) ? t2 : "";
       });
       ipcMain.handle("ai:setModel", async (_e, v) => {
-        const [cid, mid] = String(v || "").split("::");
+        let [cid, mid] = String(v || "").split("::");
         const c = connections().find((x) => x.id === cid);
-        if (!c || !mid) return { ok: false, error: "Unknown model." };
+        if (!c) return { ok: false, error: "Unknown model." };
+        if (!mid || mid === "*") mid = (AI.preferredModel(c, c.models || []) || {}).id;
+        if (!mid) return { ok: false, error: "Unknown model." };
         config.model = `${cid}::${mid}`;
         saveConfig();
-        try {
-          const r = await AI.checkTools({ ...c, key: c.env ? process.env.ANTHROPIC_API_KEY : unseal(c) }, mid);
-          if (!r.ok) {
-            markNoTools(cid, mid);
-            return { ok: true, chatOnly: true };
-          }
-          if ((c.noTools || []).includes(mid)) {
+        AI.checkTools({ ...c, key: c.env ? process.env.ANTHROPIC_API_KEY : unseal(c) }, mid).then((r) => {
+          if (!r.ok) markNoTools(cid, mid);
+          else if ((c.noTools || []).includes(mid)) {
             c.noTools = c.noTools.filter((x) => x !== mid);
             saveConfig();
           }
-          return { ok: true };
-        } catch (e) {
-          return { ok: true, warn: `Couldn't reach it to check: ${e.message}` };
-        }
+        }).catch(() => {
+        });
+        return { ok: true, model: mid };
       });
       ipcMain.handle("chat:send", async (_e, text, attachments = [], label = null) => {
         rstate().lastChatDay = localDate();
@@ -41569,6 +41645,18 @@ ${brief}` }, ...blocks];
       }));
       ipcMain.handle("project:create", nbOp((name, area, category) => notebook.ensureProject(name, { area: area || void 0, category: category || void 0 })));
       ipcMain.handle("tasks:renameProject", nbOp((name, area, to) => notebook.renameProjectTasks(name, area, to)));
+      ipcMain.handle("tree:remove", nbOp((what) => {
+        const T = I18n.t, nm = what.kind === "task" ? (notebook.loadTasks().find((x) => String(x.id) === String(what.id)) || {}).title || "" : what.name;
+        notebook.begin(what.kind === "task" ? T('Deleted "{0}"', nm) : T("Removed {0}", nm));
+        try {
+          const r = notebook.removeNode(what);
+          notebook.commit();
+          return r;
+        } catch (e) {
+          notebook.rollback();
+          throw e;
+        }
+      }));
       ipcMain.handle("tasks:moveProject", nbOp((name, from, to) => notebook.moveProjectTasks(name, from, to)));
       ipcMain.handle("nb:read", (_e, p) => notebook.read(p));
       ipcMain.handle("nb:stat", (_e, p) => {
@@ -42498,6 +42586,7 @@ ${lines.join("\n")}
         aiAdd: (d) => ipcRenderer.invoke("ai:add", d),
         aiRemove: (id) => ipcRenderer.invoke("ai:remove", id),
         aiRename: (id, label) => ipcRenderer.invoke("ai:rename", id, label),
+        treeRemove: (what) => ipcRenderer.invoke("tree:remove", what),
         aiSetModel: (v) => ipcRenderer.invoke("ai:setModel", v),
         clipboardKey: () => ipcRenderer.invoke("ai:clipboardKey"),
         lang: ipcRenderer.sendSync("lang:get"),

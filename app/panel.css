@@ -1068,3 +1068,4 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .ask-form input, .ask-form select { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
 .ask-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
 #task-new { margin-left: 4px; }
+.ask-form .btn.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
