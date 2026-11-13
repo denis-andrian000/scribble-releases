@@ -3415,3 +3415,39 @@ async function removeAt(x, y, edit) {
 }
 // right-click on empty space in the tree, and a "+ New" button for touch screens
 $('#task-list').addEventListener('contextmenu', (e) => { if (e.target.closest('.trow')) return; e.preventDefault(); treeMenu(e.clientX, e.clientY, { kind: 'general' }); });
+
+// ---------------- dragging near the top or bottom edge scrolls the list ----------------
+// (the mouse wheel doesn't work while dragging on Windows, so this is the only way to reach rows that are off screen)
+(function () {
+  let box = null, speed = 0, raf = 0;
+  const scrollerOf = (n) => {
+    for (; n && n !== document.documentElement; n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (/(auto|scroll)/.test(st.overflowY) && n.scrollHeight > n.clientHeight + 2) return n;
+    }
+    return document.scrollingElement;
+  };
+  const tick = () => {
+    raf = 0;
+    if (!box || !speed) return;
+    box.scrollTop += speed;
+    raf = requestAnimationFrame(tick);
+  };
+  document.addEventListener('dragstart', (e) => { box = scrollerOf(e.target instanceof Element ? e.target : null); }, true);
+  document.addEventListener('dragover', (e) => {
+    if (!box) return;
+    const r = box === document.scrollingElement ? { top: 0, bottom: innerHeight } : box.getBoundingClientRect();
+    const edge = Math.min(80, (r.bottom - r.top) / 4), y = e.clientY;
+    // faster the closer you get to the edge (and past it)
+    if (y < r.top + edge) speed = -Math.ceil(Math.min(1, (r.top + edge - y) / edge) * 18);
+    else if (y > r.bottom - edge) speed = Math.ceil(Math.min(1, (y - (r.bottom - edge)) / edge) * 18);
+    else speed = 0;
+    if (speed && !raf) raf = requestAnimationFrame(tick);
+  }, true);
+  // the wheel, where the browser does send it while dragging
+  document.addEventListener('wheel', (e) => { if (box && document.querySelector('.dragging')) box.scrollTop += e.deltaY; }, { passive: true, capture: true });
+  const stop = () => { box = null; speed = 0; if (raf) cancelAnimationFrame(raf); raf = 0; };
+  document.addEventListener('dragend', stop, true);
+  document.addEventListener('drop', stop, true);
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) speed = 0; }, true);   // left the window
+})();
