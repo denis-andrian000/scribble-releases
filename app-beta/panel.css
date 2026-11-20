@@ -1114,3 +1114,5 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .task-edit .te-item { display: flex !important; grid-template-columns: none; align-items: center; gap: 8px; width: 100%; }
 .task-edit .te-item input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; }
 .task-edit .te-item span { flex: 1; text-align: left; }
+.first-tag { align-self: flex-start; font-size: 11px; color: var(--ink-2, #6B6889); margin: 6px 0 -4px 4px; }
+.first-tag::before { content: '✦ '; color: var(--accent, #F2B21F); }

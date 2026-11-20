@@ -303,6 +303,7 @@ function addMessage(m) {
     msgsEl.append(userBubble(m));
   } else {
     const { text: shown, options } = splitOptions(m.text);
+    if (shown && m.first) msgsEl.append(Object.assign(el('div', 'first-tag'), { textContent: I18n.t('{0} started the chat', buddyName()) }));
     if (shown) {
       const bubble = el('div', 'msg assistant md', renderMarkdown(shown));
       bubble.dataset.raw = shown;
@@ -2478,7 +2479,10 @@ const LABELS = {
 let av = null;
 let avSaveTimer = null;
 
+let buddyNameNow = 'Scribble';
+const buddyName = () => buddyNameNow;
 function applyAvatarToHeader(a) {
+  buddyNameNow = a.name || 'Scribble';
   const logo = $('.brand .logo');
   if (logo) logo.innerHTML = Avatar.build({ ...a, accessory: a.shape === 'image' ? 'none' : a.accessory });
   const nm = $('.brand .bname');
@@ -2912,9 +2916,10 @@ const RFIELDS = {
   'r-wstart': ['workStart', 'time'], 'r-wend': ['workEnd', 'time'], 'r-workonly': ['workOnly', 'check'],
   'r-quiet': ['quiet', 'check'], 'r-qfrom': ['quietFrom', 'time'], 'r-qto': ['quietTo', 'time'], 'r-daystart': ['dayStart', 'time'],
   'r-mevening': ['moneyEvening', 'check'], 'r-metime': ['moneyEveningTime', 'time'], 'r-mmonthly': ['moneyMonthly', 'check'],
+  'r-talkback': ['talkBack', 'check'], 'r-talkquiet': ['talkQuiet', 'check'], 'r-talksmall': ['talkSmall', 'check'], 'r-talkcheer': ['talkCheer', 'check'], 'r-askback': ['askBack', 'check'],
   'r-dueahead': ['dueAhead', 'num'], 'r-timeahead': ['timeAhead', 'num'], 'r-billsahead': ['billsAhead', 'num'], 'r-budgetwarn': ['budgetWarn', 'num'],
 };
-const CHATTY_HINT = { quiet: 'Only the check-ins above, nothing in between.', normal: 'The check-ins, plus useful nudges: tasks due, bills coming up, budgets running out.', chatty: 'All of that, plus a friendly check-in on quiet afternoons.' };
+const CHATTY_HINT = { quiet: 'Only the check-ins above. Never starts a chat on its own.', normal: 'The check-ins and nudges, and starts a chat now and then (up to 3 times a day).', chatty: 'All of that, and talks more often (up to 8 times a day).' };
 let routineNow = null;
 function paintChatty(v) {
   $$('#r-chatty button').forEach((b) => b.classList.toggle('on', b.dataset.chatty === v));
@@ -2941,6 +2946,7 @@ async function loadRoutine() {
     if (kind === 'check') e.checked = !!r[k]; else e.value = String(r[k] ?? '');
   }
   paintDays(r.days); paintChatty(r.chatty);
+  $('#r-talk').hidden = r.chatty === 'quiet';
   const money = !!(await S.getSettings()).money;
   $$('.r-money').forEach((x) => { x.hidden = !money; });
 }
@@ -2952,7 +2958,7 @@ for (const [id, [k, kind]] of Object.entries(RFIELDS)) {
   });
 }
 const ROUTINE_FALLBACK = { briefTime: '05:00', middayTime: '14:00', recapTime: '17:30', workStart: '09:00', workEnd: '17:00', quietFrom: '22:00', quietTo: '07:00', dayStart: '00:00', moneyEveningTime: '21:00' };
-$$('#r-chatty button').forEach((b) => b.addEventListener('click', async () => { routineNow = await S.setRoutine({ chatty: b.dataset.chatty }); paintChatty(routineNow.chatty); }));
+$$('#r-chatty button').forEach((b) => b.addEventListener('click', async () => { routineNow = await S.setRoutine({ chatty: b.dataset.chatty }); paintChatty(routineNow.chatty); $('#r-talk').hidden = routineNow.chatty === 'quiet'; }));
 $('#r-brief-now').addEventListener('click', async () => { currentBrief = await S.briefNow(); showTab('chat'); loadChat(); });
 
 // ---------------- import ----------------

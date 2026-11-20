@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.28.5";
+globalThis.__SCRIBBLE_VERSION__ = "1.29.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36071,7 +36071,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
           max_tokens,
           messages: toOpenAIMessages(sys, messages, { vision, flat: !useTools, gemini: conn.provider === "gemini" || conn.provider === "vertex", pdf })
         };
-        if (useTools) body.tools = toOpenAITools(tools);
+        if (useTools && tools && tools.length) body.tools = toOpenAITools(tools);
         if (PROVIDERS[conn.provider]?.usage) body.stream_options = { include_usage: true };
         if (conn.provider === "openai" && /^(o\d|gpt-5)/.test(model)) {
           body.max_completion_tokens = max_tokens;
@@ -36763,7 +36763,8 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
 - Refer to tasks by title (add the #id only when it helps).
 - The user may attach screenshots, PDFs or text files. Read them carefully, quote exact error messages, IDs, names and numbers, and propose notes or tasks from what matters (through the normal confirmation cards).
 - If the user asks to undo, use undo_last_save (it doesn't need a confirmation card).
-- Reply in the language the user writes in.` + (withMoney ? MONEY_PROMPT : "") + (withMemory ? MEMORY_PROMPT : "");
+- Reply in the language the user writes in.` + (persona.askBack ? `
+- Be a friend, not a form: now and then (not every reply, and never when they're clearly busy or just giving orders) end with one short, natural question or comment back, the way a friend would ("btw, jadi lembur?", "makan siang udah?"). Remember what they told you earlier in the chat and follow up on it.` : "") + (withMoney ? MONEY_PROMPT : "") + (withMemory ? MEMORY_PROMPT : "");
       }
       var Agent = class {
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
@@ -37181,6 +37182,43 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             default:
               throw new Error(`Unknown tool ${name}`);
           }
+        }
+        // The buddy speaking first (a check-in, a reminder, a cheer): one short message, written by the user's own model in
+        // their chat style. No tools. `context` is plain facts; task titles in it are wrapped as «title» and must stay exact.
+        async say(context, { recent = [] } = {}) {
+          const active = this.getActive();
+          if (!active || !active.model) throw new Error("NO_KEY");
+          const client = (PROVIDERS[active.conn.provider] || {}).kind === "anthropic" ? new Anthropic({
+            apiKey: active.conn.key,
+            maxRetries: 0,
+            ...active.conn.baseUrl ? { baseURL: active.conn.baseUrl } : {},
+            ...typeof window !== "undefined" ? { dangerouslyAllowBrowser: true } : {}
+          }) : null;
+          const persona = this.getPersona() || {};
+          const name = (persona.name || "Scribble").slice(0, 40);
+          const tone = TONES[persona.tone] || TONES.mirror;
+          const mem = this.getMemory();
+          const brief = mem ? mem.brief() : "";
+          const talk = recent.length ? `Your last few lines with the user (newest last):
+${recent.map((m) => `${m.role === "user" ? "User" : name}: ${m.text}`).join("\n")}` : "You have not chatted today yet.";
+          const system = `You are ${name}, a small buddy that lives on the user's desktop and helps with notes, tasks and money. You are speaking FIRST, without the user asking: like a friend who looks up and says something. ${tone}
+${brief ? `What you know about the user:
+${brief}
+` : ""}${talk}
+
+Write ONE short message (1\u20132 sentences, max ~35 words) in the user's language and style from the chat above (Indonesian if they write Indonesian). Natural and warm, never robotic, never a list, no greeting formula. Vary it: don't repeat what you said earlier.
+Task, project and wallet names are given in \xABguillemets\xBB. Copy any name you mention EXACTLY, keep the \xAB\xBB around it, and never invent a task. Don't mention tasks that aren't in the facts.
+Reply with JSON only: {"text": "...", "replies": ["2\u20133 very short answers the user could tap, in their language, may start with an emoji"], "mood": "happy|calm|worried|sleepy|excited"}`;
+          const resp = await this.complete(active, client, { system, tools: void 0, plainTools: [], messages: [{ role: "user", content: `What's happening now:
+${context}` }] }, () => {
+          });
+          const raw = (resp.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+          const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || [raw])[0]);
+          const allowed = new Set([...String(context).matchAll(/«([^»]+)»/g)].map((m) => m[1]));
+          for (const m of String(j.text || "").matchAll(/«([^»]+)»/g)) if (!allowed.has(m[1])) throw new Error("changed a name");
+          const text = String(j.text || "").replace(/[«»]/g, "").trim();
+          if (!text) throw new Error("empty");
+          return { text, replies: (Array.isArray(j.replies) ? j.replies : []).map((r) => String(r).replace(/[«»]/g, "").trim()).filter(Boolean).slice(0, 3), mood: j.mood || "calm" };
         }
         // messages: Anthropic-format history, mutated in place.
         // onEvent({type:'tool', name, input}); approve(call) -> Promise<{decision:'approve', input?} | {decision:'skip'} | {decision:'reply', text}>
@@ -39399,7 +39437,18 @@ Content-Type: application/octet-stream\r
         "Its tasks (delete / keep)": "Tugasnya (hapus / simpan)",
         "Move to": "Pindah ke",
         Section: "Bagian",
-        "New name": "Nama baru"
+        "New name": "Nama baru",
+        "{0} started the chat": "{0} mulai duluan",
+        "Only the check-ins above. Never starts a chat on its own.": "Hanya sapaan rutin di atas. Tidak pernah mulai ngobrol sendiri.",
+        "The check-ins and nudges, and starts a chat now and then (up to 3 times a day).": "Sapaan rutin dan pengingat, plus sesekali mulai ngobrol (maksimal 3 kali sehari).",
+        "All of that, and talks more often (up to 8 times a day).": "Semua itu, dan lebih sering ngobrol (maksimal 8 kali sehari).",
+        "Says hi when you're back at the computer": "Menyapa saat kamu kembali ke komputer",
+        "Checks in when it's been quiet for a while": "Menyapa kalau sudah lama sepi",
+        "Small talk: lunch, Friday afternoon, working late": "Basa-basi: jam makan siang, Jumat sore, lembur",
+        "Cheers when you tick off a task": "Menyemangati saat kamu menyelesaikan tugas",
+        "Asks you things back in the chat": "Balik bertanya di chat",
+        "Everything your buddy says is written by the AI model in Settings \u2192 AI, using your tone and language. Task and project names are shown exactly as you wrote them. If the model can't be reached, reminders still arrive as plain notifications.": "Semua yang dikatakan buddy ditulis oleh model AI di Pengaturan \u2192 AI, dengan gaya dan bahasamu. Nama tugas dan proyek ditampilkan persis seperti yang kamu tulis. Kalau model tidak bisa dihubungi, pengingat tetap datang sebagai notifikasi biasa.",
+        "Click to answer": "Klik untuk membalas"
       };
     }
   });
@@ -40213,7 +40262,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
       }
       var ATTACH_NOTE = "[Attached ";
-      function displayMessages(messages, meta = {}, labels = {}, undo = {}) {
+      function displayMessages(messages, meta = {}, labels = {}, undo = {}, first = {}) {
         const notSaved = /* @__PURE__ */ new Set();
         const moneyCards = /* @__PURE__ */ new Map();
         const asked = /* @__PURE__ */ new Set();
@@ -40255,7 +40304,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               last.tools.push(...tools);
               if (money2.length) last.money = [...last.money || [], ...money2];
               last.text = text;
-            } else out.push({ role: "assistant", text, tools, ...money2.length ? { money: money2 } : {} });
+            } else out.push({ role: "assistant", text, tools, ...money2.length ? { money: money2 } : {}, ...first && first[i] ? { first: true } : {} });
             if (undo && undo[i] && undo[i].length) out[out.length - 1].undo = undo[i];
           }
         });
@@ -40717,7 +40766,7 @@ public static string At(int x, int y, uint me) { SetProcessDPIAware(); for (IntP
         callOn = { title, name, started: Date.now() };
         sendBuddy("buddy:listening", true);
         sendPanel("call:start", { title, name });
-        notify(T("\u{1F534} Listening to {0}", name), T("Drag me off the window when the meeting ends, and I'll write the notes."), "chat");
+        buddySay("meeting", `Meeting: ${q(name)}.`, { tab: "chat", title: T("\u{1F534} Listening to {0}", name), body: T("Drag me off the window when the meeting ends, and I'll write the notes.") });
       }
       function stopCall() {
         if (!callOn) return;
@@ -40968,7 +41017,7 @@ In one short line say what it is, then offer what to do with it as options (add 
       }, 33);
       ipcMain.handle("chat:get", () => ({
         id: chat.id,
-        messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo),
+        messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first),
         busy,
         hasKey: hasAI(),
         pending: [...pending.values()].map((p) => p.card),
@@ -41248,6 +41297,7 @@ In one short line say what it is, then offer what to do with it as options (add 
       });
       ipcMain.handle("chat:send", async (_e, text, attachments = [], label = null) => {
         rstate().lastChatDay = localDate();
+        lastTalkAt = Date.now();
         text = String(text || "").trim();
         attachments = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
         if (text && busy && pending.size) {
@@ -41307,7 +41357,7 @@ ${brief}` }, ...blocks];
             (chat.undo ||= {})[chat.messages.length - 1] = steps.map((s) => s.id);
             saveChat(chat);
           }
-          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo) };
+          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first) };
         } catch (e) {
           chat.messages.length = before;
           if (chat.meta) delete chat.meta[before];
@@ -41835,8 +41885,8 @@ ${brief}` }, ...blocks];
         }
         return { ok: true, conflict, mtime: fs2.statSync(notebook.resolve(conflict || p)).mtimeMs };
       });
-      ipcMain.handle("nb:search", (_e, q) => {
-        const query = String(q || "").trim();
+      ipcMain.handle("nb:search", (_e, q2) => {
+        const query = String(q2 || "").trim();
         if (query.length < 2) return { pages: [], tasks: [] };
         const hits = notebook.search(query, 120);
         const pages = [];
@@ -41871,6 +41921,13 @@ ${brief}` }, ...blocks];
       ipcMain.handle("tasks:list", () => notebook.loadTasks());
       ipcMain.handle("tasks:update", (_e, id, fields) => {
         const before = notebook.loadTasks().find((x) => String(x.id) === String(id));
+        if (fields && fields.status === "done" && before && before.status !== "done") {
+          const r = routine(), now = /* @__PURE__ */ new Date(), hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+          if (r.talkCheer && !(r.quiet && inRange(hhmm, r.quietFrom, r.quietTo))) {
+            const left = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= localDate() && String(t2.id) !== String(id)).length;
+            setTimeout(() => buddySay("cheer", `Just finished: ${q(before.title)}${before.project ? ` (in ${q(before.project)})` : ""}. Still due today: ${left}.`, { talk: true }), 1500);
+          }
+        }
         const nm = before ? before.title : `#${id}`, T = I18n.t;
         const day = (d) => (/* @__PURE__ */ new Date(d + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" });
         const label = fields.status === "done" ? T('Ticked off "{0}"', nm) : fields.due && fields.start && before && (fields.due !== before.due || fields.start !== before.start) ? T('Moved "{0}" to {1} \u2192 {2}', nm, day(fields.start), day(fields.due)) : fields.due && before && fields.due !== before.due ? T('Moved "{0}" to {1}', nm, day(fields.due)) : T('Changed "{0}"', nm);
@@ -42278,7 +42335,13 @@ X-GNOME-Autostart-enabled=true
         dueAhead: 1,
         billsAhead: 3,
         budgetWarn: 80,
-        timeAhead: 30
+        timeAhead: 30,
+        // the buddy starting a chat on its own (how often: `chatty`)
+        talkBack: true,
+        talkQuiet: true,
+        talkSmall: true,
+        talkCheer: true,
+        askBack: true
       };
       var routine = () => {
         const r = { ...ROUTINE_DEFAULT, ...config.routine || {} };
@@ -42412,8 +42475,14 @@ ${lines.join("\n")}
           if (c.overdue) parts.push(I18n.t("{0} overdue", c.overdue));
           if (c.dueToday) parts.push(I18n.t("{0} due today", c.dueToday));
           if (c.doing) parts.push(I18n.t("{0} in progress", c.doing));
-          notify(I18n.t("Here's your day"), parts.length ? parts.join(" \xB7 ") : I18n.t("Nothing due today \u{1F389}"), "chat");
-          alertBuddy("chat");
+          const today = localDate(), open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold");
+          const top = open.filter((t2) => t2.due && t2.due <= today || t2.status === "doing").slice(0, 5).map((t2) => taskFact(t2, today)).join("\n");
+          buddySay(
+            "morning",
+            `${c.overdue} overdue, ${c.dueToday} due today, ${c.doing} in progress.${top ? `
+${top}` : ""}`,
+            { tab: "chat", title: I18n.t("Here's your day"), body: parts.length ? parts.join(" \xB7 ") : I18n.t("Nothing due today \u{1F389}") }
+          );
         }
       }
       function suggest(kind) {
@@ -42460,6 +42529,207 @@ ${lines.join("\n")}
         applyDayStart();
         return routine();
       });
+      var TALK = { quiet: { max: 0, gap: 0 }, normal: { max: 3, gap: 90 }, chatty: { max: 8, gap: 35 } };
+      var lastTalkAt = Date.now();
+      var speakChain = Promise.resolve();
+      var q = (x) => `\xAB${String(x || "").replace(/[«»]/g, "")}\xBB`;
+      var taskFact = (t2, today = localDate()) => {
+        const bits = [];
+        if (t2.due) bits.push(t2.due < today ? `${Math.round((new Date(today) - new Date(t2.due)) / 864e5)} day(s) overdue` : t2.due === today ? "due today" : `due ${t2.due}`);
+        if (t2.time) bits.push(`at ${t2.time}`);
+        if (t2.priority === "high") bits.push("high priority");
+        if (t2.status === "doing") bits.push("in progress");
+        if (t2.project) bits.push(`in ${q(t2.project)}`);
+        return `- ${q(t2.title)}${bits.length ? ` (${bits.join(", ")})` : ""}`;
+      };
+      var WHY = {
+        morning: "The user just sat down for the day. Give a short, warm start-of-day line with what matters today (the brief card with details is already in the chat).",
+        due: "These tasks just became due and the user has not heard about them yet.",
+        midday: "Afternoon check: these are still open today.",
+        recap: "It's the end of the workday. Offer to write today's recap for them (they tap to start).",
+        weekly: "It's the end of the work week. Offer to draft their weekly report (they tap to start).",
+        timeSoon: "A task with a set time is coming up (or starting now).",
+        ahead: "A heads-up: these tasks are due soon.",
+        bills: "Bills / planned payments are coming up.",
+        budget: "A budget is running low this month.",
+        moneyEvening: "Evening money check: what they spent today and what's free to spend.",
+        moneyMonth: "A new month started: offer a look back at last month's money.",
+        meeting: "You just started listening to their meeting; tell them to drag you off the window when it ends and you will write the notes.",
+        back: "The user just came back to the computer after being away.",
+        quiet: "You haven't talked for a while. Check in lightly, like a friend glancing over (you can mention one open task, or just ask how it's going).",
+        lunch: "It's lunchtime.",
+        friday: "It's Friday afternoon.",
+        late: "They're still working after office hours.",
+        cheer: "The user just ticked off a task. Cheer them on briefly (one line)."
+      };
+      function recentLines() {
+        try {
+          return displayMessages(chat.messages, chat.meta, chat.labels, chat.undo).filter((m) => m.text).slice(-6).map((m) => ({ role: m.role, text: String(m.text).replace(/\s+/g, " ").slice(0, 200) }));
+        } catch {
+          return [];
+        }
+      }
+      function talkAllowed(r, st, today) {
+        const lv = TALK[r.chatty] || TALK.normal;
+        const t2 = st.talk && st.talk.day === today ? st.talk : { day: today, n: 0, last: 0 };
+        return lv.max > 0 && t2.n < lv.max && Date.now() - (t2.last || 0) >= lv.gap * 6e4 && !busy && !callOn;
+      }
+      function buddySay(kind, facts, opts = {}) {
+        speakChain = speakChain.then(() => speakNow(kind, facts, opts)).catch((e) => logLine("speak", kind, e && e.message));
+        return speakChain;
+      }
+      async function speakNow(kind, facts, { tab = "chat", title = "", body = "", talk = false } = {}) {
+        const r = routine(), st = rstate(), today = localDate();
+        if (talk) {
+          if (!talkAllowed(r, st, today)) return;
+          const t2 = st.talk && st.talk.day === today ? st.talk : { day: today, n: 0, last: 0 };
+          st.talk = { day: today, n: t2.n + 1, last: Date.now() };
+          saveConfig();
+        }
+        const now = /* @__PURE__ */ new Date();
+        const ctx = `Now: ${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}.
+Why you're speaking: ${WHY[kind] || kind}${facts ? `
+Facts:
+${facts}` : ""}`;
+        let said = null;
+        if (agent && hasAI()) {
+          try {
+            said = await agent.say(ctx, { recent: recentLines() });
+          } catch (e) {
+            logLine("say failed", kind, e && e.message);
+          }
+        }
+        if (!said) {
+          if (talk || !title) return;
+          notify(title, body, tab);
+          alertBuddy(tab);
+          return;
+        }
+        lastTalkAt = Date.now();
+        if (!busy) {
+          if (!chat.id.startsWith(localDate())) chat = newChat();
+          const last = chat.messages[chat.messages.length - 1];
+          if (last && last.role === "user") {
+            showSay(said, tab);
+            return;
+          }
+          const i = chat.messages.length;
+          chat.messages.push({ role: "user", content: [{ type: "text", text: `[Scribble] (No message from the user: you spoke first. Reason: ${WHY[kind] || kind})` }] });
+          chat.messages.push({ role: "assistant", content: [{ type: "text", text: said.text }] });
+          (chat.first ||= {})[i + 1] = kind;
+          saveChat();
+          sendPanel("chat:reload");
+        }
+        showSay(said, tab);
+      }
+      var sayWin = null;
+      var sayTimer = null;
+      function showSay(said, tab) {
+        const name = avatar().name || "Scribble";
+        if (ANDROID || !buddyWin || buddyWin.isDestroyed() || !buddyWin.isVisible()) {
+          notify(name, said.text, tab);
+          alertBuddy(tab);
+          return;
+        }
+        if (!sayWin || sayWin.isDestroyed()) {
+          sayWin = new BrowserWindow({
+            width: 300,
+            height: 140,
+            frame: false,
+            transparent: true,
+            resizable: false,
+            skipTaskbar: true,
+            alwaysOnTop: true,
+            focusable: true,
+            show: false,
+            fullscreenable: false,
+            hasShadow: false,
+            backgroundColor: "#00000000",
+            webPreferences: { preload: path.join(__dirname, "say-preload.js"), contextIsolation: true, nodeIntegration: false }
+          });
+          sayWin.setAlwaysOnTop(true, "pop-up-menu");
+          sayWin.loadFile(path.join(__dirname, "say.html"));
+        }
+        const data = { text: said.text, replies: said.replies || [], hint: I18n.t("Click to answer"), close: I18n.t("Close"), dark: nativeTheme.shouldUseDarkColors };
+        const go = () => {
+          sayWin.webContents.send("say:show", data);
+          placeSay(140);
+          sayWin.showInactive();
+        };
+        if (sayWin.webContents.isLoading()) sayWin.webContents.once("did-finish-load", go);
+        else go();
+        sendBuddy("buddy:talk", 2600);
+        if (said.mood === "happy" || said.mood === "excited") sendBuddy("buddy:state", "happy");
+        clearTimeout(sayTimer);
+        sayTimer = setTimeout(hideSay, 6e4);
+      }
+      function placeSay(h) {
+        if (!sayWin || sayWin.isDestroyed() || !buddyWin || buddyWin.isDestroyed()) return;
+        const b = buddyWin.getBounds(), d = screen.getDisplayMatching(b).workArea, w = 300;
+        const left = b.x + b.width / 2 > d.x + d.width / 2;
+        const x = Math.max(d.x + 4, Math.min(d.x + d.width - w - 4, left ? b.x - w + 24 : b.x + b.width - 24));
+        const y = Math.max(d.y + 4, Math.min(d.y + d.height - h - 4, b.y - h + 40));
+        sayWin.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: Math.round(h) });
+      }
+      function hideSay() {
+        clearTimeout(sayTimer);
+        if (sayWin && !sayWin.isDestroyed() && sayWin.isVisible()) sayWin.hide();
+      }
+      ipcMain.on("say:resize", (_e, h) => placeSay(Math.max(60, Math.min(320, h))));
+      ipcMain.on("say:hold", (_e, on) => {
+        clearTimeout(sayTimer);
+        if (!on) sayTimer = setTimeout(hideSay, 15e3);
+      });
+      ipcMain.on("say:close", () => hideSay());
+      ipcMain.on("say:open", () => {
+        hideSay();
+        showPanel("chat");
+      });
+      ipcMain.on("say:reply", (_e, text) => {
+        hideSay();
+        showPanel("chat");
+        sendPanel("quick:send", String(text || "").slice(0, 200));
+      });
+      var awaySince = 0;
+      function talkTick(r, st, now, today, hhmm, atWork, activeRecently) {
+        if ((TALK[r.chatty] || TALK.normal).max === 0) return;
+        const open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold");
+        const focus = () => open.filter((t2) => t2.due && t2.due <= addDays(today, 1)).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, 4).map((t2) => taskFact(t2, today)).join("\n") || "(nothing due today or tomorrow)";
+        let idle = 0;
+        try {
+          idle = require_electron_shim().powerMonitor.getSystemIdleTime();
+        } catch {
+        }
+        if (idle >= 1800) {
+          if (!awaySince) awaySince = Date.now() - idle * 1e3;
+        } else if (awaySince && idle < 60) {
+          const mins = Math.round((Date.now() - awaySince) / 6e4);
+          awaySince = 0;
+          if (r.talkBack && mins >= 30 && mins < 12 * 60 && (atWork || !r.workOnly)) return buddySay("back", `Away for about ${mins} minutes.
+Open tasks due soon:
+${focus()}`, { talk: true });
+        }
+        if (!activeRecently) return;
+        if (r.talkQuiet && atWork && Date.now() - lastTalkAt > 2 * 36e5) return buddySay("quiet", `No chat for over 2 hours.
+Open tasks due soon:
+${focus()}`, { talk: true });
+        if (!r.talkSmall) return;
+        if (atWork && hhmm >= "12:00" && hhmm < "13:00" && st.lunchDay !== today) {
+          st.lunchDay = today;
+          return buddySay("lunch", `Open tasks due soon:
+${focus()}`, { talk: true });
+        }
+        if (now.getDay() === 5 && atWork && hhmm >= "16:00" && st.fridayDay !== today) {
+          st.fridayDay = today;
+          return buddySay("friday", `Still open this week:
+${focus()}`, { talk: true });
+        }
+        const [eh, em] = String(r.workEnd || "17:00").split(":").map(Number), late = `${String(Math.min(23, eh + 1)).padStart(2, "0")}:${String(em || 0).padStart(2, "0")}`;
+        if (isWorkday(now) && hhmm >= late && st.lateDay !== today) {
+          st.lateDay = today;
+          return buddySay("late", `Work hours ended at ${r.workEnd}.`, { talk: true });
+        }
+      }
       function routineTick() {
         if (!notebook || !chat) return;
         const r = routine(), st = rstate();
@@ -42481,15 +42751,22 @@ ${lines.join("\n")}
           const seen = new Set(st.notified && st.notified[today] || []);
           const fresh = due.filter((t2) => !seen.has(t2.id));
           if (fresh.length && st.lastBrief === today) {
-            notify(fresh.length === 1 ? I18n.t("Task due") : I18n.t("{0} tasks due", fresh.length), fresh.map((t2) => t2.title).slice(0, 3).join(" \xB7 "), "tasks");
-            alertBuddy("tasks");
+            buddySay(
+              "due",
+              fresh.slice(0, 4).map((t2) => taskFact(t2, today)).join("\n"),
+              { tab: "tasks", title: fresh.length === 1 ? I18n.t("Task due") : I18n.t("{0} tasks due", fresh.length), body: fresh.map((t2) => t2.title).slice(0, 3).join(" \xB7 ") }
+            );
             st.notified = { [today]: [...seen, ...fresh.map((t2) => t2.id)] };
             changed = true;
           }
           if (r.midday && due.length && hhmm >= r.middayTime && st.afternoonNudge !== today && st.lastBrief === today && activeRecently) {
             const over = due.filter((t2) => t2.due < today).length;
-            notify(I18n.t("Still open today"), `${I18n.t(due.length > 1 ? "{0} tasks due" : "{0} task due", due.length)}${over ? ` (${I18n.t("{0} overdue", over)})` : ""}: ${due.map((x) => x.title).slice(0, 2).join(" \xB7 ")}`, "tasks");
-            alertBuddy("tasks");
+            buddySay(
+              "midday",
+              due.slice(0, 4).map((t2) => taskFact(t2, today)).join("\n") + (due.length > 4 ? `
+(+${due.length - 4} more)` : ""),
+              { tab: "tasks", title: I18n.t("Still open today"), body: `${I18n.t(due.length > 1 ? "{0} tasks due" : "{0} task due", due.length)}${over ? ` (${I18n.t("{0} overdue", over)})` : ""}: ${due.map((x) => x.title).slice(0, 2).join(" \xB7 ")}` }
+            );
             st.afternoonNudge = today;
             changed = true;
           }
@@ -42497,8 +42774,11 @@ ${lines.join("\n")}
         if (isWorkday(now) && hhmm >= r.recapTime && st.lastRecap !== today && (r.recap || r.weekly && now.getDay() === Number(r.weeklyDay))) {
           const weekly = r.weekly && now.getDay() === Number(r.weeklyDay);
           suggest(weekly ? "weekly" : "recap");
-          notify(I18n.t(weekly ? "Wrap up the week?" : "Wrap up the day?"), weekly ? I18n.t("I can draft your weekly report for {0}.", r.reportTo || I18n.t("your manager")) : I18n.t("I can draft today's recap for your daily page."), "chat");
-          alertBuddy("chat");
+          buddySay(
+            weekly ? "weekly" : "recap",
+            weekly ? `The report would go to ${r.reportTo || "their manager"}.` : "",
+            { tab: "chat", title: I18n.t(weekly ? "Wrap up the week?" : "Wrap up the day?"), body: weekly ? I18n.t("I can draft your weekly report for {0}.", r.reportTo || I18n.t("your manager")) : I18n.t("I can draft today's recap for your daily page.") }
+          );
           st.lastRecap = today;
           changed = true;
         }
@@ -42512,8 +42792,12 @@ ${lines.join("\n")}
           const soon = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due === today && t2.time && !told.has(t2.id + "@" + today + t2.time) && nowMin >= toMin(t2.time) - Number(r.timeAhead) && nowMin <= toMin(t2.time) + 5);
           for (const t2 of soon.slice(0, 3)) {
             const left = toMin(t2.time) - nowMin;
-            notify(left > 0 ? I18n.t("In {0} min: {1}", left, t2.title) : I18n.t("Now: {0}", t2.title), `${t2.time}${t2.project ? " \xB7 " + t2.project : ""}`, "tasks");
-            alertBuddy("tasks");
+            buddySay(
+              "timeSoon",
+              `${taskFact(t2, today)}
+It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
+              { tab: "tasks", title: left > 0 ? I18n.t("In {0} min: {1}", left, t2.title) : I18n.t("Now: {0}", t2.title), body: `${t2.time}${t2.project ? " \xB7 " + t2.project : ""}` }
+            );
           }
           if (soon.length) {
             st.timeTold = [...told, ...soon.map((t2) => t2.id + "@" + today + t2.time)].slice(-300);
@@ -42526,8 +42810,11 @@ ${lines.join("\n")}
           const told = new Set(st.aheadTold || []);
           const fresh = ahead.filter((t2) => !told.has(t2.id + "@" + t2.due));
           if (fresh.length) {
-            notify(fresh.length === 1 ? I18n.t("Coming up") : I18n.t("{0} tasks coming up", fresh.length), fresh.map((t2) => `${t2.title} (${(/* @__PURE__ */ new Date(t2.due + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).slice(0, 3).join(" \xB7 "), "tasks");
-            alertBuddy("tasks");
+            buddySay(
+              "ahead",
+              fresh.slice(0, 4).map((t2) => taskFact(t2, today)).join("\n"),
+              { tab: "tasks", title: fresh.length === 1 ? I18n.t("Coming up") : I18n.t("{0} tasks coming up", fresh.length), body: fresh.map((t2) => `${t2.title} (${(/* @__PURE__ */ new Date(t2.due + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).slice(0, 3).join(" \xB7 ") }
+            );
             st.aheadTold = [...told, ...fresh.map((t2) => t2.id + "@" + t2.due)].slice(-300);
             changed = true;
           }
@@ -42548,8 +42835,11 @@ ${lines.join("\n")}
             const told = new Set(st.billsTold || []);
             const bills = m.records().filter((x) => x.planned && x.kind === "out" && x.date >= today && x.date <= until && !told.has(x.id + "@" + x.date));
             if (bills.length) {
-              notify(bills.length === 1 ? T("Payment coming up") : T("{0} payments coming up", bills.length), bills.slice(0, 3).map((x) => `${x.description} ${rp(x.amount)} (${x.date === today ? T("today") : (/* @__PURE__ */ new Date(x.date + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).join(" \xB7 "), "money");
-              alertBuddy("money");
+              buddySay(
+                "bills",
+                bills.slice(0, 4).map((x) => `- ${q(x.description)} ${rp(x.amount)} on ${x.date}${x.date === today ? " (today)" : ""}`).join("\n"),
+                { tab: "money", title: bills.length === 1 ? T("Payment coming up") : T("{0} payments coming up", bills.length), body: bills.slice(0, 3).map((x) => `${x.description} ${rp(x.amount)} (${x.date === today ? T("today") : (/* @__PURE__ */ new Date(x.date + "T12:00:00")).toLocaleDateString(I18n.locale(), { weekday: "short", day: "numeric", month: "short" })})`).join(" \xB7 ") }
+              );
               st.billsTold = [...told, ...bills.map((x) => x.id + "@" + x.date)].slice(-300);
               changed = true;
             }
@@ -42559,8 +42849,11 @@ ${lines.join("\n")}
               if (c.budget == null || c.kind !== "out" || c.hidden || bt.has(c.id + "@" + ym)) continue;
               const spent = m.records().filter((x) => !x.planned && x.kind === "out" && x.category === c.id && x.date.startsWith(ym)).reduce((a, x) => a + x.amount, 0);
               if (spent >= c.budget * warn) {
-                notify(T("{0}: {1}% of the budget used", c.name, Math.round(spent / c.budget * 100)), T("{0} of {1} this month", rp(spent), rp(c.budget)), "money");
-                alertBuddy("money");
+                buddySay(
+                  "budget",
+                  `Budget ${q(c.name)}: ${rp(spent)} of ${rp(c.budget)} used this month (${Math.round(spent / c.budget * 100)}%).`,
+                  { tab: "money", title: T("{0}: {1}% of the budget used", c.name, Math.round(spent / c.budget * 100)), body: T("{0} of {1} this month", rp(spent), rp(c.budget)) }
+                );
                 bt.add(c.id + "@" + ym);
                 st.budgetTold = [...bt].slice(-200);
                 changed = true;
@@ -42570,7 +42863,11 @@ ${lines.join("\n")}
           if (r.moneyEvening && hhmm >= r.moneyEveningTime && st.lastMoneyEvening !== today) {
             const spent = m.records().filter((x) => !x.planned && x.kind === "out" && x.date === today).reduce((a, x) => a + x.amount, 0);
             const o = m.outlook();
-            notify(T("Today: {0} spent", rp(spent)), T("Free to spend: {0} ({1} a day for {2} days)", o.free_to_spend, o.per_day, o.days_left), "money");
+            buddySay(
+              "moneyEvening",
+              `Spent today: ${rp(spent)}. Free to spend for the rest of the month: ${o.free_to_spend} (${o.per_day} a day for ${o.days_left} days).`,
+              { tab: "money", title: T("Today: {0} spent", rp(spent)), body: T("Free to spend: {0} ({1} a day for {2} days)", o.free_to_spend, o.per_day, o.days_left) }
+            );
             st.lastMoneyEvening = today;
             changed = true;
           }
@@ -42584,18 +42881,12 @@ ${lines.join("\n")}
               prompt: `Give me my money report for ${last}: money in and out, the biggest spending categories and how they compare with the month before, budgets kept or broken, and one or two simple tips for this month. Keep it short.${I18n.lang() === "id" ? " Write it in Bahasa Indonesia." : ""}`
             }] };
             sendPanel("chat:suggest", suggestion);
-            notify(T("New month!"), T("Want a look back at {0}?", name), "chat");
-            alertBuddy("chat");
+            buddySay("moneyMonth", `Last month: ${name}.`, { tab: "chat", title: T("New month!"), body: T("Want a look back at {0}?", name) });
             st.lastMoneyMonth = today.slice(0, 7);
             changed = true;
           }
         }
-        if (r.chatty === "chatty" && atWork && hhmm >= "15:30" && st.lastCheckIn !== today && activeRecently && st.lastChatDay !== today) {
-          notify(I18n.t("How's it going?"), I18n.t("Anything to note down or tick off? Just tell me."), "chat");
-          alertBuddy("chat");
-          st.lastCheckIn = today;
-          changed = true;
-        }
+        talkTick(r, st, now, today, hhmm, atWork, activeRecently);
         if (changed) saveConfig();
       }
       setInterval(routineTick, 30 * 1e3);
@@ -42652,7 +42943,7 @@ ${lines.join("\n")}
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null, askBack: routine().askBack !== false }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
