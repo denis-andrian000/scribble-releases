@@ -41,6 +41,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
           GH_SELF: ${{ github.token }}
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -e
           if [ -z "$GH_TOKEN" ]; then echo "::error::SOURCE_TOKEN secret is missing"; exit 1; fi
@@ -51,6 +53,12 @@ jobs:
           release=true; apk=true
           [[ ",$assets," == *",latest.yml,"* && ",$assets," == *",Scribble-Setup-$v.exe,"* ]] && release=false
           [[ ",$assets," == *",Scribble-$v.apk,"* && ",$assets," == *",Scribble-Android.apk,"* ]] && apk=false
+          # no usable signing key yet: skip the APK quietly instead of failing every 15 minutes
+          if [ "$apk" = true ]; then
+            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || ! printf '%s' "$ANDROID_KEYSTORE" | tr -d '\r\n ' | base64 -d 2>/dev/null | head -c 4 | grep -q .; then
+              echo "::warning::APK skipped: ANDROID_KEYSTORE / ANDROID_KEYSTORE_PASSWORD missing or not valid base64"; apk=false
+            fi
+          fi
           web=true;  [ "$(cat app/.source-sha 2>/dev/null)" = "$main_sha" ] && web=false
           beta=true; [ "$(cat app-beta/.source-sha 2>/dev/null)" = "$dev_sha" ] && beta=false
           echo "v$v release=$release apk=$apk web=$web beta=$beta (main ${main_sha::7}, dev ${dev_sha::7})"
