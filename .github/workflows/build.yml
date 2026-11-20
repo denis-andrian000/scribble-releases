@@ -55,7 +55,7 @@ jobs:
           [[ ",$assets," == *",Scribble-$v.apk,"* && ",$assets," == *",Scribble-Android.apk,"* ]] && apk=false
           # no usable signing key yet: skip the APK quietly instead of failing every 15 minutes
           if [ "$apk" = true ]; then
-            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || ! printf '%s' "$ANDROID_KEYSTORE" | tr -d '\r\n ' | base64 -d 2>/dev/null | head -c 4 | grep -q .; then
+            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || ! printf '%s' "$ANDROID_KEYSTORE" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/k" 2>/dev/null || [ "$(stat -c %s "$RUNNER_TEMP/k")" -lt 1000 ]; then
               echo "::warning::APK skipped: ANDROID_KEYSTORE / ANDROID_KEYSTORE_PASSWORD missing or not valid base64"; apk=false
             fi
           fi
