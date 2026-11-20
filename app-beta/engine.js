@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.28.4";
+globalThis.__SCRIBBLE_VERSION__ = "1.28.5";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36692,6 +36692,29 @@ Money: you also keep track of the user's money (spending, income, transfers betw
       TONES.friendly = TONES.mirror;
       TONES.concise = TONES.polite;
       TONES.playful = TONES.casual;
+      var ID_WORDS = new Set("aja ajah udah sudah belum nggak ngga gak ga enggak tidak yang dan ini itu buat untuk hari besok kemarin kapan apa aku saya kamu gue gw lo lu mager dong sih deh kok ya yah nya ke di dari sama mau bisa lagi tolong gimana bagaimana kenapa nanti sekarang agak banget bgt juga tapi terus trus kalo kalau jadi udh blm gmn yg dgn dg tdk aja".split(" "));
+      function latestUserText(messages) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const m = messages[i];
+          if (m.role !== "user") continue;
+          const parts = typeof m.content === "string" ? [m.content] : (m.content || []).filter((b) => b.type === "text").map((b) => b.text);
+          const t = parts.filter((x) => x && !x.startsWith("[Scribble]")).join(" ").trim();
+          if (t) return t;
+        }
+        return "";
+      }
+      function styleNote(messages, toneKey) {
+        const t = latestUserText(messages);
+        if (!t) return "";
+        const words = t.toLowerCase().match(/[a-z]+/g) || [];
+        const id = words.filter((w) => ID_WORDS.has(w)).length;
+        const lang = id >= 2 || words.length <= 4 && id >= 1 ? "Indonesian" : "the same language as the user";
+        const quote = t.length > 240 ? t.slice(0, 240) + "\u2026" : t;
+        const how = (toneKey || "mirror") === "mirror" ? "Match its tone exactly: if it is casual or lazy-sounding, answer just as casually and briefly, reusing the kind of everyday words they use (no formal or report-like phrasing); if it is formal, be formal." : "Keep the chat style above.";
+        return `
+
+FOR THIS REPLY: the user's latest message is: "${quote.replace(/"/g, "'")}". Answer in ${lang}${lang === "Indonesian" ? " (do not switch to English, even though tool results and notes are in English)" : ""}. ${how}`;
+      }
       function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false, withMemory = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
         const tone = TONES[persona.tone] || TONES.mirror;
@@ -37187,7 +37210,7 @@ A project template. Each line: task (day it starts, how many days, priority). Te
             let resp;
             for (; ; ) {
               try {
-                resp = await this.complete(active, client, { system, tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
+                resp = await this.complete(active, client, { system: system + styleNote(messages, (this.getPersona() || {}).tone), tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
                 break;
               } catch (e) {
                 const next = this.onLimit(active, e, tried);
@@ -37348,7 +37371,7 @@ A project template. Each line: task (day it starts, how many days, priority). Te
           return { ...m, content: content.length ? content : [{ type: "text", text: "(ok)" }] };
         });
       }
-      module.exports = { Agent, TOOLS, WRITE_TOOLS, MONEY_TOOLS, describe };
+      module.exports = { styleNote, Agent, TOOLS, WRITE_TOOLS, MONEY_TOOLS, describe };
     }
   });
 
