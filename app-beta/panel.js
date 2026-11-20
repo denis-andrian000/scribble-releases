@@ -42,7 +42,7 @@ function showTab(tab) {
   if (tab === 'chat') setTimeout(() => $('#input').focus(), 30);
   if (tab === 'notebook') loadTree();
   if (tab === 'tasks') loadTasks();
-  if (tab === 'settings') { loadSettings(); if (window.Voice) Voice.load(); loadMemory(); }
+  if (tab === 'settings') { loadSettings(); if (window.Voice) Voice.load(); loadMemory(); loadExpert(); loadNews(); }
   if (tab === 'money' && window.Money) Money.show();
 }
 $$('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.area === 'work' ? 'work' : b.dataset.tab)));
@@ -297,8 +297,33 @@ function moneyCard(r) {
   return c;
 }
 
+const MEM_ICON = { about: '🙋', prefs: '💬', people: '👥', work: '🔧', us: '🤝' };
+// "🧠 Learned 2 things · View": what the buddy kept from this chat; each line can be forgotten right there
+function learnedLine(m) {
+  const box = el('div', 'learned');
+  const head = el('div', 'learned-h');
+  const n = m.items.filter((x) => x.kind !== 'remove').length;
+  const t = el('span'); t.textContent = n ? (n === 1 ? I18n.t('🧠 Learned 1 thing about you') : I18n.t('🧠 Learned {0} things about you', n)) : I18n.t('🧠 Updated what I know about you');
+  const v = el('button', 'link'); v.type = 'button'; v.textContent = I18n.t('View');
+  head.append(t, v);
+  const list = el('div', 'learned-list'); list.hidden = true;
+  for (const it of m.items) {
+    if (it.kind === 'remove') continue;
+    const row = el('div', 'learned-row');
+    const ic = el('span', 'learned-ic'); ic.textContent = MEM_ICON[it.section] || '•';
+    const tx = el('span'); tx.textContent = it.text;
+    const x = el('button', 'm-x', '✕'); x.type = 'button'; x.title = I18n.t('Forget this');
+    x.addEventListener('click', async () => { await S.memoryForgetLine(it.text); row.classList.add('gone'); x.remove(); });
+    row.append(ic, tx, x); list.append(row);
+  }
+  v.addEventListener('click', () => { list.hidden = !list.hidden; v.textContent = list.hidden ? I18n.t('View') : I18n.t('Hide'); });
+  box.append(head, list);
+  return box;
+}
+
 function addMessage(m) {
   $('#empty').hidden = true;
+  if (m.role === 'learned') { if (m.items && m.items.length) msgsEl.append(learnedLine(m)); return; }
   if (m.role === 'user') {
     msgsEl.append(userBubble(m));
   } else {
@@ -879,7 +904,7 @@ const FIELDS = {
   append_to_page: [['content', 'long', 'Add'], ['path', 'page', 'Page'], ['heading', 'text', 'Under heading']],
   write_page: [['content', 'long', 'New content'], ['path', 'page', 'Page']],
   add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['status', 'status', 'Status'], ['checklist', 'lines', 'Checklist'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
-  update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['add_note', 'long', 'Add a note'], ['notes', 'long', 'Notes'], ['checklist_add', 'lines', 'Add to checklist'], ['checklist_done', 'lines', 'Tick'], ['checklist_undone', 'lines', 'Untick'], ['checklist_remove', 'lines', 'Remove from checklist']],
+  update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['add_note', 'long', 'Add a note'], ['notes', 'long', 'Notes'], ['checklist_add', 'lines', 'Add to checklist'], ['checklist_done', 'lines', 'Tick'], ['checklist_undone', 'lines', 'Untick'], ['checklist_remove', 'lines', 'Remove from checklist'], ['waiting_on', 'text', 'Waiting on']],
   delete_task: [],
   create_project: [['name', 'text', 'Project'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['goal', 'long', 'Goal']],
   create_folder: [['name', 'text', 'Folder'], ['parent', 'area', 'Inside']],
@@ -2110,6 +2135,12 @@ function taskRow(t, depth) {
     p.title = cl.map((c) => `${c.done ? '☑' : '☐'} ${c.text}`).join('\n');
     meta.prepend(p);
   }
+  if (t.waiting && t.waiting.who && !['done', 'cancelled'].includes(t.status)) {
+    const days = Math.max(0, Math.round((Date.now() - new Date(t.waiting.since + 'T12:00:00')) / 864e5));
+    const w = el('span', 'pill t-wait'); w.textContent = `⏳ ${t.waiting.who}${days ? ` · ${I18n.t('{0}d', days)}` : ''}`;
+    w.title = I18n.t('Waiting on {0} since {1}', t.waiting.who, t.waiting.since);
+    meta.prepend(w);
+  }
   main.append(title, meta);
   row.append(grip, cb, main);
   wrap.append(row);
@@ -2125,7 +2156,7 @@ function taskRow(t, depth) {
       <label class="field-row stack"><span class="f-label">Task</span><input data-k="title"></label>
       <div class="grid2">
         <label class="field-row cell"><span class="f-label">Status</span><select data-k="status"><option value="todo">To do</option><option value="doing">In progress</option><option value="hold">On hold</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></label>
-        <span></span>
+        <label class="field-row cell"><span class="f-label">Waiting on</span><input data-k="waiting_on" placeholder="Nobody"></label>
         <label class="field-row cell req"><span class="f-label">Start</span><input type="date" data-k="start"></label>
         <label class="field-row cell req"><span class="f-label">Due</span><input type="date" data-k="due"></label>
         <label class="field-row cell req"><span class="f-label">Priority</span><select data-k="priority"><option value="">Choose…</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
@@ -2170,6 +2201,7 @@ function taskRow(t, depth) {
     editor.querySelector('.te-all button').addEventListener('click', () => { f('status').value = 'done'; drawList(); check(); });
     f('status').addEventListener('change', drawList);
     f('notes').value = t.notes || '';
+    f('waiting_on').value = (t.waiting && t.waiting.who) || '';
     f('title').value = t.title; f('start').value = t.start || ''; f('due').value = t.due || ''; f('priority').value = PRI_LABEL[pri] ? pri : '';
     f('status').value = t.status || 'todo';
     drawList();
@@ -2198,6 +2230,7 @@ function taskRow(t, depth) {
       if (addIn.value.trim()) { items.push({ text: addIn.value.trim(), done: false }); addIn.value = ''; }
       if (JSON.stringify(items) !== JSON.stringify(t.checklist || [])) patch.checklist = items;
       if (f('notes').value !== (t.notes || '')) patch.notes = f('notes').value;
+      if (f('waiting_on').value.trim() !== ((t.waiting && t.waiting.who) || '')) patch.waiting_on = f('waiting_on').value.trim();
 
       const r = await updTask(t.id, patch);
       if (r && r.ok === false) { prob.textContent = r.error; prob.hidden = false; return; }
@@ -3314,9 +3347,11 @@ async function loadMemory() {
   if (!S.memoryGet) return;
   const m = await S.memoryGet();
   $('#m-on').checked = !!m.on; $('#m-chats').checked = !!m.chats; $('#m-chats').disabled = !m.on;
+  if ($('#m-learn')) { $('#m-learn').checked = m.learn !== false; $('#m-learn').disabled = !m.on; }
+  if ($('#m-past-hint')) $('#m-past-hint').textContent = m.pastDone ? I18n.t('Done on {0}. You can run it again anytime.', new Date(m.pastDone + 'T12:00:00').toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'short' })) : I18n.t('Reads your old chats once. You review the list before anything is saved.');
   const sel = $('#m-sec'); sel.innerHTML = '';
   for (const [k, t] of m.sections) sel.append(new Option(t, k));
-  const ICON = { about: '🙋', prefs: '💬', people: '👥', work: '🔧' };
+  const ICON = MEM_ICON;
   const box = $('#m-list'); box.innerHTML = '';
   let n = 0;
   for (const [k, title] of m.sections) {
@@ -3346,6 +3381,112 @@ if ($('#m-on')) {
   $('#m-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addMem(); } });
   $('#m-clear').addEventListener('click', async () => { if (!confirm(I18n.t('Forget everything your buddy knows about you? You can undo it right after.'))) return; await S.memoryClear(); loadMemory(); });
   S.onNotebookChanged(() => { if (currentTab === 'settings') loadMemory(); });
+  $('#m-learn').addEventListener('change', async () => { await S.memorySet({ learn: $('#m-learn').checked }); });
+  // learn from past chats: read them all, then a review list (untick what's wrong, click to edit), then save
+  $('#m-past').addEventListener('click', async () => {
+    const b = $('#m-past'), rv = $('#m-review');
+    b.disabled = true; const label = b.textContent; b.textContent = I18n.t('Reading your chats…');
+    const off = S.onMemoryProgress ? S.onMemoryProgress((p) => { if (p.total) b.textContent = I18n.t('Reading your chats… {0}/{1}', Math.min(p.done + 1, p.total), p.total); }) : null;
+    let r;
+    try { r = await S.memoryLearnPast(); } finally { b.disabled = false; b.textContent = label; if (typeof off === 'function') off(); }
+    if (!r || r.error) { toast(r && r.error === 'NO_KEY' ? I18n.t('Set up an AI model in Settings → AI first.') : r && r.error === 'BUSY' ? I18n.t('Your buddy is still learning. Try again in a minute.') : I18n.t('Couldn\'t read your chats.')); return; }
+    rv.innerHTML = ''; rv.hidden = false;
+    const head = el('div', 'm-rv-h');
+    head.textContent = r.items.length ? I18n.t('Found {0} things in {1} chats. Untick anything wrong, or click a line to edit it.', r.items.length, r.chats) : I18n.t('Nothing new to remember in {0} chats.', r.chats);
+    rv.append(head);
+    const rows = [];
+    const secs = (await S.memoryGet()).sections;
+    for (const [k, title] of secs) {
+      const its = r.items.filter((x) => (x.section || 'about') === k);
+      if (!its.length) continue;
+      const sec = el('div', 'm-sec' + (k === 'us' ? ' us' : ''));
+      const h = el('div', 'm-h'); h.textContent = `${MEM_ICON[k] || '•'} ${title}`; sec.append(h);
+      for (const it of its) {
+        const row = el('label', 'm-row m-rv');
+        const cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+        const tx = el('span'); tx.textContent = it.text; tx.contentEditable = 'true'; tx.spellcheck = false;
+        row.append(cb, tx); sec.append(row); rows.push({ it, cb, tx });
+      }
+      rv.append(sec);
+    }
+    if (r.expertise) { const e = el('small', 'm-rv-x'); e.textContent = I18n.t('Expertise it will use: {0}', r.expertise); rv.append(e); }
+    const acts = el('div', 'm-rv-acts');
+    const cancel = el('button', 'btn ghost'); cancel.type = 'button'; cancel.textContent = I18n.t('Cancel');
+    const save = el('button', 'btn'); save.type = 'button';
+    const count = () => rows.filter((x) => x.cb.checked).length;
+    const paint = () => { save.textContent = I18n.t('Save {0}', count()); save.disabled = !count() && !r.expertise; };
+    rows.forEach((x) => x.cb.addEventListener('change', paint)); paint();
+    cancel.addEventListener('click', () => { rv.hidden = true; rv.innerHTML = ''; });
+    save.addEventListener('click', async () => {
+      const items = rows.filter((x) => x.cb.checked).map((x) => ({ ...x.it, text: x.tx.textContent.trim() })).filter((x) => x.text);
+      const res = await S.memoryApplyMany(items, r.expertise || '');
+      rv.hidden = true; rv.innerHTML = '';
+      toast(res && res.error ? res.error : I18n.t('Saved {0} things to memory', (res && res.saved) || 0));
+      loadMemory(); loadExpert();
+    });
+    acts.append(cancel, save); rv.append(acts);
+  });
+}
+
+// ---------------- what's new ----------------
+async function loadNews() {
+  if (!S.appNews || !$('#news-list')) return;
+  const n = await S.appNews();
+  $('#news-sum').textContent = I18n.t('Version {0}', n.version);
+  const box = $('#news-list'); box.innerHTML = '';
+  n.list.forEach((e, i) => {
+    const v = el('details', 'news-v'); v.open = i === 0;
+    const sm = el('summary');
+    const b = el('b'); b.textContent = e.v;
+    const d = el('small'); d.textContent = new Date(e.date + 'T12:00:00').toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'long', year: 'numeric' });
+    sm.append(b, d);
+    if (e.v === n.version) { const c = el('span', 'news-cur'); c.textContent = I18n.t('this version'); sm.append(c); }
+    v.append(sm);
+    for (const sec of e.sections) {
+      const h = el('div', 'news-h'); h.textContent = sec.title; v.append(h);
+      const ul = el('ul');
+      for (const it of sec.items) { const li = el('li', 'md'); li.innerHTML = renderMarkdown(it); ul.append(li); }
+      v.append(ul);
+    }
+    box.append(v);
+  });
+}
+// once after an update: "Updated to 1.30.0 · What's new"
+async function newsBanner() {
+  if (!S.appNews) return;
+  const n = await S.appNews();
+  if (!n.seen) { S.appNewsSeen(); return; }            // a new install: nothing to announce
+  if (n.seen === n.version || !n.list.length || n.list[0].v !== n.version) return;
+  const bar = el('div', 'news-banner');
+  const t = el('span'); t.textContent = I18n.t('🎉 Updated to {0}', n.version);
+  const go = el('button', 'link'); go.type = 'button'; go.textContent = I18n.t("What's new");
+  const x = el('button', 'm-x', '✕'); x.type = 'button'; x.title = I18n.t('Close');
+  const done = () => { bar.remove(); S.appNewsSeen(); };
+  go.addEventListener('click', async () => { done(); showTab('settings'); await loadNews(); const d = $('#news-sec'); if (d) { d.open = true; const tabBtn = document.querySelector('#set-tabs button[data-st="app"]'); if (tabBtn) tabBtn.click(); setTimeout(() => d.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } });
+  x.addEventListener('click', done);
+  bar.append(t, go, x);
+  msgsEl.parentElement.insertBefore(bar, msgsEl);
+}
+setTimeout(() => { newsBanner().catch(() => {}); }, 1500);
+
+// ---------------- expert help ----------------
+const OP_HINT = { off: 'Only does what you ask. No tips or opinions.', useful: 'A tip, a better way or a risk when you start a task or ask: at most one per reply, only when it really helps.', often: 'Also asks questions and talks things through with you.' };
+async function loadExpert() {
+  if (!S.expertGet || !$('#x-role')) return;
+  const x = await S.expertGet();
+  $('#x-role').value = x.role || '';
+  $('#x-role').placeholder = x.autoRole || I18n.t('Learned from your chats, e.g. Senior DevOps Engineer');
+  $('#x-role-hint').textContent = x.role ? I18n.t('Set by you. Clear it to let your buddy learn it from your chats.') : x.autoRole ? I18n.t('Learned from your chats. Type to change it.') : I18n.t('Your buddy learns this from your chats, or type it yourself.');
+  $$('#x-op button').forEach((b) => b.classList.toggle('on', b.dataset.op === (x.opinions || 'useful')));
+  $('#x-op-hint').textContent = I18n.t(OP_HINT[x.opinions || 'useful']);
+  $('#x-honest').checked = x.honest !== false; $('#x-next').checked = x.nextStep !== false;
+  $('#x-sum').textContent = (x.role || x.autoRole) ? `${x.role || x.autoRole} · ${I18n.t({ off: 'Off', useful: 'When useful', often: 'Often' }[x.opinions || 'useful'])}` : I18n.t('Opinions and tips while you work');
+}
+if ($('#x-role')) {
+  $('#x-role').addEventListener('change', async () => { await S.expertSet({ role: $('#x-role').value.trim() }); loadExpert(); });
+  $$('#x-op button').forEach((b) => b.addEventListener('click', async () => { await S.expertSet({ opinions: b.dataset.op }); loadExpert(); }));
+  $('#x-honest').addEventListener('change', () => S.expertSet({ honest: $('#x-honest').checked }));
+  $('#x-next').addEventListener('change', () => S.expertSet({ nextStep: $('#x-next').checked }));
 }
 
 // ---------------- Tree: right-click (or "+ New") to add folders, sections, projects and tasks right there ----------------

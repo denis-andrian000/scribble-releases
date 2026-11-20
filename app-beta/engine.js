@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.29.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.30.0";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4510,6 +4510,7 @@ ${goal || "_Not set yet._"}
             if (t.status === "hold") bits.push("on hold");
             if (t.status === "cancelled") bits.push("cancelled");
             if (t.checklist && t.checklist.length) bits.push(`\u2611 ${t.checklist.filter((c) => c.done).length}/${t.checklist.length}`);
+            if (t.waiting && t.waiting.who) bits.push(`\u23F3 waiting on ${t.waiting.who} since ${t.waiting.since}`);
             const miss = missingFields(t);
             if (miss.length && !isClosed(t)) bits.push(`\u26A0 missing ${miss.join(", ")}`);
             return `- [${isClosed(t) ? "x" : " "}] ${t.status === "cancelled" ? `~~${t.title}~~` : t.title}${bits.length ? ` _(${bits.join(", ")})_` : ""} \`#${t.id}\``;
@@ -4597,14 +4598,20 @@ ${groups[n].map(fmt).join("\n")}
             { start: fields.start, due: fields.due, priority: fields.priority },
             { partial: true, current: t }
           );
+          if (req.due && t.due && req.due > t.due && t.status !== "done") t.slips = (t.slips || 0) + 1;
           Object.assign(t, req);
           if (fields.time !== void 0) t.time = cleanTime(fields.time);
+          if (fields.waiting_on !== void 0) {
+            const who = String(fields.waiting_on || "").trim().slice(0, 60);
+            t.waiting = who ? { who, since: t.waiting && t.waiting.who === who && t.waiting.since || localDate(), chased: null } : null;
+          }
           if (fields.status !== void 0 && !STATUSES.includes(fields.status)) throw new Error(`Status must be one of: ${STATUSES.join(", ")}`);
           for (const k of ["title", "project", "area", "notes", "status"]) {
             if (fields[k] !== void 0) t[k] = fields[k];
           }
           if (fields.checklist !== void 0) t.checklist = _Notebook.cleanChecklist(fields.checklist);
           if (fields.status && CLOSED.has(fields.status) && !t.completed) t.completed = (/* @__PURE__ */ new Date()).toISOString();
+          if (fields.status && CLOSED.has(fields.status)) t.waiting = null;
           if (fields.status && !CLOSED.has(fields.status)) t.completed = null;
           this._saveTasks(tasks);
           return t;
@@ -36405,7 +36412,8 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               checklist_add: { type: "array", items: { type: "string" }, description: "New checklist items (small steps inside this task)." },
               checklist_done: { type: "array", items: { type: "string" }, description: "Tick these checklist items (their text, or close enough)." },
               checklist_undone: { type: "array", items: { type: "string" }, description: "Untick these checklist items." },
-              checklist_remove: { type: "array", items: { type: "string" }, description: "Remove these checklist items." }
+              checklist_remove: { type: "array", items: { type: "string" }, description: "Remove these checklist items." },
+              waiting_on: { type: "string", description: 'Who the task is waiting on ("FIN", "Pak James", "vendor Telkom") when the user says it is blocked by someone; "" when it is no longer waiting. You will offer to chase them after a couple of days.' }
             },
             required: ["id"]
           }
@@ -36647,8 +36655,8 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
       var MEMORY_TOOLS = [
         {
           name: "remember",
-          description: "Keep one lasting fact about the user in their memory page, in one short line in the user's language: who they are and their work (about), how they like things done (prefs), people in their life or work and their role (people), ongoing work and plans (work). Use it when the user tells you something that will still be true next week. Not for one-off things (today's lunch, a task: tasks have their own tool). Never for passwords, PINs, card or ID numbers. Health details only if the user asks you to remember them.",
-          input_schema: { type: "object", properties: { section: { type: "string", enum: ["about", "prefs", "people", "work"] }, text: { type: "string" }, replaces: { type: "string", description: "An old line this one updates (e.g. a new role)" } }, required: ["section", "text"] }
+          description: "Keep one lasting fact about the user in their memory page, in one short line in the user's language: who they are and their work (about), how they like things done (prefs), people in their life or work and their role (people), ongoing work and plans (work), how you and the user work together: their rhythm, phrases, what they like from you, running jokes (us). Use it when the user tells you something that will still be true next week. Not for one-off things (today's lunch, a task: tasks have their own tool). Never for passwords, PINs, card or ID numbers. Health details only if the user asks you to remember them.",
+          input_schema: { type: "object", properties: { section: { type: "string", enum: ["about", "prefs", "people", "work", "us"] }, text: { type: "string" }, replaces: { type: "string", description: "An old line this one updates (e.g. a new role)" } }, required: ["section", "text"] }
         },
         {
           name: "forget",
@@ -36663,7 +36671,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
       ];
       var MEMORY_PROMPT = `
 
-Memory: you remember the user across chats. What you know is given at the start of the chat ("What you know about the user"). Use it without being asked: their people, how they like things, their ongoing work. Don't recite it back.
+Memory: you remember the user across chats. What you know is given at the start of the chat ("What you know about the user"). Use it without being asked: their people, how they like things, their ongoing work. "Between us" is your shared history: let it shape how you talk to them (their phrases, inside jokes, what kind of push they like), like a friend who knows them. Don't recite it back. You also learn on your own after each chat, so you don't need to remember everything yourself.
 - When they tell you something lasting about themselves, their people, their preferences or their ongoing work, keep it with remember (one short line). When something changes, remember the new line with replaces. Mention it in a few words ("Noted.").
 - "Forget that / lupakan" means forget.
 - For "what did we talk about\u2026" questions, use search_chats, then answer and link the chat.`;
@@ -36720,7 +36728,18 @@ FOR THIS REPLY: the user's latest message is: "${quote.replace(/"/g, "'")}". Ans
         const tone = TONES[persona.tone] || TONES.mirror;
         const LV = { area: "Section", category: "Project", project: "Sub project", ...persona.levels || {} };
         const pretty = (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-        return `You are ${name}, a tiny note-taking buddy that floats on the user's desktop. The user clicks you, types a line, and goes back to work. ${tone} (1\u20133 sentences unless they ask for a summary or a list).
+        const ex = persona.expert || {};
+        const EXPERT = `
+
+You are also the user's personal assistant and a colleague with real experience${ex.role ? `: think like a ${ex.role}` : " in their field (see what you know about them)"}. Not just a note taker.` + (ex.opinions === "off" ? `
+- Opinions are switched off: only give tips or opinions when they ask for them.` : `
+- Opinions while they work: when they start a task, share a plan, or ask, add ${ex.opinions === "often" ? "your view: a tip, a better or faster way, a risk, or a question that moves it forward, and talk it through when they want" : "at most one short, concrete tip, better way or risk when it would really help (often you have none: then say nothing extra)"}. Be specific to their systems and tools, from experience ("biasanya\u2026", "dari pengalaman\u2026"). Say when you're not sure. Never change anything without their OK.${ex.honest === false ? "" : `
+- Be honest: if a plan looks risky (downtime, data loss, security, a deadline that won't hold) or there's clearly a better way, say so plainly and kindly, with what you'd do instead. Don't just agree.`}${ex.nextStep === false ? "" : `
+- Offer the next step you can do: a checklist on the task, a draft message or email, a script or workflow outline saved as a note. Offer, don't dump it.`}`) + `
+- Fix-it runbooks: when they finish a fix, an incident, a setup or a troubleshooting task and the notes don't say how, ask in one line how they solved it ("btw, fix-nya gimana? biar aku catat buat next time"). Save the answer with update_task add_note starting with "Fix: ". When a similar problem comes up, look first (search_notes, list_tasks, search_chats) and remind them what worked last time.
+- Waiting on someone: when they say a task is blocked by a person, team or vendor ("nunggu FIN", "waiting on vendor"), set waiting_on on the task (and status hold if it's paused). When asked to chase, draft a short, polite follow-up message they can send (WhatsApp style, in their language) naming the task.
+- Think it through: when they want to discuss a problem or decision ("menurutmu gimana", "let's think", "pros cons"), be a sparring partner: ask 1\u20132 sharp questions, lay out 2\u20133 options with trade-offs, give your recommendation and why. When they decide, offer to save the decision with the reasons on the project page (append_to_page under "## Decisions", dated). If they just say "think something through with me" without a topic, ask what's on their mind (suggest the task they're working on now, if any).`;
+        return `You are ${name}, a tiny note-taking buddy that floats on the user's desktop. The user clicks you, types a line, and goes back to work. ${tone} (1\u20133 sentences unless they ask for a summary or a list, or you're thinking something through together).
 
 Today is ${pretty} (${date}). Call get_today if you need the current time.
 
@@ -36764,7 +36783,7 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
 - The user may attach screenshots, PDFs or text files. Read them carefully, quote exact error messages, IDs, names and numbers, and propose notes or tasks from what matters (through the normal confirmation cards).
 - If the user asks to undo, use undo_last_save (it doesn't need a confirmation card).
 - Reply in the language the user writes in.` + (persona.askBack ? `
-- Be a friend, not a form: now and then (not every reply, and never when they're clearly busy or just giving orders) end with one short, natural question or comment back, the way a friend would ("btw, jadi lembur?", "makan siang udah?"). Remember what they told you earlier in the chat and follow up on it.` : "") + (withMoney ? MONEY_PROMPT : "") + (withMemory ? MEMORY_PROMPT : "");
+- Be a friend, not a form: now and then (not every reply, and never when they're clearly busy or just giving orders) end with one short, natural question or comment back, the way a friend would ("btw, jadi lembur?", "makan siang udah?"). Remember what they told you earlier in the chat and follow up on it.` : "") + EXPERT + (withMoney ? MONEY_PROMPT : "") + (withMemory ? MEMORY_PROMPT : "");
       }
       var Agent = class {
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
@@ -37220,6 +37239,49 @@ ${context}` }] }, () => {
           if (!text) throw new Error("empty");
           return { text, replies: (Array.isArray(j.replies) ? j.replies : []).map((r) => String(r).replace(/[«»]/g, "").trim()).filter(Boolean).slice(0, 3), mood: j.mood || "calm" };
         }
+        // The learning pass: read a conversation (or several old ones) and keep what lasts, in the memory sections.
+        // Runs on its own after a chat goes quiet, with the model from Settings → AI. Returns
+        // { add: [{section, text}], replace: [{old, text}], remove: [text], expertise: "..." }.
+        async learn(transcript, { known = "", expertise = "", past = false } = {}) {
+          const active = this.getActive();
+          if (!active || !active.model) throw new Error("NO_KEY");
+          const client = (PROVIDERS[active.conn.provider] || {}).kind === "anthropic" ? new Anthropic({
+            apiKey: active.conn.key,
+            maxRetries: 0,
+            ...active.conn.baseUrl ? { baseURL: active.conn.baseUrl } : {},
+            ...typeof window !== "undefined" ? { dangerouslyAllowBrowser: true } : {}
+          }) : null;
+          const name = ((this.getPersona() || {}).name || "Scribble").slice(0, 40);
+          const system = `You are ${name}'s memory. You read ${past ? "old conversations" : "a conversation"} between the user and ${name} (their desktop buddy for notes, tasks and money) and keep what will still be true and useful next month, so ${name} gets to know the user over time like a close assistant.
+
+What ${name} already knows:
+${known || "(nothing yet)"}
+
+Sections:
+- about: who they are: job, role, company, skills, tools and systems they run, how they talk (language mix, style)
+- prefs: how they like things done (how they report, plan, name things, what goes in notes)
+- people: people in their life or work and who they are to them (role, what they handle). Not one-off mentions.
+- work: ongoing projects, systems and plans (not single tasks)
+- us: how the user and ${name} work together: their rhythm with ${name}, phrases they use and what they mean, what they like from ${name} (hype, short answers, a push), running jokes. Written as ${name} would remember it.
+
+Rules: one short line per fact, in the user's own language and words. Only lasting things, never single tasks, dates of one-off events or anything already known (use replace to update a known line that changed, remove for one that is no longer true). Never passwords, PINs, card, account or ID numbers, tokens, or health details. Don't guess: only what the conversation shows. Fewer, better lines: at most ${past ? 12 : 4} changes. Most conversations teach nothing new: then return empty lists.
+Also give "expertise": the expert role ${name} should take to help this user best, from their work (e.g. "Senior DevOps & Automation Engineer"; short; keep "${expertise || "none yet"}" unless you clearly know better; "" if you can't tell).
+
+Reply with JSON only: {"add": [{"section": "about|prefs|people|work|us", "text": "..."}], "replace": [{"old": "known line", "text": "new line"}], "remove": ["known line"], "expertise": "..."}`;
+          const resp = await this.complete(active, client, { system, tools: void 0, plainTools: [], messages: [{ role: "user", content: `${past ? "Old conversations" : "The conversation"}:
+${transcript}` }] }, () => {
+          });
+          const raw = (resp.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+          const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || [raw])[0]);
+          const arr = (x) => Array.isArray(x) ? x : [];
+          const sec = /* @__PURE__ */ new Set(["about", "prefs", "people", "work", "us"]);
+          return {
+            add: arr(j.add).filter((a) => a && a.text).map((a) => ({ section: sec.has(a.section) ? a.section : "about", text: String(a.text).trim().slice(0, 240) })).slice(0, past ? 16 : 6),
+            replace: arr(j.replace).filter((r) => r && r.old && r.text).map((r) => ({ old: String(r.old), text: String(r.text).trim().slice(0, 240) })).slice(0, 6),
+            remove: arr(j.remove).map(String).filter(Boolean).slice(0, 6),
+            expertise: typeof j.expertise === "string" ? j.expertise.trim().slice(0, 80) : ""
+          };
+        }
         // messages: Anthropic-format history, mutated in place.
         // onEvent({type:'tool', name, input}); approve(call) -> Promise<{decision:'approve', input?} | {decision:'skip'} | {decision:'reply', text}>
         async run(messages, onEvent = () => {
@@ -37409,7 +37471,7 @@ ${context}` }] }, () => {
           return { ...m, content: content.length ? content : [{ type: "text", text: "(ok)" }] };
         });
       }
-      module.exports = { styleNote, Agent, TOOLS, WRITE_TOOLS, MONEY_TOOLS, describe };
+      module.exports = { styleNote, systemPrompt, Agent, TOOLS, WRITE_TOOLS, MONEY_TOOLS, describe };
     }
   });
 
@@ -39448,7 +39510,55 @@ Content-Type: application/octet-stream\r
         "Cheers when you tick off a task": "Menyemangati saat kamu menyelesaikan tugas",
         "Asks you things back in the chat": "Balik bertanya di chat",
         "Everything your buddy says is written by the AI model in Settings \u2192 AI, using your tone and language. Task and project names are shown exactly as you wrote them. If the model can't be reached, reminders still arrive as plain notifications.": "Semua yang dikatakan buddy ditulis oleh model AI di Pengaturan \u2192 AI, dengan gaya dan bahasamu. Nama tugas dan proyek ditampilkan persis seperti yang kamu tulis. Kalau model tidak bisa dihubungi, pengingat tetap datang sebagai notifikasi biasa.",
-        "Click to answer": "Klik untuk membalas"
+        "Click to answer": "Klik untuk membalas",
+        "Between us": "Antara kita",
+        "Learned about you": "Belajar tentang kamu",
+        "Still waiting on {0}": "Masih menunggu {0}",
+        "\u{1F9E0} Learned 1 thing about you": "\u{1F9E0} Aku belajar 1 hal tentang kamu",
+        "\u{1F9E0} Learned {0} things about you": "\u{1F9E0} Aku belajar {0} hal tentang kamu",
+        "\u{1F9E0} Updated what I know about you": "\u{1F9E0} Aku memperbarui yang aku tahu tentang kamu",
+        View: "Lihat",
+        "Done on {0}. You can run it again anytime.": "Sudah dilakukan pada {0}. Kamu bisa menjalankannya lagi kapan saja.",
+        "Reads your old chats once. You review the list before anything is saved.": "Membaca obrolan lamamu sekali. Kamu cek daftarnya dulu sebelum ada yang disimpan.",
+        "Reading your chats\u2026": "Membaca obrolanmu\u2026",
+        "Reading your chats\u2026 {0}/{1}": "Membaca obrolanmu\u2026 {0}/{1}",
+        "Set up an AI model in Settings \u2192 AI first.": "Atur model AI di Pengaturan \u2192 AI dulu.",
+        "Your buddy is still learning. Try again in a minute.": "Buddy-mu masih belajar. Coba lagi sebentar lagi.",
+        "Couldn't read your chats.": "Tidak bisa membaca obrolanmu.",
+        "Found {0} things in {1} chats. Untick anything wrong, or click a line to edit it.": "Ditemukan {0} hal dari {1} obrolan. Hapus centang yang salah, atau klik baris untuk mengubahnya.",
+        "Nothing new to remember in {0} chats.": "Tidak ada hal baru untuk diingat dari {0} obrolan.",
+        "Expertise it will use: {0}": "Keahlian yang akan dipakai: {0}",
+        "Save {0}": "Simpan {0}",
+        "Saved {0} things to memory": "{0} hal disimpan ke memori",
+        "Only does what you ask. No tips or opinions.": "Hanya mengerjakan yang kamu minta. Tanpa tips atau pendapat.",
+        "A tip, a better way or a risk when you start a task or ask: at most one per reply, only when it really helps.": "Tips, cara yang lebih baik, atau risiko saat kamu mulai tugas atau bertanya: paling banyak satu per balasan, hanya kalau benar-benar membantu.",
+        "Also asks questions and talks things through with you.": "Juga bertanya balik dan membahas bersamamu.",
+        "Learned from your chats, e.g. Senior DevOps Engineer": "Dipelajari dari obrolanmu, mis. Senior DevOps Engineer",
+        "Set by you. Clear it to let your buddy learn it from your chats.": "Diatur olehmu. Kosongkan agar buddy-mu mempelajarinya dari obrolanmu.",
+        "Learned from your chats. Type to change it.": "Dipelajari dari obrolanmu. Ketik untuk mengubahnya.",
+        "Your buddy learns this from your chats, or type it yourself.": "Buddy-mu mempelajari ini dari obrolanmu, atau ketik sendiri.",
+        "When useful": "Saat berguna",
+        Often: "Sering",
+        "Opinions and tips while you work": "Pendapat dan tips saat kamu bekerja",
+        "{0}d": "{0}h",
+        "Waiting on {0} since {1}": "Menunggu {0} sejak {1}",
+        "Waiting on": "Menunggu",
+        Nobody: "Tidak ada",
+        "Expert help": "Bantuan ahli",
+        "Your buddy's expertise": "Keahlian buddy-mu",
+        "Opinions while you work": "Pendapat saat kamu bekerja",
+        "Tell me honestly when something looks risky or there's a better way": "Bilang jujur kalau ada yang berisiko atau ada cara yang lebih baik",
+        "Offer to do the next step (a checklist, a draft message, a script outline)": "Tawarkan langkah berikutnya (checklist, draf pesan, kerangka skrip)",
+        "Also: it asks how you fixed things and reminds you next time, offers to chase people a task is waiting on, spots tasks that keep slipping or come back every month, and talks a decision through with you. Opinions are suggestions written by your AI model; your buddy says when it isn't sure and never changes anything without your OK.": "Selain itu: buddy-mu menanyakan cara kamu memperbaiki sesuatu dan mengingatkanmu lain kali, menawarkan untuk menagih orang yang ditunggu sebuah tugas, melihat tugas yang terus mundur atau muncul tiap bulan, dan membahas keputusan bersamamu. Pendapatnya adalah saran yang ditulis model AI-mu; buddy-mu bilang kalau tidak yakin dan tidak pernah mengubah apa pun tanpa persetujuanmu.",
+        "Learn from our chats on its own (after a chat goes quiet)": "Belajar sendiri dari obrolan kita (setelah obrolan sepi)",
+        "\u{1F9E0} Learn from past chats": "\u{1F9E0} Belajar dari obrolan lama",
+        "\u{1F914} Think something through with me": "\u{1F914} Bantu aku memikirkan sesuatu",
+        "Think something through with me": "Bantu aku memikirkan sesuatu",
+        "What's new": "Apa yang baru",
+        "this version": "versi ini",
+        "\u{1F389} Updated to {0}": "\u{1F389} Diperbarui ke {0}",
+        "Older versions:": "Versi lama:",
+        "all releases": "semua rilis"
       };
     }
   });
@@ -39579,7 +39689,9 @@ Content-Type: application/octet-stream\r
         ["about", "About you"],
         ["prefs", "How you like things"],
         ["people", "People"],
-        ["work", "Ongoing work"]
+        ["work", "Ongoing work"],
+        ["us", "Between us"]
+        // how the buddy and the user work together: rhythm, habits, running jokes
       ];
       var KEY_BY_TITLE = Object.fromEntries(SECTIONS.map(([k, t]) => [t.toLowerCase(), k]));
       function parse(text) {
@@ -39670,6 +39782,33 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
           if (gone.length) this.write(mem);
           return { removed: gone };
         }
+        // several changes at once, from the learning pass: { add: [{section, text}], replace: [{old, text}], remove: [text] }
+        // returns what really changed (for the "learned" line in the chat)
+        apply(ch = {}, date = null) {
+          const done = [];
+          for (const r of ch.replace || []) {
+            if (r && r.old && r.text && this.replace(r.old, r.text).saved) done.push({ kind: "replace", section: this.sectionOf(r.text), text: String(r.text).trim(), old: r.old });
+          }
+          for (const x of ch.remove || []) {
+            const g = this.remove(typeof x === "string" ? x : x && x.text).removed || [];
+            for (const t of g) done.push({ kind: "remove", text: t });
+          }
+          for (const a of ch.add || []) {
+            if (!a || !a.text) continue;
+            const r = this.add(a.section, a.text, date);
+            if (r.saved) done.push({ kind: "add", section: r.section, text: r.text });
+          }
+          return done;
+        }
+        sectionOf(text) {
+          const mem = this.read(), n = norm(text);
+          for (const [s] of SECTIONS) if (mem[s].some((f) => norm(f.text) === n)) return s;
+          return null;
+        }
+        count() {
+          const mem = this.read();
+          return SECTIONS.reduce((a, [k]) => a + mem[k].length, 0);
+        }
         clear() {
           const mem = parse("");
           this.write(mem);
@@ -39685,6 +39824,582 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         }
       };
       module.exports = { Memory, SECTIONS, PAGE, parse, serialize };
+    }
+  });
+
+  // ../package.json
+  var require_package = __commonJS({
+    "../package.json"(exports, module) {
+      module.exports = {
+        name: "scribble-buddy",
+        productName: "Scribble",
+        version: "1.30.0",
+        description: "A tiny floating desktop buddy that takes notes and tracks tasks and projects, powered by Gemini or Claude.",
+        main: "src/main.js",
+        author: "Omniz",
+        license: "MIT",
+        scripts: {
+          start: "electron .",
+          dist: "electron-builder",
+          "dist:linux": "electron-builder --linux AppImage deb",
+          "dist:win": "electron-builder --win nsis",
+          "dist:mac": "electron-builder --mac dmg"
+        },
+        dependencies: {
+          "@anthropic-ai/sdk": "^1.3.0",
+          "electron-updater": "6.8.10"
+        },
+        devDependencies: {
+          electron: "^45.1.0",
+          "electron-builder": "^26.0.0"
+        },
+        build: {
+          appId: "id.scribble.buddy",
+          productName: "Scribble",
+          copyright: "Copyright \xA9 2026 Omniz",
+          files: [
+            "src/**/*",
+            "assets/**/*",
+            "package.json"
+          ],
+          linux: {
+            target: [
+              "AppImage",
+              "deb"
+            ],
+            category: "Utility",
+            icon: "assets/icon.png"
+          },
+          win: {
+            target: "nsis",
+            icon: "assets/icon.png",
+            artifactName: "Scribble-Setup-${version}.${ext}"
+          },
+          mac: {
+            target: "dmg",
+            icon: "assets/icon.png",
+            category: "public.app-category.productivity"
+          },
+          publish: [
+            {
+              provider: "github",
+              owner: "denis-andrian000",
+              repo: "scribble-releases",
+              releaseType: "release"
+            }
+          ],
+          nsis: {
+            oneClick: false,
+            allowToChangeInstallationDirectory: true,
+            createDesktopShortcut: true,
+            artifactName: "Scribble-Setup-${version}.${ext}"
+          }
+        },
+        repository: {
+          type: "git",
+          url: "https://github.com/denis-andrian000/scribble.git"
+        }
+      };
+    }
+  });
+
+  // ../src/changelog.json
+  var require_changelog = __commonJS({
+    "../src/changelog.json"(exports, module) {
+      module.exports = [
+        {
+          v: "1.30.0",
+          date: "2026-11-20",
+          en: [
+            {
+              title: "Added",
+              items: [
+                '**Your buddy gets to know you.** After a chat goes quiet, it reads it (with your AI model from Settings \u2192 AI) and keeps what lasts in Memory: who you are, how you like things, your people, your ongoing work. It updates old lines instead of piling up. The chat shows "\u{1F9E0} Learned 2 things about you"; tap View to see them and \u2715 to forget any.',
+                "**Between us**: a new Memory section for how you and your buddy work together (your rhythm, your phrases, what kind of push you like, running jokes). It shapes how your buddy talks to you.",
+                "**Learn from past chats** (Settings \u2192 Buddy \u2192 Memory): reads your old chats once and lists what it found. Untick or edit anything before it's saved.",
+                '**Expert help** (Settings \u2192 Buddy): your buddy works as a colleague in your field. It learns the role from your chats (for example "Senior DevOps Engineer") or you type it. Opinions while you work: Off, When useful (one tip, better way or risk when it really helps) or Often (also talks things through). It tells you honestly when a plan looks risky and offers the next step (a checklist, a draft message, a script outline). It never changes anything without your OK.',
+                '**Fix-it notes**: when you finish a fix or setup, your buddy asks how you solved it, saves it on the task ("Fix: \u2026") and reminds you next time something similar comes up.',
+                '**Waiting on someone**: tasks can wait on a person, team or vendor (in the task editor, or just tell your buddy "nunggu FIN"). The row shows \u23F3 FIN \xB7 3d, and after 2 days your buddy offers to chase and drafts the follow-up message.',
+                "**Patterns**: once a week your buddy points out tasks that keep slipping and tasks that come back every month, and suggests what to do about them.",
+                "**Think something through with me**: a new shortcut. Your buddy asks sharp questions, lays out options with trade-offs, gives its recommendation, and saves the decision with the reasons on the project page when you've decided.",
+                "**What's new** in Settings \u2192 About: the notes of every update, and a one-time notice after the app updates."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                '**Buddy-mu makin kenal kamu.** Setelah obrolan sepi, buddy membacanya (dengan model AI di Pengaturan \u2192 AI) dan menyimpan yang penting di Memori: siapa kamu, caramu suka mengerjakan sesuatu, orang-orangmu, dan pekerjaan yang sedang berjalan. Baris lama diperbarui, bukan ditumpuk. Di chat muncul "\u{1F9E0} Aku belajar 2 hal tentang kamu"; ketuk Lihat untuk melihatnya dan \u2715 untuk melupakan.',
+                "**Antara kita**: bagian baru di Memori tentang cara kamu dan buddy bekerja bareng (ritmemu, istilahmu, dorongan seperti apa yang kamu suka, candaan yang sering muncul). Ini membentuk cara buddy ngobrol denganmu.",
+                "**Belajar dari obrolan lama** (Pengaturan \u2192 Buddy \u2192 Memori): membaca obrolan lamamu sekali dan menampilkan temuannya. Hapus centang atau ubah dulu sebelum disimpan.",
+                '**Bantuan ahli** (Pengaturan \u2192 Buddy): buddy bekerja sebagai rekan di bidangmu. Perannya dipelajari dari obrolan (misalnya "Senior DevOps Engineer") atau kamu ketik sendiri. Pendapat saat kamu bekerja: Mati, Saat berguna (satu tips, cara lebih baik, atau risiko kalau memang membantu) atau Sering (juga membahas bersamamu). Buddy bilang jujur kalau rencana terlihat berisiko dan menawarkan langkah berikutnya (checklist, draf pesan, kerangka skrip). Tidak pernah mengubah apa pun tanpa persetujuanmu.',
+                '**Catatan perbaikan**: saat kamu menyelesaikan perbaikan atau setup, buddy menanyakan caranya, menyimpannya di tugas ("Fix: \u2026") dan mengingatkanmu saat masalah serupa muncul lagi.',
+                '**Menunggu seseorang**: tugas bisa ditandai menunggu orang, tim, atau vendor (di editor tugas, atau bilang ke buddy "nunggu FIN"). Barisnya menampilkan \u23F3 FIN \xB7 3h, dan setelah 2 hari buddy menawarkan untuk menagih dan membuatkan draf pesannya.',
+                "**Pola**: seminggu sekali buddy menunjukkan tugas yang terus mundur dan tugas yang muncul tiap bulan, lalu menyarankan apa yang bisa dilakukan.",
+                "**Bantu aku memikirkan sesuatu**: pintasan baru. Buddy bertanya hal yang penting, menjabarkan pilihan beserta untung-ruginya, memberi rekomendasi, lalu menyimpan keputusan dan alasannya di halaman proyek setelah kamu memutuskan.",
+                "**Apa yang baru** di Pengaturan \u2192 Tentang: catatan pembaruan tiap versi, dan pemberitahuan sekali setelah aplikasi diperbarui."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.29.1",
+          date: "2026-11-20",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "When the buddy updates a task, the Save card now shows everything it will change before you approve: new checklist steps, steps it will tick, untick or remove, and the note it adds. Before, only fields like status and dates were shown, and checklist changes were saved without being visible."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                "Saat buddy memperbarui tugas, kartu Simpan sekarang menampilkan semua yang akan diubah sebelum kamu setujui: langkah checklist baru, langkah yang dicentang, dibatalkan centangnya atau dihapus, dan catatan yang ditambahkan. Sebelumnya hanya status dan tanggal yang tampil, dan perubahan checklist tersimpan tanpa terlihat."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.29.0",
+          date: "2026-11-20",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "Your buddy starts the conversation now and then, in a speech bubble next to it: when you come back to the computer, when it's been quiet for a while, at lunch, on Friday afternoon, when you work late, and a quick cheer when you tick off a task. Tap a suggested reply or click the bubble to answer in the chat; the chat marks where the buddy started.",
+                "Everything the buddy says (also the morning brief, due tasks, reminders, bills and budgets) is written by your AI model from Settings \u2192 AI, in your language and tone. Task, project and wallet names are always copied exactly. If the model can't be reached, reminders still come as plain notifications.",
+                "The buddy asks you things back in the chat (a follow-up question when it's natural).",
+                "Settings \u2192 Routine \u2192 How chatty: Quiet never starts a chat, Normal up to 3 times a day, Chatty up to 8. Each kind of chat (back at the computer, quiet for a while, small talk, cheers) and asking back can be switched off. Quiet hours are respected."
+              ]
+            },
+            {
+              title: "Changed",
+              items: [
+                `The old 15:30 "How's it going?" check-in is replaced by the above.`
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                "Buddy-mu sesekali mulai ngobrol duluan lewat balon bicara di sebelahnya: saat kamu kembali ke komputer, saat sudah lama sepi, jam makan siang, Jumat sore, saat lembur, dan menyemangati saat kamu menyelesaikan tugas. Ketuk balasan yang disarankan atau klik balonnya untuk membalas di chat; chat menandai di mana buddy mulai duluan.",
+                "Semua yang dikatakan buddy (juga brief pagi, tugas jatuh tempo, pengingat, tagihan, dan anggaran) ditulis oleh model AI di Pengaturan \u2192 AI, dengan bahasa dan gayamu. Nama tugas, proyek, dan dompet selalu disalin persis. Kalau model tidak bisa dihubungi, pengingat tetap datang sebagai notifikasi biasa.",
+                "Buddy balik bertanya di chat (pertanyaan lanjutan kalau memang wajar).",
+                "Pengaturan \u2192 Rutinitas \u2192 Seberapa cerewet: Pendiam tidak pernah mulai ngobrol, Normal maksimal 3 kali sehari, Cerewet maksimal 8. Tiap jenis obrolan (kembali ke komputer, lama sepi, basa-basi, menyemangati) dan balik bertanya bisa dimatikan. Jam tenang tetap dihormati."
+              ]
+            },
+            {
+              title: "Diubah",
+              items: [
+                'Sapaan "Gimana kabarnya?" jam 15.30 diganti dengan fitur di atas.'
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.5",
+          date: "2026-11-20",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                '"Match me" chat style really follows you now: the buddy answers in the language of your latest message (no switching to English after it has looked things up) and with the same tone, so a casual "agak mager" gets a casual reply, not a report.'
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                'Gaya chat "Ikuti aku" sekarang benar-benar mengikutimu: buddy menjawab dengan bahasa pesan terakhirmu (tidak pindah ke bahasa Inggris setelah mencari sesuatu) dan dengan gaya yang sama, jadi "agak mager" dibalas santai, bukan seperti laporan.'
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.4",
+          date: "2026-11-16",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "Tasks have a checklist: small steps inside a task (one per department, per site\u2026). Tick, add and remove them in the task editor; the row shows \u2611 2/3, and the Timeline % counts ticked steps. When every step is ticked, the editor offers to mark the task Done (never automatic).",
+                "Task notes are visible and editable in the task editor, with \u{1F4DD} on tasks that have notes.",
+                `The buddy adds what you say about a specific task to that task's notes (dated) instead of today's page, ticks checklist items ("HR sudah"), and asks before closing a task whose steps are all done.`,
+                'Timeline: drag the right edge of the "Sub project / task" column to widen it (double-click to fit the longest name). The width is remembered.'
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                "Dragging a Sub project that only exists on its tasks onto a Project folder (or asking the buddy to move it there) now really moves it: its page is made in that folder."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                "Tugas punya checklist: langkah kecil di dalam tugas (per departemen, per lokasi\u2026). Centang, tambah, dan hapus di editor tugas; barisnya menampilkan \u2611 2/3, dan persen di Linimasa menghitung langkah yang dicentang. Kalau semua langkah dicentang, editor menawarkan untuk menandai tugas Selesai (tidak otomatis).",
+                "Catatan tugas terlihat dan bisa diubah di editor tugas, dengan \u{1F4DD} di tugas yang punya catatan.",
+                'Buddy menambahkan yang kamu ceritakan tentang tugas tertentu ke catatan tugas itu (dengan tanggal), bukan ke halaman hari ini, mencentang item checklist ("HR sudah"), dan bertanya dulu sebelum menutup tugas yang langkahnya sudah selesai semua.',
+                'Linimasa: tarik tepi kanan kolom "Sub proyek / tugas" untuk melebarkannya (klik dua kali untuk menyesuaikan nama terpanjang). Lebarnya diingat.'
+              ]
+            },
+            {
+              title: "Diperbaiki",
+              items: [
+                "Menarik Sub proyek yang hanya ada di tugasnya ke folder Proyek (atau meminta buddy memindahkannya) sekarang benar-benar memindahkannya: halamannya dibuat di folder itu."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.3",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "The buddy can add a task that's already done or in progress (handy when you paste a whole plan with finished items). Finished ones count as done on their due day, not today. The task card shows the status so you can change it before saving."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                "Buddy bisa menambahkan tugas yang sudah selesai atau sedang dikerjakan (berguna saat kamu menempel rencana lengkap yang sebagian sudah beres). Yang sudah selesai dihitung selesai pada hari tenggatnya, bukan hari ini. Kartu tugas menampilkan statusnya supaya bisa kamu ubah sebelum disimpan."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.2",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "Tasks tree (and Table): while dragging a task, project or folder, moving the mouse near the top or bottom edge scrolls the list, faster the closer you get. Before, you couldn't drop on anything that was off screen, because the mouse wheel doesn't work during a drag on Windows."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                "Pohon Tugas (dan Tabel): saat menarik tugas, proyek, atau folder, menggerakkan mouse ke dekat tepi atas atau bawah akan menggulir daftar, makin cepat makin dekat. Sebelumnya kamu tidak bisa menaruh di bagian yang tidak terlihat, karena roda mouse tidak berfungsi saat menarik di Windows."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.1",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                'Tasks tree: a new Section, Project, Sub project or task made from the right-click menu now shows up straight away, opened and highlighted. Empty Project folders show too, and a new Sub project is no longer hidden behind "+ N with no open tasks".',
+                "Timeline follows the same hierarchy: Section \u203A Project \u203A Sub project \u203A tasks, with tasks that have no Sub project under General marked \u26A0. The header and project filter use your level names."
+              ]
+            },
+            {
+              title: "Removed",
+              items: [
+                `The "+ New" button in Tasks (it couldn't tell where to add). Right-click a row, or empty space, instead.`
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                'Pohon Tugas: Bagian, Proyek, Sub proyek, atau tugas baru dari menu klik kanan langsung muncul, terbuka dan disorot. Folder Proyek yang kosong juga tampil, dan Sub proyek baru tidak lagi tersembunyi di balik "+ N tanpa tugas terbuka".',
+                "Linimasa mengikuti susunan yang sama: Bagian \u203A Proyek \u203A Sub proyek \u203A tugas, dengan tugas tanpa Sub proyek di bawah Umum dan ditandai \u26A0. Judul dan filter proyek memakai nama tingkatmu."
+              ]
+            },
+            {
+              title: "Dihapus",
+              items: [
+                'Tombol "+ Baru" di Tugas (tidak bisa tahu harus menambah di mana). Klik kanan baris atau ruang kosong sebagai gantinya.'
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.28.0",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "Name the folder levels: Settings \u2192 App \u2192 Tasks. Defaults are Section \u203A Project \u203A Sub project; the Tasks tree (a small tag on each row), right-click menus, cards, the Table and the buddy all use your names.",
+                `Every task belongs in a Sub project. Tasks without one wait under General with a "\u26A0 no Sub project" tag and a banner with "Ask the buddy to file them"; Sub projects that aren't inside a Project get a small \u26A0.`,
+                "The buddy knows your level names and files new tasks into a Sub project (or suggests one) instead of leaving them loose."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                "Beri nama tingkat folder: Pengaturan \u2192 Aplikasi \u2192 Tugas. Bawaannya Bagian \u203A Proyek \u203A Sub proyek; pohon Tugas (label kecil di tiap baris), menu klik kanan, kartu, Tabel, dan buddy semuanya memakai namamu.",
+                'Setiap tugas berada di Sub proyek. Tugas tanpa Sub proyek menunggu di bawah Umum dengan label "\u26A0 tanpa Sub proyek" dan banner "Minta buddy merapikannya"; Sub proyek yang tidak berada di dalam Proyek mendapat \u26A0 kecil.',
+                "Buddy tahu nama tingkatmu dan memasukkan tugas baru ke Sub proyek (atau menyarankannya), tidak dibiarkan lepas."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.27.3",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "A Claude key now uses Haiku, the cheapest Claude. Older versions started on the newest model Anthropic listed (Fable, Opus), which costs many times more; existing setups move to Haiku once.",
+                '"Chat with this" in Settings \u2192 AI switches straight away. The check that the model can save notes now runs afterwards instead of making you wait (it was slow for Gemini and OpenRouter, so clicks piled up into several toasts).',
+                `When a free fallback model fails too ("Provider returned error"), the buddy tries the next one instead of stopping, and each key's own best model (Gemini Flash, Groq) is tried before random free ones.`
+              ]
+            },
+            {
+              title: "Added",
+              items: [
+                "Tasks tree: right-click \u2192 Delete for tasks, projects, sections and folders. A project or folder with tasks asks whether to delete them too or keep them. Undo brings everything back.",
+                "Right-click a task: Edit, Mark done, Delete."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.27.2",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Added",
+              items: [
+                'Your buddy can now **create folders** ("add folder Monitoring"), **move a project** with all its tasks into another folder or section, or rename it, and **remove a project** (it asks whether to delete its open tasks or keep them; Undo brings it back). Each one shows a card to confirm first.'
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                `With some AI models (Gemini), the buddy's reply after saving was just "Here's how I'd file that:" instead of saying what it did. It now confirms what was done in one line.`
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.27.1",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "**Tasks \u2192 Tree is editable in place**: \u270E (or double-click) renames a folder, section or project, and its tasks follow. Drag a project onto another folder or section to move it, or a section onto another folder. \u{1F4C4} opens a project's page.",
+                '**Right-click to add** in the Tree: on a folder, a new project, task or section there, or a new folder; on a project, a new task in it; on a section, a new project. "+ New" next to Open / Done / All does the same on touch screens.'
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.27.0",
+          date: "2026-11-13",
+          en: [
+            {
+              title: "Added",
+              items: [
+                `**Your buddy presents**: ask "show me only the Chatwoot project", "list my tasks in the table", "show my food spending this month" or "open the vendor page", and it shows it: in full screen on the left next to the chat, in the small window by switching to it. A dark bar says what it's showing, with "Show everything" to go back.`,
+                "**See a plan before it's saved**: when your buddy suggests new dates for tasks (a timeline for a project, catching up on late tasks), in full screen the Timeline on the left shows its plan first as striped bars, with where each task was. Drag a striped bar to adjust it; Save all or Discard there or on the card in the chat.",
+                "**All** next to Open and Done in Tasks, to see open and finished tasks together."
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                `A few labels under the buddy's replies showed raw names ("save_template", "use_template").`
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.26.3",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Changed",
+              items: [
+                "**On phones, Enter makes a new line** and the \u279C button sends, like WhatsApp. With a real keyboard (computer), Enter still sends and Shift+Enter makes a new line."
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                "In an empty chat, the suggestions area could sit over the typing box and the Send button, so they couldn't be tapped."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.26.2",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "The Windows taskbar button of full-screen Scribble is now tied to the Scribble app icon directly, for PCs that still showed a blank page."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.26.1",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "Full-screen Scribble showed a blank page icon on the Windows taskbar instead of the Scribble icon."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.26.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Changed",
+              items: [
+                `**Settings \u2192 AI is simpler**: add a Claude, Gemini, Groq or OpenRouter key, and each key shows what your buddy uses it for (chatting, photos & PDFs, the mic and meetings, its voice) and whether it's free. "Chat with this" picks which key your buddy talks with. The model list and the usage numbers are gone: your buddy picks the right model itself.`,
+                "**Rotate between keys**: one switch. When a key is busy or its free use runs out, your buddy moves to another key you've added, starting with the most capable free model, and goes back when it's available again.",
+                "**The mic and meeting notes on Windows work with a free key**: speech becomes text through Groq (Whisper large-v3, the best at Bahasa Indonesia), then Gemini, then OpenRouter, whichever you have. Bahasa mixed with English stays as it was said, and names your buddy knows (people, projects) help it spell them right.",
+                "The buddy's voice uses the OpenRouter key from Settings \u2192 AI, so you don't have to add it twice."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.25.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Added",
+              items: [
+                `**Drop the buddy on your meeting** (Windows app): drag the buddy onto a Google Meet, Zoom or Teams window (browser or app) and it stays there with \u{1F3A7}, listening to the call: everyone's voices from your computer's sound, plus your mic. Drag it off the window when the meeting ends and it writes a meeting page with a summary, decisions and action items, and offers your action items as tasks. A "Listening to Google Meet \xB7 12 min" bar in the chat has Stop too. Uses your OpenRouter key (Settings \u2192 Buddy \u2192 Voice) to turn speech into text; turn it off in Settings \u2192 App \u2192 General.`
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.24.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Added",
+              items: [
+                `**Your buddy remembers you.** When you tell it something lasting (who you work with, how you like your reports, what you're working on), it keeps a short line and shows "\u{1F9E0} Remembered: \u2026" with Undo. Every new chat starts knowing it, so "bikinin laporan mingguan" already knows it's for Pak James, WhatsApp style. Say "lupakan soal itu" / "forget that" to remove something.`,
+                '**It looks back at past chats**: "waktu itu kita ngobrolin harga vendor berapa?" finds the earlier chat and links to it (tap to open).',
+                "**Settings \u2192 Buddy \u2192 Memory**: everything it knows, by section (About you, How you like things, People, Ongoing work), with the day it learned each line. Delete any line, add your own, or forget everything. Two switches: remember things from chats, and look back at past chats. It's the page Memory.md in your notebook, so it syncs and you can edit it there too. Passwords, PINs, card and ID numbers are never kept."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.23.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Added",
+              items: [
+                "**Wallet badges**: well-known wallets and banks (GoPay, DANA, OVO, ShopeePay, LinkAja, BCA, Mandiri, BRI, BNI, BSI, BTN, CIMB, Jago, Jenius, SeaBank and more) get a badge in their familiar colour with their initials, picked from the wallet's name. Other wallets keep their coloured dot.",
+                "**Your own wallet picture**: Money \u2192 Wallets \u2192 Edit \u2192 Set picture. Use any image you like (for example the logo saved from your bank's site); it's kept small with your data and syncs to your devices."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.22.3",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "**No more silent replies**: after reading a lot (like the weekly report going through your daily pages), some AI models sent back an empty answer and the chat just stopped. Your buddy now asks the model once more for the answer, and if it still comes back empty it tells you so and what to try."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.22.2",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                "**My week card**: the list of finished tasks no longer runs into the footer, the buddy isn't squeezed, and the stats sit in a tidy 2\xD72 grid. The buddy's face now matches your week: cheering for a great week, smiling for a good one, sleepy for a quiet one, sweating when spending ran over budget, with a line to match.",
+                "**Chat suggestions**: every suggestion has an emoji now, they sit side by side instead of one per line, and they scroll inside the chat instead of covering the typing box when the window is small."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.22.1",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                '**No more "Inbox (conflict \u2026)" copies.** When Inbox, a daily page or meeting notes were changed on two devices before they synced, Scribble kept the other version as a separate "(conflict \u2026)" page. Sync now keeps every line from both in the one page. Existing conflict copies of these pages are folded back into their page once, as one step you can undo.'
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.22.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Added",
+              items: [
+                '**Ask your notes**: "what did the vendor quote last month?", "kapan terakhir aku ketemu Pak James?". Your buddy searches your pages, tasks and money records and answers with a link to the page it came from (tap it to open). If nothing matches it says so instead of guessing.',
+                '**Project templates**: "save the Chatwoot migration as a template", then "start a new client onboarding for PT Maju from Monday" creates the project and all its tasks with real dates. Templates are pages in Templates/ you can edit.',
+                "**Meeting notes** (\u{1F399} in the chat suggestions and Today): your buddy listens during a meeting (Chrome and Android for free; the Windows app with your OpenRouter key), or you type. Finish and it writes a meeting page with a summary, decisions and action items, and offers your action items as tasks.",
+                "**My week** (\u{1F3C6}): a card with what you finished, your streak, your busiest day and money this week, with your buddy on it. Save it as an image or share it (WhatsApp story, Instagram).",
+                "**Android home-screen widget**: today's tasks (late ones marked) and what's free to spend a day. Tap it to open Scribble. Long-press your home screen \u2192 Widgets \u2192 Scribble."
+              ]
+            }
+          ]
+        },
+        {
+          v: "1.21.0",
+          date: "2026-11-12",
+          en: [
+            {
+              title: "Added",
+              items: [
+                '**Bills that repeat** (Money): tell your buddy once ("BPJS 150rb every 10th from BCA", "Netflix 186rb tiap tanggal 5", "gaji tiap tanggal 25") and before each date it appears as a planned payment with a reminder. Tap **Paid** (or tell your buddy "udah bayar") and it counts in the wallet. Weekly and yearly work too; Stop ends one.',
+                `**Split bills**: "dinner 600rb split with Andi and Sari, pake BCA" records the bill and remembers who owes you how much. When someone pays you back, pick the wallet it went into and it's recorded and cleared. You can also note money you owe someone.`,
+                '**Savings goals**: "save 5 juta for a new phone by March" shows a progress bar and how much a week you need to make it. Add savings by chat or on the Money screen, or tie a goal to a savings wallet so its balance is the progress.',
+                "A **Plans** row on the Money screen: bills coming up, who owes what, and your goals."
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                `The labels under the buddy's replies ("Added task\u2026", "Recorded\u2026") now follow the app language.`
+              ]
+            }
+          ]
+        }
+      ];
     }
   });
 
@@ -40262,7 +40977,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         return detail ? `${base} ${name === "search_notes" ? `"${detail}"` : detail}` : base;
       }
       var ATTACH_NOTE = "[Attached ";
-      function displayMessages(messages, meta = {}, labels = {}, undo = {}, first = {}) {
+      function displayMessages(messages, meta = {}, labels = {}, undo = {}, first = {}, learned = {}) {
         const notSaved = /* @__PURE__ */ new Set();
         const moneyCards = /* @__PURE__ */ new Map();
         const asked = /* @__PURE__ */ new Set();
@@ -40307,8 +41022,9 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
             } else out.push({ role: "assistant", text, tools, ...money2.length ? { money: money2 } : {}, ...first && first[i] ? { first: true } : {} });
             if (undo && undo[i] && undo[i].length) out[out.length - 1].undo = undo[i];
           }
+          if (learned && learned[i] && learned[i].length) out.push({ role: "learned", text: "", items: learned[i] });
         });
-        return out.filter((m) => m.text || m.tools && m.tools.length || m.money && m.money.length);
+        return out.filter((m) => m.text || m.tools && m.tools.length || m.money && m.money.length || m.role === "learned");
       }
       function moveWin(win, x, y, why = "") {
         if (!win || win.isDestroyed()) return false;
@@ -41017,7 +41733,7 @@ In one short line say what it is, then offer what to do with it as options (add 
       }, 33);
       ipcMain.handle("chat:get", () => ({
         id: chat.id,
-        messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first),
+        messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first, chat.learned),
         busy,
         hasKey: hasAI(),
         pending: [...pending.values()].map((p) => p.card),
@@ -41319,7 +42035,10 @@ In one short line say what it is, then offer what to do with it as options (add 
         } else {
           chat.messages.push({ role: "user", content: text });
         }
-        if (before === 0) {
+        const BRIEF = "[Scribble] What you know about the user";
+        const hasBrief = chat.messages.some((x) => Array.isArray(x.content) && x.content.some((c) => c.type === "text" && c.text.startsWith(BRIEF)));
+        const userSpoke = chat.messages.slice(0, before).some((x) => x.role === "user" && !(Array.isArray(x.content) && x.content.every((c) => c.type === "text" && c.text.startsWith("[Scribble]"))));
+        if (!hasBrief && !userSpoke && chat.messages[0] && chat.messages[0].role === "user") {
           const m = memory(), brief = m ? m.brief() : "";
           if (brief) {
             const first = chat.messages[0];
@@ -41357,7 +42076,7 @@ ${brief}` }, ...blocks];
             (chat.undo ||= {})[chat.messages.length - 1] = steps.map((s) => s.id);
             saveChat(chat);
           }
-          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first) };
+          return { reply, messages: displayMessages(chat.messages, chat.meta, chat.labels, chat.undo, chat.first, chat.learned) };
         } catch (e) {
           chat.messages.length = before;
           if (chat.meta) delete chat.meta[before];
@@ -41677,7 +42396,17 @@ ${brief}` }, ...blocks];
         }
       }
       var { Memory, SECTIONS: MEM_SECTIONS } = require_memory();
-      var memCfg = () => ({ on: true, chats: true, ...config.memory || {} });
+      var memCfg = () => ({ on: true, chats: true, learn: true, ...config.memory || {} });
+      var expertCfg = () => {
+        const e = { opinions: "useful", honest: true, nextStep: true, role: "", autoRole: "", ...config.expert || {} };
+        return { ...e, role: e.role || e.autoRole };
+      };
+      ipcMain.handle("expert:get", () => ({ opinions: "useful", honest: true, nextStep: true, role: "", autoRole: "", ...config.expert || {} }));
+      ipcMain.handle("expert:set", (_e, patch) => {
+        config.expert = { ...config.expert || {}, ...patch };
+        saveConfig();
+        return config.expert;
+      });
       function memory() {
         return memCfg().on ? new Memory(notebook, () => avatar().name || "your buddy") : null;
       }
@@ -41737,6 +42466,22 @@ ${brief}` }, ...blocks];
       ipcMain.handle("memory:add", memOp("Added to memory", (m, section, text) => m.add(section, text, localDate())));
       ipcMain.handle("memory:remove", memOp("Removed from memory", (m, text) => m.remove(text)));
       ipcMain.handle("memory:clear", memOp("Cleared memory", (m) => m.clear()));
+      var APP_VERSION = require_package().version;
+      ipcMain.handle("app:news", () => {
+        let all = [];
+        try {
+          all = require_changelog();
+        } catch {
+        }
+        const id = I18n.lang() === "id";
+        const list = all.map((e) => ({ v: e.v, date: e.date, sections: id ? e.id : e.en })).filter((e) => e.sections && e.sections.length).slice(0, 12);
+        return { version: APP_VERSION, seen: config.seenVersion || null, list };
+      });
+      ipcMain.handle("app:newsSeen", () => {
+        config.seenVersion = APP_VERSION;
+        saveConfig();
+        return true;
+      });
       ipcMain.handle("widget:data", () => {
         const T = I18n.t, today = localDate();
         const open = notebook.listTasks({ status: "open" }).filter((t2) => t2.status !== "hold" && t2.due && t2.due <= today).sort((a, b) => (a.due < today ? 0 : 1) - (b.due < today ? 0 : 1) || String(a.time || "99").localeCompare(String(b.time || "99")));
@@ -42560,7 +43305,9 @@ ${top}` : ""}`,
         lunch: "It's lunchtime.",
         friday: "It's Friday afternoon.",
         late: "They're still working after office hours.",
-        cheer: "The user just ticked off a task. Cheer them on briefly (one line)."
+        cheer: "The user just ticked off a task. Cheer them on briefly (one line).",
+        chase: "A task has been waiting on someone for a few days. Mention it and offer to draft a short follow-up message they can send (make one reply option like 'Draft the message').",
+        patterns: "Weekly look back: you spotted patterns in their tasks (things that keep slipping, things that come back every month). Mention the most useful one and suggest what to do (block time, make it a repeating task / template, split it). Offer, keep it light."
       };
       function recentLines() {
         try {
@@ -42690,6 +43437,218 @@ ${facts}` : ""}`;
         showPanel("chat");
         sendPanel("quick:send", String(text || "").slice(0, 200));
       });
+      var learning = false;
+      var learnFailAt = 0;
+      var chatTurns = (c, from = 0) => {
+        const out = [];
+        (c.messages || []).forEach((m, i) => {
+          if (i < from) return;
+          const texts = typeof m.content === "string" ? [m.content] : (m.content || []).filter((b) => b.type === "text" && !b.text.startsWith("[Scribble]") && !b.text.startsWith(ATTACH_NOTE)).map((b) => b.text);
+          const t2 = texts.join(" ").replace(/\s+/g, " ").trim();
+          if (t2) out.push({ i, role: m.role, text: t2 });
+        });
+        return out;
+      };
+      var transcriptOf = (turns, name, max = 7e3) => {
+        let s = turns.map((t2) => `${t2.role === "user" ? "User" : name}: ${t2.text.slice(0, t2.role === "user" ? 600 : 300)}`).join("\n");
+        if (s.length > max) s = s.slice(s.length - max);
+        return s;
+      };
+      async function learnFrom(c, { save }) {
+        const from = c.learnedUpto || 0, turns = chatTurns(c, from);
+        const users = turns.filter((t2) => t2.role === "user");
+        if (!users.length) {
+          c.learnedUpto = c.messages.length;
+          return null;
+        }
+        const m = memory(), ex = config.expert || {};
+        const res = await agent.learn(transcriptOf(turns, avatar().name || "Scribble"), { known: m.brief(), expertise: ex.role || ex.autoRole || "" });
+        if (res.expertise && !ex.role && res.expertise !== ex.autoRole) {
+          config.expert = { ...ex, autoRole: res.expertise };
+          saveConfig();
+        }
+        let done = [];
+        if (res.add.length || res.replace.length || res.remove.length) {
+          notebook.begin(I18n.t("Learned about you"));
+          try {
+            done = m.apply(res, localDate());
+            notebook.commit();
+          } catch (e) {
+            notebook.rollback();
+            throw e;
+          }
+        }
+        const last = c.messages.length - 1;
+        c.learnedUpto = c.messages.length;
+        if (done.length) (c.learned ||= {})[last] = done.map((d) => ({ kind: d.kind, section: d.section || null, text: d.text }));
+        save(c);
+        if (done.length) {
+          sendPanel("notebook:changed");
+          scheduleSync(3e3);
+        }
+        return done;
+      }
+      async function learnTick() {
+        const mc = memCfg();
+        if (learning || !mc.on || mc.learn === false || !agent || !hasAI() || busy || Date.now() - learnFailAt < 30 * 60 * 1e3) return;
+        if (Date.now() - lastTalkAt < 10 * 60 * 1e3) return;
+        const ready = (c) => c && chatTurns(c, c.learnedUpto || 0).some((t2) => t2.role === "user");
+        let target = ready(chat) ? chat : null, file = null;
+        if (!target) {
+          try {
+            for (const f of fs2.readdirSync(chatsDir()).filter((x) => x.endsWith(".json")).sort().reverse().slice(0, 4)) {
+              const c = JSON.parse(fs2.readFileSync(path.join(chatsDir(), f), "utf8"));
+              if (c.id !== chat.id && c.id >= addDays(localDate(), -2) && ready(c)) {
+                target = c;
+                file = f;
+                break;
+              }
+            }
+          } catch {
+          }
+        }
+        if (!target) return;
+        learning = true;
+        try {
+          await learnFrom(target, { save: (c) => {
+            if (c === chat) {
+              saveChat();
+              sendPanel("chat:reload");
+            } else fs2.writeFileSync(path.join(chatsDir(), file), JSON.stringify(c));
+          } });
+        } catch (e) {
+          logLine("learn failed", e && e.message);
+          learnFailAt = Date.now();
+        } finally {
+          learning = false;
+        }
+      }
+      ipcMain.handle("memory:learnPast", async () => {
+        if (!agent || !hasAI()) return { error: "NO_KEY" };
+        if (learning) return { error: "BUSY" };
+        learning = true;
+        try {
+          const files = fs2.readdirSync(chatsDir()).filter((x) => x.endsWith(".json")).sort();
+          const name = avatar().name || "Scribble", batches = [];
+          let cur = "", first = null, lastDay = null;
+          for (const f of files) {
+            let c;
+            try {
+              c = JSON.parse(fs2.readFileSync(path.join(chatsDir(), f), "utf8"));
+            } catch {
+              continue;
+            }
+            const turns = chatTurns(c);
+            if (!turns.some((t2) => t2.role === "user")) continue;
+            const day = String(c.id).slice(0, 10);
+            first ||= day;
+            lastDay = day;
+            const block = `--- ${day} ---
+${transcriptOf(turns, name, 3e3)}
+`;
+            if (cur.length + block.length > 9e3 && cur) {
+              batches.push(cur);
+              cur = "";
+            }
+            cur += block;
+          }
+          if (cur) batches.push(cur);
+          const ex = config.expert || {}, m = memory() || new Memory(notebook);
+          const found = [];
+          let expertise = ex.role || ex.autoRole || "";
+          const norm = (x) => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+          for (let b = 0; b < batches.length; b++) {
+            sendPanel("memory:progress", { done: b, total: batches.length });
+            const known = [m.brief(), ...found.map((f) => `- ${f.text}`)].filter(Boolean).join("\n");
+            try {
+              const r = await agent.learn(batches[b], { known, expertise, past: true });
+              if (r.expertise) expertise = r.expertise;
+              for (const a of r.add) if (!found.some((f) => norm(f.text) === norm(a.text))) found.push({ kind: "add", section: a.section, text: a.text });
+              for (const x of r.replace) {
+                const i = found.findIndex((f) => norm(f.text) === norm(x.old));
+                if (i !== -1) found[i].text = x.text;
+                else found.push({ kind: "replace", old: x.old, text: x.text, section: null });
+              }
+            } catch (e) {
+              logLine("learnPast batch failed", e && e.message);
+            }
+          }
+          sendPanel("memory:progress", { done: batches.length, total: batches.length });
+          return { items: found, chats: files.length, from: first, to: lastDay, expertise };
+        } finally {
+          learning = false;
+        }
+      });
+      ipcMain.handle("memory:applyMany", (_e, items, expertise) => {
+        const m = new Memory(notebook, () => avatar().name || "your buddy");
+        notebook.begin(I18n.t("Learned about you"));
+        try {
+          const done = m.apply({ add: (items || []).filter((x) => x.kind !== "replace"), replace: (items || []).filter((x) => x.kind === "replace") }, localDate());
+          notebook.commit();
+          if (expertise && !(config.expert || {}).role) {
+            config.expert = { ...config.expert || {}, autoRole: String(expertise).slice(0, 80) };
+            saveConfig();
+          }
+          config.memory = { ...memCfg(), pastDone: localDate() };
+          saveConfig();
+          sendPanel("notebook:changed");
+          scheduleSync(3e3);
+          return { saved: done.length };
+        } catch (e) {
+          notebook.rollback();
+          return { error: e.message };
+        }
+      });
+      ipcMain.handle("memory:forgetLine", memOp("Removed from memory", (m, text) => m.remove(text)));
+      function chaseTick(today, atWork) {
+        if (!atWork) return;
+        const st = rstate();
+        if (st.chaseDay === today && (st.chaseN || 0) >= 2) return;
+        const tasks = notebook.loadTasks();
+        const t2 = tasks.find((x) => !["done", "cancelled"].includes(x.status) && x.waiting && x.waiting.who && x.waiting.since <= addDays(today, -2) && x.waiting.chased !== today);
+        if (!t2) return;
+        t2.waiting.chased = today;
+        notebook._saveTasks(tasks);
+        st.chaseN = st.chaseDay === today ? (st.chaseN || 0) + 1 : 1;
+        st.chaseDay = today;
+        saveConfig();
+        const days = Math.round((new Date(today) - new Date(t2.waiting.since)) / 864e5);
+        buddySay(
+          "chase",
+          `${taskFact(t2, today)}
+Waiting on ${q(t2.waiting.who)} for ${days} days (since ${t2.waiting.since}).${t2.notes ? `
+Task notes: ${String(t2.notes).slice(-300)}` : ""}`,
+          { tab: "tasks", title: I18n.t("Still waiting on {0}", t2.waiting.who), body: t2.title }
+        );
+      }
+      var titleKey = (t2) => String(t2 || "").toLowerCase().replace(/\b(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)[a-z]*\b/g, " ").replace(/[^a-z\u00c0-\u024f ]+/g, " ").replace(/\s+/g, " ").trim();
+      function findPatterns(today) {
+        const all = notebook.loadTasks(), out = [];
+        for (const t2 of all) if (!["done", "cancelled"].includes(t2.status) && (t2.slips || 0) >= 2) out.push(`- Keeps slipping: ${q(t2.title)} (due date pushed ${t2.slips} times, now ${t2.due})`);
+        const since = addDays(today, -120), groups = {};
+        for (const t2 of all) {
+          const d = t2.due || t2.start;
+          if (!d || d < since) continue;
+          const k = titleKey(t2.title);
+          if (k.length < 6) continue;
+          (groups[k] ||= []).push(t2);
+        }
+        for (const g of Object.values(groups)) {
+          const months = new Set(g.map((t2) => String(t2.due || t2.start).slice(0, 7)));
+          const ahead = g.some((t2) => (t2.due || "") > today && !["done", "cancelled"].includes(t2.status));
+          if (months.size >= 2 && !ahead) out.push(`- Comes back every month: ${q(g[g.length - 1].title)} (${months.size} months: ${[...months].sort().join(", ")})`);
+        }
+        return out.slice(0, 5);
+      }
+      function patternTick(r, today, now, hhmm, atWork) {
+        const st = rstate(), week = addDays(today, -((now.getDay() + 6) % 7));
+        if (!atWork || st.patternWeek === week || r.chatty === "quiet") return;
+        if (!(now.getDay() === Number(r.weeklyDay ?? 5) && hhmm >= "14:00")) return;
+        st.patternWeek = week;
+        saveConfig();
+        const p = findPatterns(today);
+        if (p.length) buddySay("patterns", p.join("\n"), { tab: "tasks" });
+      }
       var awaySince = 0;
       function talkTick(r, st, now, today, hhmm, atWork, activeRecently) {
         if ((TALK[r.chatty] || TALK.normal).max === 0) return;
@@ -42738,6 +43697,7 @@ ${focus()}`, { talk: true });
         const activeRecently = Date.now() - lastUserActivity < 5 * 60 * 1e3;
         let changed = false;
         applyDayStart();
+        learnTick();
         if (r.quiet && inRange(hhmm, r.quietFrom, r.quietTo)) return;
         const atWork = isWorkday(now) && inRange(hhmm, r.workStart, r.workEnd);
         const nudgesOn = r.chatty !== "quiet" && (!r.workOnly || atWork);
@@ -42887,6 +43847,12 @@ It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
           }
         }
         talkTick(r, st, now, today, hhmm, atWork, activeRecently);
+        try {
+          chaseTick(today, atWork);
+          patternTick(r, today, now, hhmm, atWork);
+        } catch (e) {
+          logLine("chase/patterns", e && e.message);
+        }
         if (changed) saveConfig();
       }
       setInterval(routineTick, 30 * 1e3);
@@ -42943,7 +43909,7 @@ It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null, askBack: routine().askBack !== false }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null, askBack: routine().askBack !== false, expert: expertCfg() }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
@@ -43140,6 +44106,14 @@ It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
         memoryAdd: (section, text) => ipcRenderer.invoke("memory:add", section, text),
         memoryRemove: (text) => ipcRenderer.invoke("memory:remove", text),
         memoryClear: () => ipcRenderer.invoke("memory:clear"),
+        memoryLearnPast: () => ipcRenderer.invoke("memory:learnPast"),
+        memoryApplyMany: (items, expertise) => ipcRenderer.invoke("memory:applyMany", items, expertise),
+        memoryForgetLine: (text) => ipcRenderer.invoke("memory:forgetLine", text),
+        onMemoryProgress: (fn) => on("memory:progress", fn),
+        expertGet: () => ipcRenderer.invoke("expert:get"),
+        appNews: () => ipcRenderer.invoke("app:news"),
+        appNewsSeen: () => ipcRenderer.invoke("app:newsSeen"),
+        expertSet: (p) => ipcRenderer.invoke("expert:set", p),
         moneyMarkPaid: (id) => ipcRenderer.invoke("money:markPaid", id),
         moneyStopRecurring: (id) => ipcRenderer.invoke("money:stopRecurring", id),
         moneySettle: (person, wallet) => ipcRenderer.invoke("money:settle", person, wallet),
