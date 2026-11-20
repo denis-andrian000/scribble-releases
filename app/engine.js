@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.28.2";
+globalThis.__SCRIBBLE_VERSION__ = "1.28.4";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4509,6 +4509,7 @@ ${goal || "_Not set yet._"}
             if (t.status === "doing") bits.push("in progress");
             if (t.status === "hold") bits.push("on hold");
             if (t.status === "cancelled") bits.push("cancelled");
+            if (t.checklist && t.checklist.length) bits.push(`\u2611 ${t.checklist.filter((c) => c.done).length}/${t.checklist.length}`);
             const miss = missingFields(t);
             if (miss.length && !isClosed(t)) bits.push(`\u26A0 missing ${miss.join(", ")}`);
             return `- [${isClosed(t) ? "x" : " "}] ${t.status === "cancelled" ? `~~${t.title}~~` : t.title}${bits.length ? ` _(${bits.join(", ")})_` : ""} \`#${t.id}\``;
@@ -4554,7 +4555,7 @@ ${groups[n].map(fmt).join("\n")}
           }
           return out;
         }
-        addTask({ title, project, area, start, due, time, priority, notes }) {
+        addTask({ title, project, area, start, due, time, priority, notes, status, checklist }) {
           if (!title) throw new Error("Task title is required.");
           const req = this._checkTaskFields({ start, due, priority });
           const tasks = this.loadTasks();
@@ -4569,14 +4570,24 @@ ${groups[n].map(fmt).join("\n")}
             due: req.due,
             time: cleanTime(time),
             priority: req.priority,
-            status: "todo",
+            status: ["todo", "doing", "hold", "done", "cancelled"].includes(status) ? status : "todo",
             notes: notes || "",
+            checklist: _Notebook.cleanChecklist(checklist),
             created: (/* @__PURE__ */ new Date()).toISOString(),
             completed: null
           };
+          if (t.status === "done") {
+            const d = /* @__PURE__ */ new Date(`${t.due}T17:00:00`);
+            t.completed = (isNaN(d) ? /* @__PURE__ */ new Date() : d).toISOString();
+          }
           tasks.push(t);
           this._saveTasks(tasks);
           return t;
+        }
+        // A task's checklist: small steps inside it, [{ text, done }]. No dates or status of their own.
+        static cleanChecklist(list) {
+          if (!Array.isArray(list)) return [];
+          return list.map((x) => typeof x === "string" ? { text: x, done: false } : { text: String(x && x.text || ""), done: !!(x && x.done) }).map((x) => ({ text: x.text.replace(/\s+/g, " ").trim().slice(0, 200), done: x.done })).filter((x) => x.text).slice(0, 50);
         }
         updateTask(id, fields = {}) {
           const tasks = this.loadTasks();
@@ -4592,6 +4603,7 @@ ${groups[n].map(fmt).join("\n")}
           for (const k of ["title", "project", "area", "notes", "status"]) {
             if (fields[k] !== void 0) t[k] = fields[k];
           }
+          if (fields.checklist !== void 0) t.checklist = _Notebook.cleanChecklist(fields.checklist);
           if (fields.status && CLOSED.has(fields.status) && !t.completed) t.completed = (/* @__PURE__ */ new Date()).toISOString();
           if (fields.status && !CLOSED.has(fields.status)) t.completed = null;
           this._saveTasks(tasks);
@@ -4609,6 +4621,35 @@ ${groups[n].map(fmt).join("\n")}
           if (!n) throw new Error("No tasks in that project.");
           this._saveTasks(tasks);
           return n;
+        }
+        // Put a project in a folder: area (Section) and optionally category (Project folder). Its page moves there; a project
+        // that only exists on its tasks gets a page made there, since a category is just the folder the page sits in.
+        placeProject(name, fromArea, toArea, category) {
+          const isDir = (r) => {
+            try {
+              return fs2.statSync(this.resolveAny(r)).isDirectory();
+            } catch {
+              return false;
+            }
+          };
+          if (toArea && !isDir(toArea)) this.mkdir("", toArea);
+          if (toArea && category && !isDir(`${toArea}/${category}`)) this.mkdir(toArea, category);
+          const low = String(name).toLowerCase();
+          const tasks = this.loadTasks();
+          const mine = tasks.filter((t) => String(t.project || "").toLowerCase() === low && (t.area || null) === (fromArea || null));
+          let rel = this.findProject(name);
+          if (rel) {
+            const folder = toArea ? category ? `${toArea}/${category}` : toArea : "Projects";
+            if (!toArea && !isDir("Projects")) this.mkdir("", "Projects");
+            if (path.posix.dirname(rel) !== folder) rel = this.move(rel, folder);
+          } else if (category || toArea) {
+            rel = this.ensureProject(name, { area: toArea || void 0, category: category || void 0 });
+          }
+          if ((fromArea || null) !== (toArea || null) && mine.length) {
+            for (const t of mine) t.area = toArea || null;
+            this._saveTasks(tasks);
+          }
+          return { page: rel || null, tasks: mine.length };
         }
         moveProjectTasks(name, fromArea, toArea) {
           const tasks = this.loadTasks();
@@ -36337,6 +36378,8 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               due: { type: "string", description: "Due date as YYYY-MM-DD. Must be on or after the start date." },
               time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks.' },
               priority: { type: "string", enum: ["low", "medium", "high"] },
+              checklist: { type: "array", items: { type: "string" }, description: "Optional small steps inside the task (e.g. one per department). Each becomes a checkbox; they have no dates of their own." },
+              status: { type: "string", enum: ["todo", "doing", "hold", "done"], description: 'Leave out for a new task (to do). Use "done" only when the user says it is already finished (e.g. logging past work or importing a plan), "doing" when already in progress.' },
               notes: { type: "string" }
             },
             required: ["title", "start", "due", "priority"]
@@ -36344,7 +36387,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
         },
         {
           name: "update_task",
-          description: "Change a task: set its status ('todo', 'doing' = in progress, 'hold' = on hold, 'done', 'cancelled'), or edit its title, project, area, start date, due date, priority or notes.",
+          description: "Change a task: set its status ('todo', 'doing' = in progress, 'hold' = on hold, 'done', 'cancelled'), edit its title, project, area, start date, due date or priority, add a note to it, or work its checklist (the small steps inside it).",
           input_schema: {
             type: "object",
             properties: {
@@ -36357,7 +36400,12 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               due: { type: "string", description: "YYYY-MM-DD" },
               time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks.' },
               priority: { type: "string", enum: ["low", "medium", "high"] },
-              notes: { type: "string" }
+              add_note: { type: "string", description: "A note about this task to add under its existing notes (it gets today's date). Use this, not the daily page, for anything the user says about a specific task: progress, blockers, who said what." },
+              notes: { type: "string", description: "Replace ALL the notes. Only when the user asks to rewrite or clear them; otherwise use add_note." },
+              checklist_add: { type: "array", items: { type: "string" }, description: "New checklist items (small steps inside this task)." },
+              checklist_done: { type: "array", items: { type: "string" }, description: "Tick these checklist items (their text, or close enough)." },
+              checklist_undone: { type: "array", items: { type: "string" }, description: "Untick these checklist items." },
+              checklist_remove: { type: "array", items: { type: "string" }, description: "Remove these checklist items." }
             },
             required: ["id"]
           }
@@ -36661,6 +36709,8 @@ You own a notebook: a folder of markdown files the user can open in any editor.
 - Area folders the user creates (for example "Work/"). An area holds project pages, usually grouped in category sub-folders: <Area>/<Category>/<Project>.md. Use list_pages to see what exists. New work projects go in the best-fitting existing category; ask if none fits.
 - Tasks.md: generated from the task tracker; change tasks only with the task tools
 
+Task notes and checklists: when the user says something about one specific task (progress, a blocker, who said what, a decision), add it to that task with update_task add_note, not to the daily page. Small steps inside a task (one per department, per site, per person) go in its checklist; "HR sudah" / "IT done" ticks the matching item (checklist_done). When the last item is ticked, ask whether to mark the task Done instead of doing it. A step that needs its own dates is its own task, not a checklist item.
+
 Names: the user calls the three folder levels "${LV.area}" (the top folder; tools call it area), "${LV.category}" (a folder inside it; tools call it category) and "${LV.project}" (the project page with tasks; tools call it project). Always say the user's names when you talk to them; keep area/category/project in tool inputs. They can change these names in Settings \u2192 App \u2192 Tasks.
 Every task should sit in a ${LV.project} inside a ${LV.category}: ${LV.area} \u203A ${LV.category} \u203A ${LV.project} \u203A task. When you add a task, give it a project (and its area); if none fits, suggest one (or creating one) instead of leaving it loose. Tasks with no ${LV.project} show under General with a warning; when the user asks to tidy up or file them, propose where each one goes.
 
@@ -36794,8 +36844,45 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
             case "add_task":
               return nb.addTask(input);
             case "update_task": {
-              const { id, ...rest } = input;
-              return nb.updateTask(id, rest);
+              const { id, add_note, checklist_add, checklist_done, checklist_undone, checklist_remove, ...rest } = input;
+              const cur = nb.loadTasks().find((t2) => t2.id === Number(id));
+              if (!cur) throw new Error(`No task #${id}`);
+              if (add_note && String(add_note).trim()) {
+                const line = `**${localDate()}** \u2014 ${String(add_note).trim()}`;
+                rest.notes = (rest.notes !== void 0 ? rest.notes : cur.notes || "").replace(/\s+$/, "");
+                rest.notes = rest.notes ? `${rest.notes}
+${line}` : line;
+              }
+              let missed = [];
+              if (checklist_add || checklist_done || checklist_undone || checklist_remove) {
+                let list = (cur.checklist || []).map((c) => ({ ...c }));
+                const norm = (x) => String(x || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+                const find = (q) => {
+                  const n = norm(q);
+                  return list.findIndex((c) => norm(c.text) === n) !== -1 ? list.findIndex((c) => norm(c.text) === n) : list.findIndex((c) => n && ((" " + norm(c.text) + " ").includes(" " + n + " ") || (" " + n + " ").includes(" " + norm(c.text) + " ")));
+                };
+                for (const x of checklist_add || []) if (String(x).trim() && find(x) === -1) list.push({ text: String(x).trim(), done: false });
+                for (const [arr, v] of [[checklist_done, true], [checklist_undone, false]]) for (const x of arr || []) {
+                  const i = find(x);
+                  if (i === -1) missed.push(x);
+                  else list[i].done = v;
+                }
+                for (const x of checklist_remove || []) {
+                  const i = find(x);
+                  if (i === -1) missed.push(x);
+                  else list.splice(i, 1);
+                }
+                rest.checklist = list;
+              }
+              const t = nb.updateTask(id, rest);
+              const out = { ...t };
+              if (t.checklist && t.checklist.length) {
+                const d = t.checklist.filter((c) => c.done).length;
+                out.checklist_progress = `${d}/${t.checklist.length}`;
+                if (d === t.checklist.length && t.status !== "done") out.note = "Every checklist item is done. Ask the user whether to mark the task Done; do not do it yourself.";
+              }
+              if (missed.length) out.not_found = missed;
+              return out;
             }
             case "delete_task":
               return { deleted: nb.deleteTask(input.id) };
@@ -37036,11 +37123,8 @@ A project template. Each line: task (day it starts, how many days, priority). Te
                 if (area && !isDir(area)) nb.mkdir("", area);
                 if (input.category && !isDir(folder)) nb.mkdir(area, input.category);
                 if (!area && !isDir("Projects")) nb.mkdir("", "Projects");
-                if (rel) rel = nb.move(rel, folder);
-                else {
-                  const t = nb.loadTasks().find((x) => String(x.project || "").toLowerCase() === name2.toLowerCase());
-                  nb.moveProjectTasks(name2, t ? t.area || null : null, area || null);
-                }
+                const t = nb.loadTasks().find((x) => String(x.project || "").toLowerCase() === name2.toLowerCase());
+                rel = nb.placeProject(name2, t ? t.area || null : rel ? null : null, area || null, input.category || null).page || rel;
               }
               return { project: name2, page: rel || null };
             }
@@ -37189,7 +37273,7 @@ A project template. Each line: task (day it starts, how many days, priority). Te
           case "add_task":
             return `Task "${input.title}"`;
           case "update_task":
-            return `Updated task #${input.id}`;
+            return input.add_note ? `Note on task #${input.id}` : input.checklist_done || input.checklist_add ? `Checklist of task #${input.id}` : `Updated task #${input.id}`;
           case "delete_task":
             return `Deleted task #${input.id}`;
           case "create_project":
@@ -39221,6 +39305,18 @@ Content-Type: application/octet-stream\r
         "All: {0}": "Semua: {0}",
         task: "tugas",
         "Nothing here yet: right-click to add a {0}": "Masih kosong: klik kanan untuk menambah {0}",
+        "Add a note": "Tambah catatan",
+        "Add to checklist": "Tambah ke checklist",
+        Tick: "Centang",
+        Untick: "Hapus centang",
+        "Remove from checklist": "Hapus dari checklist",
+        "One per line": "Satu per baris",
+        Checklist: "Checklist",
+        "Checklist \xB7 {0}/{1}": "Checklist \xB7 {0}/{1}",
+        "Add a checklist item": "Tambah item checklist",
+        "Every item is done.": "Semua item sudah selesai.",
+        "Mark the task Done": "Tandai tugas Selesai",
+        "Drag to make this column wider or narrower. Double-click to fit.": "Seret untuk melebarkan atau menyempitkan kolom ini. Klik dua kali agar pas.",
         "Delete {0}?": "Hapus {0}?",
         "Its {0} task(s)": "{0} tugas di dalamnya",
         "Keep them as loose tasks": "Simpan sebagai tugas lepas",
@@ -41681,6 +41777,17 @@ ${brief}` }, ...blocks];
           throw e;
         }
       }));
+      ipcMain.handle("tasks:placeProject", nbOp((name, from, to, category) => {
+        notebook.begin(I18n.t('Moved "{0}" to {1}', name, category || to || I18n.t("General")));
+        try {
+          const r = notebook.placeProject(name, from, to, category);
+          notebook.commit();
+          return r;
+        } catch (e) {
+          notebook.rollback();
+          throw e;
+        }
+      }));
       ipcMain.handle("tasks:moveProject", nbOp((name, from, to) => notebook.moveProjectTasks(name, from, to)));
       ipcMain.handle("nb:read", (_e, p) => notebook.read(p));
       ipcMain.handle("nb:stat", (_e, p) => {
@@ -42620,6 +42727,7 @@ ${lines.join("\n")}
         aiAdd: (d) => ipcRenderer.invoke("ai:add", d),
         aiRemove: (id) => ipcRenderer.invoke("ai:remove", id),
         aiRename: (id, label) => ipcRenderer.invoke("ai:rename", id, label),
+        placeProject: (name, from, to, category) => ipcRenderer.invoke("tasks:placeProject", name, from, to, category),
         treeRemove: (what) => ipcRenderer.invoke("tree:remove", what),
         aiSetModel: (v) => ipcRenderer.invoke("ai:setModel", v),
         clipboardKey: () => ipcRenderer.invoke("ai:clipboardKey"),

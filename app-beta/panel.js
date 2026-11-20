@@ -877,7 +877,7 @@ const FIELDS = {
   capture_note: [['text', 'long', 'Note'], ['page', 'page', 'Save to']],
   append_to_page: [['content', 'long', 'Add'], ['path', 'page', 'Page'], ['heading', 'text', 'Under heading']],
   write_page: [['content', 'long', 'New content'], ['path', 'page', 'Page']],
-  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
+  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['status', 'status', 'Status'], ['checklist', 'lines', 'Checklist'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['add_note', 'long', 'Add a note'], ['notes', 'long', 'Notes'], ['checklist_add', 'lines', 'Add to checklist'], ['checklist_done', 'lines', 'Tick'], ['checklist_undone', 'lines', 'Untick'], ['checklist_remove', 'lines', 'Remove from checklist']],
   update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
   delete_task: [],
   create_project: [['name', 'text', 'Project'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['goal', 'long', 'Goal']],
@@ -944,7 +944,12 @@ function renderCard(card) {
     let inp;
     let val = card.input[key] ?? '';
     if (kind === 'priority') val = normPri(val);
-    if (kind === 'long') {
+    if (kind === 'lines') {
+      // a list, one item per line
+      val = Array.isArray(val) ? val.join('\n') : String(val || '');
+      inp = el('textarea'); inp.dataset.lines = '1'; inp.placeholder = I18n.t('One per line');
+      inp.rows = Math.min(8, Math.max(1, val ? val.split('\n').length : 1));
+    } else if (kind === 'long') {
       inp = el('textarea');
       inp.rows = val === '' ? 1 : Math.min(8, Math.max(2, String(val).split('\n').length + Math.floor(String(val).length / 44)));
     } else if (SELECTS[kind]) {
@@ -965,7 +970,7 @@ function renderCard(card) {
     if (required) row.dataset.key = key;
     inputs[key] = inp;
     row.append(lab, inp);
-    if (kind === 'long') { c.append(row); grid = null; }
+    if (kind === 'long' || kind === 'lines') { c.append(row); grid = null; }
     else {
       if (!grid) { grid = el('div', 'grid2'); c.append(grid); }
       grid.append(row);
@@ -1018,7 +1023,8 @@ function renderCard(card) {
     const input = { ...card.input };
     for (const [k, inp] of Object.entries(inputs)) {
       const v = inp.value.trim();
-      if (v === '') delete input[k]; else input[k] = v;
+      if (v === '') delete input[k];
+      else input[k] = inp.dataset.lines ? v.split('\n').map((x) => x.replace(/^\s*(?:[-*•]|\[[ x]\])\s*/i, '').trim()).filter(Boolean) : v;
     }
     if (moveRows) input.changes = moveRows.filter((m) => m.cb.checked && m.d.value).map((m) => ({ id: m.r.id, due: m.d.value, ...(m.r.start ? { start: m.r.start > m.d.value ? m.d.value : m.r.start } : {}), ...(m.r.time !== undefined ? { time: m.r.time } : {}) }));
     closeCard(c, `Saved${input.page || input.path ? ` to ${(input.page || input.path).replace(/\.md$/, '')}` : ''}`);
@@ -1981,8 +1987,8 @@ function groupEditing(row, nameEl, edit) {
       let d; try { d = JSON.parse(e.dataTransfer.getData(NODE_DRAG)); } catch { return; }
       if (d.kind === 'category' && edit.kind !== 'area') return toast(I18n.t('Drop a category on a folder.'));
       let r;
-      if (d.rel) r = await S.move(d.rel, edit.folder);
-      else r = await S.moveProjectTasks(d.name, d.area, edit.area || null);   // a project that only exists on its tasks
+      if (d.kind === 'project') r = await S.placeProject(d.name, d.area || null, edit.area || null, edit.kind === 'category' ? edit.name : null);
+      else r = await S.move(d.rel, edit.folder);
       if (r && r.ok === false) return toast(r.error);
       toast(I18n.t('Moved "{0}" to {1}', d.name, edit.name || I18n.t('General')));
       loadTasks();
@@ -2092,7 +2098,17 @@ function taskRow(t, depth) {
     p.textContent = `${t.start ? shortDate(t.start) + ' → ' : ''}${t.status === 'cancelled' ? 'cancelled' : 'done'}${end ? ' ' + end : ''}`;
     meta.append(p);
   }
-  if (t.notes) title.title = t.notes;
+  if (t.notes) {
+    title.title = t.notes;
+    const n = el('span', 'pill t-notes', '📝'); n.title = t.notes; meta.prepend(n);
+  }
+  const cl = t.checklist || [];
+  if (cl.length) {
+    const d = cl.filter((c) => c.done).length;
+    const p = el('span', `pill t-check${d === cl.length ? ' all' : ''}`, `☑ ${d}/${cl.length}`);
+    p.title = cl.map((c) => `${c.done ? '☑' : '☐'} ${c.text}`).join('\n');
+    meta.prepend(p);
+  }
   main.append(title, meta);
   row.append(grip, cb, main);
   wrap.append(row);
@@ -2113,11 +2129,49 @@ function taskRow(t, depth) {
         <label class="field-row cell req"><span class="f-label">Due</span><input type="date" data-k="due"></label>
         <label class="field-row cell req"><span class="f-label">Priority</span><select data-k="priority"><option value="">Choose…</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
       </div>
+      <div class="field-row stack te-check"><span class="f-label"></span><div class="te-bar"><i></i></div><div class="te-items"></div>
+        <input class="te-add" type="text"><div class="te-all" hidden><span></span><button type="button" class="btn small">✓</button></div></div>
+      <label class="field-row stack"><span class="f-label">Notes</span><textarea data-k="notes" rows="3"></textarea></label>
       <div class="card-problem" hidden></div>
       <div class="card-actions"><span class="spacer"></span><button class="btn ghost" data-a="cancel">Cancel</button><button class="btn" data-a="save">Save</button></div>`;
     const f = (k) => editor.querySelector(`[data-k="${k}"]`);
+    // checklist: tick, add (Enter), remove (×); saved with the rest
+    let items = (t.checklist || []).map((c) => ({ ...c }));
+    const box = editor.querySelector('.te-items'), addIn = editor.querySelector('.te-add');
+    addIn.placeholder = '＋ ' + I18n.t('Add a checklist item');
+    const drawList = () => {
+      const d = items.filter((c) => c.done).length;
+      editor.querySelector('.te-check .f-label').textContent = items.length ? I18n.t('Checklist · {0}/{1}', d, items.length) : I18n.t('Checklist');
+      editor.querySelector('.te-bar').hidden = !items.length;
+      editor.querySelector('.te-bar i').style.width = items.length ? `${Math.round(d / items.length * 100)}%` : '0';
+      // every step ticked: offer (never force) closing the task too
+      const all = editor.querySelector('.te-all');
+      all.hidden = !(items.length && items.every((c) => c.done) && !['done', 'cancelled'].includes(f('status').value));
+      all.querySelector('span').textContent = I18n.t('Every item is done.');
+      all.querySelector('button').textContent = '✓ ' + I18n.t('Mark the task Done');
+      box.textContent = '';
+      items.forEach((c, i) => {
+        const r = el('label', `te-item${c.done ? ' done' : ''}`);
+        const cb = el('input'); cb.type = 'checkbox'; cb.checked = c.done;
+        cb.addEventListener('change', () => { c.done = cb.checked; drawList(); });
+        const tx = el('span', null, c.text);
+        const x = el('button', 'te-x', '×'); x.type = 'button'; x.title = I18n.t('Remove');
+        x.addEventListener('click', (e) => { e.preventDefault(); items.splice(i, 1); drawList(); });
+        r.append(cb, tx, x); box.append(r);
+      });
+    };
+    addIn.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); e.stopPropagation();
+      const v = addIn.value.trim(); if (!v) return;
+      items.push({ text: v, done: false }); addIn.value = ''; drawList();
+    });
+    editor.querySelector('.te-all button').addEventListener('click', () => { f('status').value = 'done'; drawList(); check(); });
+    f('status').addEventListener('change', drawList);
+    f('notes').value = t.notes || '';
     f('title').value = t.title; f('start').value = t.start || ''; f('due').value = t.due || ''; f('priority').value = PRI_LABEL[pri] ? pri : '';
     f('status').value = t.status || 'todo';
+    drawList();
     // finished tasks keep their history as it is; only open ones must have all three fields
     const need = () => requiredFor(f('status').value);
     const prob = editor.querySelector('.card-problem');
@@ -2140,6 +2194,10 @@ function taskRow(t, depth) {
       if (!check()) return;
       const patch = { title: f('title').value.trim(), status: f('status').value };
       for (const k of ['start', 'due', 'priority']) if (f(k).value) patch[k] = f(k).value;   // empty = leave as it is
+      if (addIn.value.trim()) { items.push({ text: addIn.value.trim(), done: false }); addIn.value = ''; }
+      if (JSON.stringify(items) !== JSON.stringify(t.checklist || [])) patch.checklist = items;
+      if (f('notes').value !== (t.notes || '')) patch.notes = f('notes').value;
+
       const r = await updTask(t.id, patch);
       if (r && r.ok === false) { prob.textContent = r.error; prob.hidden = false; return; }
       openTaskEditors.delete(t.id);
@@ -2147,7 +2205,7 @@ function taskRow(t, depth) {
       loadTasks();
     });
     editor.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.tagName !== 'SELECT') { e.preventDefault(); saveBtn.click(); }
+      if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA' && !e.target.classList.contains('te-add')) { e.preventDefault(); saveBtn.click(); }
       if (e.key === 'Escape') { e.stopPropagation(); toggleEditor(); }
     });
     check();

@@ -1088,3 +1088,29 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .tl-nop .tl-name { color: #9a6a00; font-weight: 700; cursor: default; }
 @media (prefers-color-scheme: dark) { .tl-nop .tl-name { color: #F2C24F; } }
 .tl-ccat { font-weight: 700; font-size: 12px; color: var(--ink-2); margin: 2px 0 -2px 2px; }
+/* task notes + checklist */
+.pill.t-notes { background: transparent; padding: 0 2px; font-size: 12px; cursor: help; }
+.pill.t-check { background: #E3EEFF; color: #2E5AAC; font-weight: 700; cursor: help; }
+.pill.t-check.all { background: #DDF3E4; color: #1F7A45; }
+@media (prefers-color-scheme: dark) { .pill.t-check { background: #1f3358; color: #9DBDF5; } .pill.t-check.all { background: #183d27; color: #8fd9a8; } }
+.te-check .te-bar { height: 5px; border-radius: 9px; background: var(--bg-2); overflow: hidden; margin: 2px 0 4px; }
+.te-check .te-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.te-items { display: flex; flex-direction: column; gap: 2px; }
+.te-item { display: flex; align-items: center; gap: 8px; padding: 3px 2px; border-radius: 6px; cursor: pointer; }
+.te-item:hover { background: var(--bg-2); }
+.te-item span { flex: 1; }
+.te-item.done span { text-decoration: line-through; color: var(--ink-2); }
+.te-item .te-x { border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 15px; opacity: 0; padding: 0 4px; }
+.te-item:hover .te-x { opacity: 1; }
+.te-add { margin-top: 2px; border-style: dashed !important; }
+.te-all { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+.te-all[hidden] { display: none; }
+/* timeline: drag the name column's edge to resize it */
+.tl-head .tl-name { overflow: visible; }
+.tl-resize { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 6; touch-action: none; }
+.tl-resize::after { content: ''; position: absolute; left: 3px; top: 25%; height: 50%; width: 3px; border-radius: 2px; background: var(--line); transition: background .15s; }
+.tl-resize:hover::after, .tl-resizing .tl-resize::after { background: var(--accent); }
+.tl-resizing, .tl-resizing * { cursor: col-resize !important; user-select: none; }
+.task-edit .te-item { display: flex !important; grid-template-columns: none; align-items: center; gap: 8px; width: 100%; }
+.task-edit .te-item input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; }
+.task-edit .te-item span { flex: 1; text-align: left; }

@@ -11,6 +11,8 @@
     set(k, v) { try { localStorage.setItem('scribble.tl.' + k, JSON.stringify(v)); } catch {} },
   };
   let zoom = store.get('zoom', 'month');
+  // width of the name column; drag its right edge in the header to change it (double-click: fit the longest name)
+  let NW = Math.max(160, Math.min(900, store.get('nameW', 240)));
   let showDone = store.get('done', false);
   let onlyProject = '';
   const collapsed = new Set(store.get('collapsed', []));
@@ -52,6 +54,8 @@
   let catOf = new Map();
   const LV = (k) => (typeof lv === 'function' ? lv(k) : ({ area: 'Section', category: 'Project', project: 'Sub project' })[k]);
   const catFor = (a, p) => (p ? catOf.get(`${a}|${p.toLowerCase()}`) || '' : '');
+  // how far along a task is: done = 1, a checklist counts its ticked share, otherwise 0
+  const share = (t) => (t.status === 'done' ? 1 : t.checklist && t.checklist.length ? t.checklist.filter((c) => c.done).length / t.checklist.length : 0);
   function groups(list) {
     const areas = new Map();
     for (const t of list) {
@@ -127,7 +131,7 @@
     legend(box);
     // previewing: bring the suggested dates into view; otherwise around today
     const firstDraft = preview && scroller && scroller.querySelector('.tl-draft');
-    if (firstDraft) scroller.scrollTo({ left: Math.max(0, firstDraft.offsetLeft - 240 - 7 * pxDay) }); else scrollToday(false);
+    if (firstDraft) scroller.scrollTo({ left: Math.max(0, firstDraft.offsetLeft - NW - 7 * pxDay) }); else scrollToday(false);
   }
 
   function legend(box) {
@@ -146,7 +150,7 @@
     const t0 = d2n(today);
     let lo = t0 - 14, hi = t0 + 45;
     for (const t of list) for (const s of [span(eff(t)), span(t)]) if (s) { lo = Math.min(lo, s[0] - 5); hi = Math.max(hi, s[1] + 10); }
-    const minDays = Math.ceil((box.clientWidth - 240) / pxDay) + 2;
+    const minDays = Math.ceil((box.clientWidth - NW) / pxDay) + 2;
     if (hi - lo < minDays) hi = lo + minDays;
     day0 = lo;
     const W = (hi - lo + 1) * pxDay;
@@ -154,9 +158,30 @@
 
     const g = el('div', 'tl-gantt'); scroller = g;
     g.style.setProperty('--tl-w', W + 'px');
+    g.style.setProperty('--tl-name', NW + 'px');
     // header
     const head = el('div', 'tl-row tl-head');
     const hn = el('div', 'tl-name'); hn.textContent = `${LV('project')} / ${T('task')}`;
+    const grip = el('div', 'tl-resize'); grip.title = T('Drag to make this column wider or narrower. Double-click to fit.');
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const x0 = e.clientX, w0 = NW;
+      grip.setPointerCapture(e.pointerId); g.classList.add('tl-resizing');
+      const mv = (ev) => { NW = Math.max(160, Math.min(Math.max(320, box.clientWidth - 160), w0 + ev.clientX - x0)); g.style.setProperty('--tl-name', NW + 'px'); };
+      const up = () => { grip.removeEventListener('pointermove', mv); grip.removeEventListener('pointerup', up); g.classList.remove('tl-resizing'); store.set('nameW', NW); };
+      grip.addEventListener('pointermove', mv); grip.addEventListener('pointerup', up);
+    });
+    grip.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      // fit the longest name (measured), within reason
+      const probe = el('span'); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:12.5px;font-weight:700';
+      document.body.append(probe);
+      let w = 0; for (const n of g.querySelectorAll('.tl-name')) { probe.textContent = n.textContent; w = Math.max(w, probe.offsetWidth + (parseFloat(getComputedStyle(n).paddingLeft) || 10) + 24); }
+      probe.remove();
+      NW = Math.max(160, Math.min(Math.max(320, box.clientWidth - 160), Math.ceil(w)));
+      g.style.setProperty('--tl-name', NW + 'px'); store.set('nameW', NW);
+    });
+    hn.append(grip);
     const hl = el('div', 'tl-lane');
     for (let n = lo; n <= hi; n++) {
       const d = new Date(n * DAY), dow = d.getUTCDay(), dom = d.getUTCDate();
@@ -173,10 +198,10 @@
     head.append(hn, hl); g.append(head);
 
     const body = el('div', 'tl-body');
-    const now = el('div', 'tl-now'); now.style.left = (240 + x(t0) + pxDay / 2) + 'px'; now.innerHTML = `<b>${T('Today')}</b>`;
+    const now = el('div', 'tl-now'); now.style.left = `calc(var(--tl-name) + ${x(t0) + pxDay / 2}px)`; now.innerHTML = `<b>${T('Today')}</b>`;
     body.append(now);
     const grid = el('div', 'tl-grid'); grid.style.backgroundSize = `${(zoom === 'quarter' ? 30 : 7) * pxDay}px 100%`;
-    grid.style.backgroundPosition = `${240 + x(lo + ((8 - new Date(lo * DAY).getUTCDay()) % 7))}px 0`;
+    grid.style.backgroundPosition = `calc(var(--tl-name) + ${x(lo + ((8 - new Date(lo * DAY).getUTCDay()) % 7))}px) 0`;
     body.append(grid);
 
     for (const [area, projects] of groups(list)) {
@@ -196,8 +221,8 @@
         }
         if (proj) {
           const everything = all.filter((t) => t.project === proj && (t.area || '') === area);
-          const done = everything.filter((t) => t.status === 'done').length;
           const live = everything.filter((t) => t.status !== 'cancelled');
+          const done = live.reduce((a, t) => a + share(t), 0);
           const pct = live.length ? Math.round(done / live.length * 100) : 0;
           const ss = everything.map((t) => span(eff(t))).filter(Boolean);
           const pr = el('div', 'tl-row tl-proj');
@@ -325,7 +350,7 @@
         const len = b - a + 1, pc = (n) => ((n - a) / len * 100).toFixed(2) + '%';
         const c = el('div', 'tl-card');
         const everything = all.filter((t) => (t.project || '') === proj && (t.area || '') === area && t.status !== 'cancelled');
-        const pct = everything.length ? Math.round(everything.filter((t) => t.status === 'done').length / everything.length * 100) : 0;
+        const pct = everything.length ? Math.round(everything.reduce((a, t) => a + share(t), 0) / everything.length * 100) : 0;
         const ends = Math.max(...ss.map((s) => s[1]));
         const h = el('div', 'tl-ch'); h.innerHTML = '<b></b><span></span>';
         h.firstChild.textContent = proj || '⚠ ' + T('no {0}', LV('project'));
