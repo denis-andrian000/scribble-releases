@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.30.1";
+globalThis.__SCRIBBLE_VERSION__ = "1.30.2";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -37342,16 +37342,26 @@ ${transcript}` }] }, () => {
           let changed = false, moneyChanged = false;
           this.memory = this.getMemory();
           const system = systemPrompt(this.nb, localDate(), this.getPersona(), !!this.money, !!this.memory);
+          const turnSystem = system + styleNote(messages, (this.getPersona() || {}).tone) + `
+The time now: ${(/* @__PURE__ */ new Date()).toTimeString().slice(0, 5)}.`;
+          let strippedThinking = false;
           for (let step = 0; step < 12; step++) {
             const model = active.model;
             onEvent({ type: "step" });
             let resp;
             for (; ; ) {
               try {
-                resp = await this.complete(active, client, { system: system + styleNote(messages, (this.getPersona() || {}).tone) + `
-The time now: ${(/* @__PURE__ */ new Date()).toTimeString().slice(0, 5)}.`, tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
+                resp = await this.complete(active, client, { system: turnSystem, tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
                 break;
               } catch (e) {
+                if (!strippedThinking && /signature|thinking/i.test(String(e && e.message)) && /thinking/i.test(String(e && e.message))) {
+                  strippedThinking = true;
+                  for (const m of messages) if (m.role === "assistant" && Array.isArray(m.content)) {
+                    m.content = m.content.filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
+                    if (!m.content.length) m.content = [{ type: "text", text: "\u2026" }];
+                  }
+                  continue;
+                }
                 const next = this.onLimit(active, e, tried);
                 if (!next) throw e;
                 tried.add(`${next.conn.id}::${next.model}`);
@@ -39877,7 +39887,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
       module.exports = {
         name: "scribble-buddy",
         productName: "Scribble",
-        version: "1.30.1",
+        version: "1.30.2",
         description: "A tiny floating desktop buddy that takes notes and tracks tasks and projects, powered by Gemini or Claude.",
         main: "src/main.js",
         author: "Omniz",
@@ -39951,6 +39961,26 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
   var require_changelog = __commonJS({
     "../src/changelog.json"(exports, module) {
       module.exports = [
+        {
+          v: "1.30.2",
+          date: "2026-11-23",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                '"Invalid signature in thinking block \u2026 Try again" in the middle of a reply. It happened when the clock ticked over to the next minute while your buddy was still working on a reply (1.30.1 started telling it the time). The time is now fixed for the whole reply, and if the AI still refuses older thinking, your buddy drops it and carries on by itself.'
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                '"Invalid signature in thinking block \u2026 Try again" di tengah balasan. Ini terjadi saat jam berganti ke menit berikutnya ketika buddy masih menyusun balasan (sejak 1.30.1 buddy diberi tahu jam sekarang). Sekarang jamnya tetap selama satu balasan, dan kalau AI tetap menolak pemikiran lama, buddy membuangnya dan melanjutkan sendiri.'
+              ]
+            }
+          ]
+        },
         {
           v: "1.30.1",
           date: "2026-11-23",
@@ -40436,22 +40466,6 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 '**No more "Inbox (conflict \u2026)" copies.** When Inbox, a daily page or meeting notes were changed on two devices before they synced, Scribble kept the other version as a separate "(conflict \u2026)" page. Sync now keeps every line from both in the one page. Existing conflict copies of these pages are folded back into their page once, as one step you can undo.'
-              ]
-            }
-          ]
-        },
-        {
-          v: "1.22.0",
-          date: "2026-11-12",
-          en: [
-            {
-              title: "Added",
-              items: [
-                '**Ask your notes**: "what did the vendor quote last month?", "kapan terakhir aku ketemu Pak James?". Your buddy searches your pages, tasks and money records and answers with a link to the page it came from (tap it to open). If nothing matches it says so instead of guessing.',
-                '**Project templates**: "save the Chatwoot migration as a template", then "start a new client onboarding for PT Maju from Monday" creates the project and all its tasks with real dates. Templates are pages in Templates/ you can edit.',
-                "**Meeting notes** (\u{1F399} in the chat suggestions and Today): your buddy listens during a meeting (Chrome and Android for free; the Windows app with your OpenRouter key), or you type. Finish and it writes a meeting page with a summary, decisions and action items, and offers your action items as tasks.",
-                "**My week** (\u{1F3C6}): a card with what you finished, your streak, your busiest day and money this week, with your buddy on it. Save it as an image or share it (WhatsApp story, Instagram).",
-                "**Android home-screen widget**: today's tasks (late ones marked) and what's free to spend a day. Tap it to open Scribble. Long-press your home screen \u2192 Widgets \u2192 Scribble."
               ]
             }
           ]
