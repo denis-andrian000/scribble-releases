@@ -2135,6 +2135,13 @@ function taskRow(t, depth) {
     p.title = cl.map((c) => `${c.done ? '☑' : '☐'} ${c.text}`).join('\n');
     meta.prepend(p);
   }
+  for (const r of remindersNow.filter((x) => x.taskId != null && String(x.taskId) === String(t.id)).slice(0, 2)) {
+    const today = new Date(); const d = r.at.slice(0, 10), same = d === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const w = el('span', 'pill t-rem'); w.textContent = `⏰ ${same ? '' : new Date(d + 'T12:00:00').toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'short' }) + ' '}${r.at.slice(11, 16)}`;
+    w.title = I18n.t('Reminder: {0}. Click to cancel it.', r.text);
+    w.addEventListener('click', async (e) => { e.stopPropagation(); await S.remindersCancel(r.id); });
+    meta.prepend(w);
+  }
   if (t.waiting && t.waiting.who && !['done', 'cancelled'].includes(t.status)) {
     const days = Math.max(0, Math.round((Date.now() - new Date(t.waiting.since + 'T12:00:00')) / 864e5));
     const w = el('span', 'pill t-wait'); w.textContent = `⏳ ${t.waiting.who}${days ? ` · ${I18n.t('{0}d', days)}` : ''}`;
@@ -3427,6 +3434,12 @@ if ($('#m-on')) {
     acts.append(cancel, save); rv.append(acts);
   });
 }
+
+// ---------------- reminders (shown on their task rows) ----------------
+var remindersNow = [];   // var: task rows can be drawn before this line runs
+async function loadReminders() { if (!S.remindersList) return; remindersNow = await S.remindersList() || []; if (currentTab === 'tasks') loadTasks(); }
+if (S.onRemindersChanged) S.onRemindersChanged(loadReminders);
+setTimeout(() => loadReminders().catch(() => {}), 800);
 
 // ---------------- what's new ----------------
 async function loadNews() {

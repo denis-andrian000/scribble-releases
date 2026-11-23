@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.30.0";
+globalThis.__SCRIBBLE_VERSION__ = "1.30.1";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -36405,7 +36405,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
               area: { type: "string", description: 'Area folder it belongs to, e.g. "Work". Omit for personal/general.' },
               start: { type: "string", description: "YYYY-MM-DD" },
               due: { type: "string", description: "YYYY-MM-DD" },
-              time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks.' },
+              time: { type: "string", description: 'Optional time on the due date, 24h HH:MM (e.g. "14:00" for "jam 2 siang"). Leave out for all-day tasks. Only when the task itself happens at that time; for "remind me at\u2026" use set_reminder and leave due and time alone.' },
               priority: { type: "string", enum: ["low", "medium", "high"] },
               add_note: { type: "string", description: "A note about this task to add under its existing notes (it gets today's date). Use this, not the daily page, for anything the user says about a specific task: progress, blockers, who said what." },
               notes: { type: "string", description: "Replace ALL the notes. Only when the user asks to rewrite or clear them; otherwise use add_note." },
@@ -36652,6 +36652,23 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
         }
       ];
       var MONEY_NAMES = new Set(MONEY_TOOLS.map((t) => t.name));
+      var REMINDER_TOOLS = [
+        {
+          name: "set_reminder",
+          description: `Remind the user at a moment: they get a nudge from you then. Use this for any "remind me\u2026" (at a time, in 30 minutes, an hour before something). NEVER change a task's due date or time just to get a reminder. Link it to the task when it is about one.`,
+          input_schema: { type: "object", properties: {
+            at: { type: "string", description: `Local date and time "YYYY-MM-DD HH:MM" (24h). Work it out from today's date and the current time.` },
+            text: { type: "string", description: "What to remind them about, short, in their language. Optional when task_id is given." },
+            task_id: { type: "number", description: "The task it is about, if any." }
+          }, required: ["at"] }
+        },
+        { name: "list_reminders", description: "The reminders still to come.", input_schema: { type: "object", properties: {} } },
+        {
+          name: "cancel_reminder",
+          description: "Cancel (or move: cancel, then set a new one) a reminder still to come.",
+          input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+        }
+      ];
       var MEMORY_TOOLS = [
         {
           name: "remember",
@@ -36711,17 +36728,19 @@ Money: you also keep track of the user's money (spending, income, transfers betw
         }
         return "";
       }
+      var EN_WORDS = new Set("i im ill ive me my mine you your it its is are was were be been do does did done the a an and but or so to of in on at for with from this that these those what when where which who how why will would can could should please remind tell show make add set move mark today tomorrow tonight now later yes no not just still need want".split(" "));
       function styleNote(messages, toneKey) {
         const t = latestUserText(messages);
         if (!t) return "";
         const words = t.toLowerCase().match(/[a-z]+/g) || [];
         const id = words.filter((w) => ID_WORDS.has(w)).length;
-        const lang = id >= 2 || words.length <= 4 && id >= 1 ? "Indonesian" : "the same language as the user";
+        const en = words.filter((w) => EN_WORDS.has(w)).length;
+        const lang = id >= 2 || words.length <= 4 && id >= 1 ? "Indonesian" : en >= 2 && id === 0 ? "English" : "the same language as the user";
         const quote = t.length > 240 ? t.slice(0, 240) + "\u2026" : t;
         const how = (toneKey || "mirror") === "mirror" ? "Match its tone exactly: if it is casual or lazy-sounding, answer just as casually and briefly, reusing the kind of everyday words they use (no formal or report-like phrasing); if it is formal, be formal." : "Keep the chat style above.";
         return `
 
-FOR THIS REPLY: the user's latest message is: "${quote.replace(/"/g, "'")}". Answer in ${lang}${lang === "Indonesian" ? " (do not switch to English, even though tool results and notes are in English)" : ""}. ${how}`;
+FOR THIS REPLY: the user's latest message is: "${quote.replace(/"/g, "'")}". Answer in ${lang}${lang === "Indonesian" ? " (do not switch to English, even though tool results and notes are in English)" : lang === "English" ? " (they wrote in English this time: answer in English, even if earlier messages, notes or what you know about them are in Indonesian)" : ""}. ${how}`;
       }
       function systemPrompt(nb, date = localDate(), persona = {}, withMoney = false, withMemory = false) {
         const name = (persona.name || "Scribble").slice(0, 40);
@@ -36789,9 +36808,10 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
         // getActive() -> { conn: { provider, key, baseUrl, project, region }, model } or null when nothing is set up
         // onLimit(active, error, tried) -> another active model to retry with, or null (rate limits, no credit, overload)
         constructor({ notebook, getActive, onLimit = () => null, getPersona = () => ({}), getMoney = () => null, onShow = () => {
-        }, getRoutine = () => ({}), getMemory = () => null, searchChats = null }) {
+        }, getRoutine = () => ({}), getMemory = () => null, searchChats = null, reminders = null }) {
           this.getMemory = getMemory;
           this.searchChats = searchChats;
+          this.reminders = reminders;
           this.onShow = onShow;
           this.getRoutine = getRoutine;
           this.getMoney = getMoney;
@@ -36987,6 +37007,24 @@ A project template. Each line: task (day it starts, how many days, priority). Te
               const made = rows.map((m) => nb.addTask({ title: m[1], project: input.project, area: input.area || null, start: add(input.start, +m[2]), due: add(input.start, +m[2] + Math.max(1, +m[3]) - 1), priority: (m[4] || "medium").toLowerCase() }));
               return { project: input.project, from_template: hit, tasks: made.map((t) => `${t.title}: ${t.start} \u2192 ${t.due}`) };
             }
+            case "set_reminder": {
+              if (!this.reminders) return { error: "Reminders are not available here." };
+              const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(input.at || "").trim());
+              if (!m) return { error: 'at must be "YYYY-MM-DD HH:MM"' };
+              const at = `${m[1]}T${m[2].padStart(2, "0")}:${m[3]}`;
+              let task = null;
+              if (input.task_id != null) {
+                task = nb.loadTasks().find((t) => String(t.id) === String(input.task_id));
+                if (!task) return { error: `No task #${input.task_id}` };
+              }
+              const text = String(input.text || (task ? task.title : "")).trim().slice(0, 200);
+              if (!text) return { error: "Say what to remind them about (text)." };
+              return this.reminders.add({ at, text, taskId: task ? task.id : null });
+            }
+            case "list_reminders":
+              return { reminders: this.reminders ? this.reminders.list() : [] };
+            case "cancel_reminder":
+              return this.reminders ? this.reminders.cancel(String(input.id)) : { cancelled: false };
             case "remember": {
               const m = this.getMemory();
               if (!m) return { saved: false, note: "Memory is off in Settings." };
@@ -37299,7 +37337,7 @@ ${transcript}` }] }, () => {
           const tried = /* @__PURE__ */ new Set([`${active.conn.id}::${active.model}`]);
           this.money = this.getMoney();
           const mem = this.getMemory();
-          const plainTools = [...TOOLS, ...this.money ? MONEY_TOOLS : [], ...mem ? MEMORY_TOOLS.filter((t) => t.name !== "search_chats" || this.searchChats) : []];
+          const plainTools = [...TOOLS, ...this.reminders ? REMINDER_TOOLS : [], ...this.money ? MONEY_TOOLS : [], ...mem ? MEMORY_TOOLS.filter((t) => t.name !== "search_chats" || this.searchChats) : []];
           const tools = plainTools.map((t, i) => i === plainTools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t);
           let changed = false, moneyChanged = false;
           this.memory = this.getMemory();
@@ -37310,7 +37348,8 @@ ${transcript}` }] }, () => {
             let resp;
             for (; ; ) {
               try {
-                resp = await this.complete(active, client, { system: system + styleNote(messages, (this.getPersona() || {}).tone), tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
+                resp = await this.complete(active, client, { system: system + styleNote(messages, (this.getPersona() || {}).tone) + `
+The time now: ${(/* @__PURE__ */ new Date()).toTimeString().slice(0, 5)}.`, tools, plainTools, messages: trimHistory(messages) }, (delta) => onEvent({ type: "text", delta }));
                 break;
               } catch (e) {
                 const next = this.onLimit(active, e, tried);
@@ -39558,7 +39597,12 @@ Content-Type: application/octet-stream\r
         "this version": "versi ini",
         "\u{1F389} Updated to {0}": "\u{1F389} Diperbarui ke {0}",
         "Older versions:": "Versi lama:",
-        "all releases": "semua rilis"
+        "all releases": "semua rilis",
+        "\u23F0 Reminder": "\u23F0 Pengingat",
+        "Reminder: {0}. Click to cancel it.": "Pengingat: {0}. Klik untuk membatalkannya.",
+        "\u23F0 Reminder set": "\u23F0 Pengingat dipasang",
+        "\u23F0 Reminder cancelled": "\u23F0 Pengingat dibatalkan",
+        "\u23F0 Checked reminders": "\u23F0 Cek pengingat"
       };
     }
   });
@@ -39833,7 +39877,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
       module.exports = {
         name: "scribble-buddy",
         productName: "Scribble",
-        version: "1.30.0",
+        version: "1.30.1",
         description: "A tiny floating desktop buddy that takes notes and tracks tasks and projects, powered by Gemini or Claude.",
         main: "src/main.js",
         author: "Omniz",
@@ -39907,6 +39951,40 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
   var require_changelog = __commonJS({
     "../src/changelog.json"(exports, module) {
       module.exports = [
+        {
+          v: "1.30.1",
+          date: "2026-11-23",
+          en: [
+            {
+              title: "Added",
+              items: [
+                `Real reminders: "remind me at 4", "remind me an hour before", "ingetin 30 menit lagi". Your buddy sets a reminder and nudges you at that moment (a bubble and a Windows notification), without touching the task's due date or time. Reminders on a task show as \u23F0 15:00 on its row; click it to cancel. A reminder missed while the computer was off comes as soon as it's back.`
+              ]
+            },
+            {
+              title: "Fixed",
+              items: [
+                `The buddy changed a task's deadline to today just to make a reminder go off, and said it couldn't remind you "an hour before". It now uses a reminder instead and leaves your dates alone.`,
+                "When you write in English, the buddy answers in English, even if you often write in Bahasa or your notes are in Bahasa."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Baru",
+              items: [
+                'Pengingat sungguhan: "ingetin jam 4", "ingetin sejam sebelumnya", "remind me in 30 minutes". Buddy memasang pengingat dan menyapamu tepat waktunya (balon bicara dan notifikasi Windows), tanpa mengubah tenggat atau jam tugas. Pengingat pada tugas tampil sebagai \u23F0 15:00 di barisnya; klik untuk membatalkan. Pengingat yang terlewat saat komputer mati muncul begitu komputer menyala lagi.'
+              ]
+            },
+            {
+              title: "Diperbaiki",
+              items: [
+                'Buddy mengubah tenggat tugas ke hari ini hanya supaya pengingatnya muncul, dan bilang tidak bisa mengingatkan "sejam sebelumnya". Sekarang buddy memakai pengingat dan tidak mengubah tanggalmu.',
+                "Saat kamu menulis dalam bahasa Inggris, buddy menjawab dalam bahasa Inggris, walaupun kamu sering menulis dalam Bahasa Indonesia atau catatanmu berbahasa Indonesia."
+              ]
+            }
+          ]
+        },
         {
           v: "1.30.0",
           date: "2026-11-20",
@@ -40374,27 +40452,6 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "**Meeting notes** (\u{1F399} in the chat suggestions and Today): your buddy listens during a meeting (Chrome and Android for free; the Windows app with your OpenRouter key), or you type. Finish and it writes a meeting page with a summary, decisions and action items, and offers your action items as tasks.",
                 "**My week** (\u{1F3C6}): a card with what you finished, your streak, your busiest day and money this week, with your buddy on it. Save it as an image or share it (WhatsApp story, Instagram).",
                 "**Android home-screen widget**: today's tasks (late ones marked) and what's free to spend a day. Tap it to open Scribble. Long-press your home screen \u2192 Widgets \u2192 Scribble."
-              ]
-            }
-          ]
-        },
-        {
-          v: "1.21.0",
-          date: "2026-11-12",
-          en: [
-            {
-              title: "Added",
-              items: [
-                '**Bills that repeat** (Money): tell your buddy once ("BPJS 150rb every 10th from BCA", "Netflix 186rb tiap tanggal 5", "gaji tiap tanggal 25") and before each date it appears as a planned payment with a reminder. Tap **Paid** (or tell your buddy "udah bayar") and it counts in the wallet. Weekly and yearly work too; Stop ends one.',
-                `**Split bills**: "dinner 600rb split with Andi and Sari, pake BCA" records the bill and remembers who owes you how much. When someone pays you back, pick the wallet it went into and it's recorded and cleared. You can also note money you owe someone.`,
-                '**Savings goals**: "save 5 juta for a new phone by March" shows a progress bar and how much a week you need to make it. Add savings by chat or on the Money screen, or tie a goal to a savings wallet so its balance is the progress.',
-                "A **Plans** row on the Money screen: bills coming up, who owes what, and your goals."
-              ]
-            },
-            {
-              title: "Fixed",
-              items: [
-                `The labels under the buddy's replies ("Added task\u2026", "Recorded\u2026") now follow the app language.`
               ]
             }
           ]
@@ -40945,6 +41002,9 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
         move_tasks: "Moved tasks",
         show_timeline: "Opened the timeline",
         remember: "\u{1F9E0} Remembered",
+        set_reminder: "\u23F0 Reminder set",
+        cancel_reminder: "\u23F0 Reminder cancelled",
+        list_reminders: "\u23F0 Checked reminders",
         forget: "\u{1F9E0} Forgot",
         search_chats: "\u{1F50E} Searched past chats",
         show_on_screen: "\u{1F441} Showing",
@@ -43306,6 +43366,7 @@ ${top}` : ""}`,
         friday: "It's Friday afternoon.",
         late: "They're still working after office hours.",
         cheer: "The user just ticked off a task. Cheer them on briefly (one line).",
+        reminder: 'A reminder the user asked you to give them is due now. Remind them clearly (name the thing exactly), in one or two lines. You can offer to snooze it (reply options like "10 min more", "Done").',
         chase: "A task has been waiting on someone for a few days. Mention it and offer to draft a short follow-up message they can send (make one reply option like 'Draft the message').",
         patterns: "Weekly look back: you spotted patterns in their tasks (things that keep slipping, things that come back every month). Mention the most useful one and suggest what to do (block time, make it a repeating task / template, split it). Offer, keep it light."
       };
@@ -43437,6 +43498,54 @@ ${facts}` : ""}`;
         showPanel("chat");
         sendPanel("quick:send", String(text || "").slice(0, 200));
       });
+      var remList = () => config.reminders ||= [];
+      var REMINDERS = {
+        add({ at, text, taskId = null }) {
+          const now = /* @__PURE__ */ new Date(), when = new Date(at);
+          if (isNaN(when)) return { error: "Bad time" };
+          if (when < now - 6e4) return { error: `That time (${at.replace("T", " ")}) has already passed. It is now ${localDate()} ${now.toTimeString().slice(0, 5)}.` };
+          const r = { id: "r" + Date.now().toString(36), at, text, taskId, made: (/* @__PURE__ */ new Date()).toISOString() };
+          remList().push(r);
+          config.reminders.sort((a, b) => a.at.localeCompare(b.at));
+          saveConfig();
+          sendPanel("reminders:changed");
+          return { set: true, id: r.id, at: at.replace("T", " "), text };
+        },
+        list() {
+          return remList().map((r) => ({ id: r.id, at: r.at.replace("T", " "), text: r.text, task_id: r.taskId }));
+        },
+        cancel(id) {
+          const before = remList().length;
+          config.reminders = remList().filter((r) => r.id !== id && !(r.text && r.text === id));
+          if (config.reminders.length !== before) {
+            saveConfig();
+            sendPanel("reminders:changed");
+            return { cancelled: true };
+          }
+          return { cancelled: false, note: "No such reminder. list_reminders shows the ids." };
+        }
+      };
+      ipcMain.handle("reminders:list", () => remList());
+      ipcMain.handle("reminders:cancel", (_e, id) => REMINDERS.cancel(id));
+      function reminderTick() {
+        const now = /* @__PURE__ */ new Date(), due = remList().filter((r) => new Date(r.at) <= now);
+        if (!due.length) return;
+        config.reminders = remList().filter((r) => new Date(r.at) > now);
+        saveConfig();
+        sendPanel("reminders:changed");
+        const today = localDate();
+        for (const r of due.slice(0, 3)) {
+          const t2 = r.taskId != null ? notebook.loadTasks().find((x) => String(x.id) === String(r.taskId)) : null;
+          const late = Math.round((now - new Date(r.at)) / 6e4);
+          if (!ANDROID) notify(I18n.t("\u23F0 Reminder"), r.text, t2 ? "tasks" : "chat");
+          buddySay(
+            "reminder",
+            `Reminder they asked for${late > 10 ? ` (set for ${r.at.slice(11)}, ${late} min late: the computer was off or asleep)` : ` at ${r.at.slice(11)}`}: ${q(r.text)}${t2 ? `
+${taskFact(t2, today)}` : ""}`,
+            { tab: t2 ? "tasks" : "chat", title: I18n.t("\u23F0 Reminder"), body: r.text }
+          );
+        }
+      }
       var learning = false;
       var learnFailAt = 0;
       var chatTurns = (c, from = 0) => {
@@ -43697,6 +43806,11 @@ ${focus()}`, { talk: true });
         const activeRecently = Date.now() - lastUserActivity < 5 * 60 * 1e3;
         let changed = false;
         applyDayStart();
+        try {
+          reminderTick();
+        } catch (e) {
+          logLine("reminders", e && e.message);
+        }
         learnTick();
         if (r.quiet && inRange(hhmm, r.quietFrom, r.quietTo)) return;
         const atWork = isWorkday(now) && inRange(hhmm, r.workStart, r.workEnd);
@@ -43909,7 +44023,7 @@ It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
         delete config.growth;
         delete config.lastGrowthDay;
         applyTheme();
-        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null, askBack: routine().askBack !== false, expert: expertCfg() }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k) });
+        agent = new Agent({ notebook, getActive: modelForNextMessage, onLimit, getPersona: () => ({ name: avatar().name, tone: avatar().tone, levels: config.levels || null, askBack: routine().askBack !== false, expert: expertCfg() }), getMoney: () => config.money === true ? money() : null, onShow: (view, opts) => sendPanel("ui:show", { view, ...opts }), getRoutine: () => routine(), getMemory: () => memory(), searchChats: (k) => searchChats(k), reminders: REMINDERS });
         Object.assign(BUDDY, buddySize());
         chat = loadCurrentChat();
         saveConfig();
@@ -44112,6 +44226,9 @@ It starts ${left > 0 ? `in ${left} minutes` : "now"}.`,
         onMemoryProgress: (fn) => on("memory:progress", fn),
         expertGet: () => ipcRenderer.invoke("expert:get"),
         appNews: () => ipcRenderer.invoke("app:news"),
+        remindersList: () => ipcRenderer.invoke("reminders:list"),
+        remindersCancel: (id) => ipcRenderer.invoke("reminders:cancel", id),
+        onRemindersChanged: (fn) => on("reminders:changed", fn),
         appNewsSeen: () => ipcRenderer.invoke("app:newsSeen"),
         expertSet: (p) => ipcRenderer.invoke("expert:set", p),
         moneyMarkPaid: (id) => ipcRenderer.invoke("money:markPaid", id),

@@ -1150,3 +1150,4 @@ body.wide .mn-table th, body.wide .mn-table td { padding: 9px 12px; }
 .news-banner { display: flex; align-items: center; gap: 10px; margin: 8px 12px 0; padding: 7px 12px; border-radius: 10px; font-size: 13px; background: color-mix(in srgb, var(--accent) 18%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .news-banner span { flex: 1; }
 .news-banner .link { font-weight: 700; }
+.pill.t-rem { background: color-mix(in srgb, #3F6FD8 14%, var(--bg)); color: #2C4FA0; cursor: pointer; }
