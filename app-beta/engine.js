@@ -43518,6 +43518,8 @@ ${facts}` : ""}`;
           const now = /* @__PURE__ */ new Date(), when = new Date(at);
           if (isNaN(when)) return { error: "Bad time" };
           if (when < now - 6e4) return { error: `That time (${at.replace("T", " ")}) has already passed. It is now ${localDate()} ${now.toTimeString().slice(0, 5)}.` };
+          const dup = remList().find((x) => x.at === at && (taskId != null ? String(x.taskId) === String(taskId) : x.text === text));
+          if (dup) return { set: true, id: dup.id, at: at.replace("T", " "), text: dup.text, note: "Already set." };
           const r = { id: "r" + Date.now().toString(36), at, text, taskId, made: (/* @__PURE__ */ new Date()).toISOString() };
           remList().push(r);
           config.reminders.sort((a, b) => a.at.localeCompare(b.at));
