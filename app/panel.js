@@ -903,7 +903,7 @@ const FIELDS = {
   capture_note: [['text', 'long', 'Note'], ['page', 'page', 'Save to']],
   append_to_page: [['content', 'long', 'Add'], ['path', 'page', 'Page'], ['heading', 'text', 'Under heading']],
   write_page: [['content', 'long', 'New content'], ['path', 'page', 'Page']],
-  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['status', 'status', 'Status'], ['checklist', 'lines', 'Checklist'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
+  add_task: [['title', 'long', 'Task'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['status', 'status', 'Status'], ['checklist', 'lines', 'Checklist'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['project', 'project', 'Project'], ['notes', 'long', 'Notes']],
   update_task: [['status', 'status', 'Status'], ['title', 'long', 'Title'], ['start', 'date', 'Start'], ['due', 'date', 'Due'], ['time', 'time', 'Time'], ['priority', 'priority', 'Priority'], ['area', 'area', 'Area'], ['project', 'project', 'Project'], ['add_note', 'long', 'Add a note'], ['notes', 'long', 'Notes'], ['checklist_add', 'lines', 'Add to checklist'], ['checklist_done', 'lines', 'Tick'], ['checklist_undone', 'lines', 'Untick'], ['checklist_remove', 'lines', 'Remove from checklist'], ['waiting_on', 'text', 'Waiting on']],
   delete_task: [],
   create_project: [['name', 'text', 'Project'], ['area', 'area', 'Area'], ['category', 'category', 'Category'], ['goal', 'long', 'Goal']],

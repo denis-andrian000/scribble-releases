@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.30.2";
+globalThis.__SCRIBBLE_VERSION__ = "1.30.3";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -4323,6 +4323,28 @@ ${block}`;
           for (const top of fs2.readdirSync(this.root, { withFileTypes: true })) {
             if (!top.isDirectory() || top.name.startsWith(".") || builtIn.has(top.name) || top.name === "Inbox files") continue;
             out[top.name] = fs2.readdirSync(path.join(this.root, top.name), { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => d.name).sort();
+          }
+          return out;
+        }
+        // Every project page with where it lives: [{ name, area, category, path, open }], for "where does this task go?"
+        projectPlaces() {
+          const skip = /^(Daily|Notes|Inbox files)\//;
+          const open = {};
+          for (const t of this.loadTasks()) if (t.project && !["done", "cancelled"].includes(t.status)) open[t.project.toLowerCase()] = (open[t.project.toLowerCase()] || 0) + 1;
+          const out = [];
+          for (const p of this.tree()) {
+            if (skip.test(p.path) || !p.path.includes("/") || /README\.md$/i.test(p.path)) continue;
+            const parts = p.path.replace(/\.md$/, "").split("/");
+            if (parts.length > 3) continue;
+            const name = parts[parts.length - 1];
+            const area = parts[0] === "Projects" ? null : parts[0];
+            const category = parts.length === 3 ? parts[1] : null;
+            out.push({ name, area, category, path: p.path, open: open[name.toLowerCase()] || 0 });
+          }
+          const seen = new Set(out.map((p) => p.name.toLowerCase()));
+          for (const t of this.loadTasks()) if (t.project && !seen.has(t.project.toLowerCase())) {
+            seen.add(t.project.toLowerCase());
+            out.push({ name: t.project, area: t.area || null, category: null, path: null, open: open[t.project.toLowerCase()] || 0 });
           }
           return out;
         }
@@ -36378,7 +36400,7 @@ IMPORTANT: In this chat you are running on a model that cannot use tools, so you
             type: "object",
             properties: {
               title: { type: "string" },
-              project: { type: "string", description: "Project name, if it belongs to one." },
+              project: { type: "string", description: "The existing project (the user calls it their sub project level) it goes in. Required: every task sits in one. If you get it wrong, the tool tells you the closest ones." },
               options: { type: "array", items: { type: "string" }, description: "Other plausible destinations (other project names) the user can pick with one tap, best guesses first. Up to 3." },
               area: { type: "string", description: 'Area folder it belongs to, e.g. "Work". Omit for personal/general.' },
               start: { type: "string", description: 'Start date as YYYY-MM-DD (when work on it begins). Convert relative dates like "today" or "Monday" yourself.' },
@@ -36904,8 +36926,11 @@ Two-way saving: every change you make to the notebook or tasks is shown to the u
               return { saved_to: nb.append(input.path, input.content, { heading: input.heading }) };
             case "search_notes":
               return nb.search(input.query);
-            case "add_task":
-              return nb.addTask(input);
+            case "add_task": {
+              const { _where, category, ...task } = input;
+              if (task.project && !nb.findProject(task.project)) nb.ensureProject(task.project, { area: task.area, category: category || void 0 });
+              return nb.addTask(task);
+            }
             case "update_task": {
               const { id, add_note, checklist_add, checklist_done, checklist_undone, checklist_remove, ...rest } = input;
               const cur = nb.loadTasks().find((t2) => t2.id === Number(id));
@@ -37277,6 +37302,41 @@ ${context}` }] }, () => {
           if (!text) throw new Error("empty");
           return { text, replies: (Array.isArray(j.replies) ? j.replies : []).map((r) => String(r).replace(/[«»]/g, "").trim()).filter(Boolean).slice(0, 3), mood: j.mood || "calm" };
         }
+        // Where does this task go? Returns null when its project exists (and fixes area/where on the input),
+        // or a message for the model with the closest existing places when the project is missing or unknown.
+        placeTask(input) {
+          const LV = { area: "Section", category: "Project", project: "Sub project", ...(this.getPersona() || {}).levels || {} };
+          let places = [];
+          try {
+            places = this.nb.projectPlaces();
+          } catch {
+            return null;
+          }
+          if (!places.length && !input.project) return null;
+          const norm = (s) => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+          const stem = (w) => w.replace(/(ies|es|s)$/, "");
+          const words = (s) => norm(s).split(" ").filter((w) => w.length > 1).map(stem);
+          const label = (p) => [p.area, p.category, p.name].filter(Boolean).join(" \u203A ");
+          const want = norm(input.project);
+          const hit = want && places.find((p) => norm(p.name) === want);
+          if (hit) {
+            if (hit.area && input.area !== hit.area) input.area = hit.area;
+            if (hit.category) input.category = hit.category;
+            input.project = hit.name;
+            return null;
+          }
+          const q = new Set(words(`${input.title} ${input.project || ""} ${input.area || ""}`));
+          const score = (p) => {
+            let s = 0;
+            for (const w of words(label(p))) if (q.has(w)) s += 3;
+            for (const w of words(p.name)) for (const x of q) if (x.length > 3 && (w.startsWith(x) || x.startsWith(w))) s += 1;
+            return s + Math.min(p.open, 5) * 0.1;
+          };
+          const best = places.map((p) => ({ p, s: score(p) })).sort((a, b) => b.s - a.s).slice(0, 12).map((x) => `- ${label(x.p)}`).join("\n");
+          return (input.project ? `Not saved: there is no ${LV.project} called "${input.project}".` : `Not saved: every task goes in a ${LV.project} (${LV.area} \u203A ${LV.category} \u203A ${LV.project}).`) + ` The closest existing ones:
+${best || "(none yet)"}
+Call add_task again with project set to the exact name of the right one (and its area). If the user named a place ("under X > Y > Z"), match it to this list even if they spelled it a little differently. If none fits, ask the user, or suggest a new ${LV.project} and where it goes; create it with create_project (area and category) once they agree, then add the task. Don't ask them for the dates again.`;
+        }
         // The learning pass: read a conversation (or several old ones) and keep what lasts, in the memory sections.
         // Runs on its own after a chat goes quiet, with the model from Settings → AI. Returns
         // { add: [{section, text}], replace: [{old, text}], remove: [text], expertise: "..." }.
@@ -37393,14 +37453,19 @@ The time now: ${(/* @__PURE__ */ new Date()).toTimeString().slice(0, 5)}.`;
               return { text: said, changed, moneyChanged };
             }
             const calls = resp.content.filter((b) => b.type === "tool_use");
+            const bounced = calls.map((c) => c.name === "add_task" ? this.placeTask(c.input || {}) : null);
             const decisions = await Promise.all(calls.map(
-              (c) => WRITE_TOOLS.has(c.name) && approve ? approve({ id: c.id, name: c.name, input: c.input || {} }) : { decision: "approve" }
+              (c, i) => bounced[i] ? { decision: "bounce", text: bounced[i] } : WRITE_TOOLS.has(c.name) && approve ? approve({ id: c.id, name: c.name, input: c.input || {} }) : { decision: "approve" }
             ));
             const results = [];
             let reply = null;
             calls.forEach((block, i) => {
               const d = decisions[i] || { decision: "approve" };
               if (d.decision === "reply") reply = d.text;
+              if (d.decision === "bounce") {
+                results.push({ type: "tool_result", tool_use_id: block.id, content: d.text, is_error: true });
+                return;
+              }
               if (d.decision !== "approve") {
                 results.push({
                   type: "tool_result",
@@ -39887,7 +39952,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
       module.exports = {
         name: "scribble-buddy",
         productName: "Scribble",
-        version: "1.30.2",
+        version: "1.30.3",
         description: "A tiny floating desktop buddy that takes notes and tracks tasks and projects, powered by Gemini or Claude.",
         main: "src/main.js",
         author: "Omniz",
@@ -39961,6 +40026,30 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
   var require_changelog = __commonJS({
     "../src/changelog.json"(exports, module) {
       module.exports = [
+        {
+          v: "1.30.3",
+          date: "2026-11-25",
+          en: [
+            {
+              title: "Fixed",
+              items: [
+                `The buddy put tasks straight under a Section with no Sub project, or into a Sub project that didn't exist. Now a task can only land in an existing Sub project: if the buddy leaves it out or gets the name wrong, it's sent back the closest matches (by the words in the task and the place you named, "Application Integration" finds "Applications & Integrations") and picks the right one, or asks you. A brand-new Sub project is created only after you agree.`,
+                "The card for a new task lists all three levels, Section, Project and Sub project (e.g. Penguin \u203A Applications & Integrations \u203A OroCommerce), and you can change any of them. A Sub project typed on the card that doesn't exist yet is created in the Section and Project you chose.",
+                "Asking twice for a reminder at the same moment keeps one reminder."
+              ]
+            }
+          ],
+          id: [
+            {
+              title: "Diperbaiki",
+              items: [
+                'Buddy menaruh tugas langsung di bawah Bagian tanpa Sub proyek, atau ke Sub proyek yang tidak ada. Sekarang tugas hanya bisa masuk ke Sub proyek yang sudah ada: kalau buddy lupa atau salah nama, buddy menerima daftar yang paling cocok (dari kata-kata di tugas dan tempat yang kamu sebut, "Application Integration" menemukan "Applications & Integrations") lalu memilih yang tepat, atau bertanya padamu. Sub proyek baru hanya dibuat setelah kamu setuju.',
+                "Kartu tugas baru menampilkan ketiga tingkat: Bagian, Proyek, dan Sub proyek (mis. Penguin \u203A Applications & Integrations \u203A OroCommerce), dan semuanya bisa diubah. Sub proyek yang diketik di kartu dan belum ada akan dibuat di Bagian dan Proyek yang kamu pilih.",
+                "Meminta pengingat dua kali untuk waktu yang sama hanya menyimpan satu pengingat."
+              ]
+            }
+          ]
+        },
         {
           v: "1.30.2",
           date: "2026-11-23",
@@ -40454,18 +40543,6 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               items: [
                 "**My week card**: the list of finished tasks no longer runs into the footer, the buddy isn't squeezed, and the stats sit in a tidy 2\xD72 grid. The buddy's face now matches your week: cheering for a great week, smiling for a good one, sleepy for a quiet one, sweating when spending ran over budget, with a line to match.",
                 "**Chat suggestions**: every suggestion has an emoji now, they sit side by side instead of one per line, and they scroll inside the chat instead of covering the typing box when the window is small."
-              ]
-            }
-          ]
-        },
-        {
-          v: "1.22.1",
-          date: "2026-11-12",
-          en: [
-            {
-              title: "Fixed",
-              items: [
-                '**No more "Inbox (conflict \u2026)" copies.** When Inbox, a daily page or meeting notes were changed on two devices before they synced, Scribble kept the other version as a separate "(conflict \u2026)" page. Sync now keeps every line from both in the one page. Existing conflict copies of these pages are folded back into their page once, as one step you can undo.'
               ]
             }
           ]
