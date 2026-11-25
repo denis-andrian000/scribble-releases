@@ -1,5 +1,5 @@
 globalThis.process = globalThis.process || { env: {}, platform: 'android', versions: {}, argv: [], cwd: () => '/', nextTick: (f, ...a) => queueMicrotask(() => f(...a)) };
-globalThis.__SCRIBBLE_VERSION__ = "1.30.3";
+globalThis.__SCRIBBLE_VERSION__ = "1.30.4";
 var __dirname = '/app/src', __filename = '/app/src/main.js';
 (() => {
   var __create = Object.create;
@@ -39677,7 +39677,13 @@ Content-Type: application/octet-stream\r
         "Reminder: {0}. Click to cancel it.": "Pengingat: {0}. Klik untuk membatalkannya.",
         "\u23F0 Reminder set": "\u23F0 Pengingat dipasang",
         "\u23F0 Reminder cancelled": "\u23F0 Pengingat dibatalkan",
-        "\u23F0 Checked reminders": "\u23F0 Cek pengingat"
+        "\u23F0 Checked reminders": "\u23F0 Cek pengingat",
+        Feature: "Fitur",
+        Improved: "Ditingkatkan",
+        "Bug fix": "Perbaikan bug",
+        Features: "Fitur",
+        "Bug fixes": "Perbaikan bug",
+        "Nothing here yet.": "Belum ada apa-apa."
       };
     }
   });
@@ -39952,7 +39958,7 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
       module.exports = {
         name: "scribble-buddy",
         productName: "Scribble",
-        version: "1.30.3",
+        version: "1.30.4",
         description: "A tiny floating desktop buddy that takes notes and tracks tasks and projects, powered by Gemini or Claude.",
         main: "src/main.js",
         author: "Omniz",
@@ -40027,6 +40033,28 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
     "../src/changelog.json"(exports, module) {
       module.exports = [
         {
+          v: "1.30.4",
+          date: "2026-11-25",
+          en: [
+            {
+              title: "Changed",
+              items: [
+                "What's new labels every change as \u2728 Feature, \u2B06\uFE0F Improved, \u{1F41E} Bug fix or \u{1F5D1}\uFE0F Removed, with filters for All, Features and Bug fixes, so you can see at a glance what your buddy can do now and what was fixed."
+              ],
+              kind: "improved"
+            }
+          ],
+          id: [
+            {
+              title: "Diubah",
+              items: [
+                "Apa yang baru memberi label pada setiap perubahan: \u2728 Fitur, \u2B06\uFE0F Ditingkatkan, \u{1F41E} Perbaikan bug, atau \u{1F5D1}\uFE0F Dihapus, dengan filter Semua, Fitur, dan Perbaikan bug, jadi kamu langsung tahu apa yang bisa dilakukan buddy sekarang dan apa yang sudah diperbaiki."
+              ],
+              kind: "improved"
+            }
+          ]
+        },
+        {
           v: "1.30.3",
           date: "2026-11-25",
           en: [
@@ -40036,7 +40064,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 `The buddy put tasks straight under a Section with no Sub project, or into a Sub project that didn't exist. Now a task can only land in an existing Sub project: if the buddy leaves it out or gets the name wrong, it's sent back the closest matches (by the words in the task and the place you named, "Application Integration" finds "Applications & Integrations") and picks the right one, or asks you. A brand-new Sub project is created only after you agree.`,
                 "The card for a new task lists all three levels, Section, Project and Sub project (e.g. Penguin \u203A Applications & Integrations \u203A OroCommerce), and you can change any of them. A Sub project typed on the card that doesn't exist yet is created in the Section and Project you chose.",
                 "Asking twice for a reminder at the same moment keeps one reminder."
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40046,7 +40075,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 'Buddy menaruh tugas langsung di bawah Bagian tanpa Sub proyek, atau ke Sub proyek yang tidak ada. Sekarang tugas hanya bisa masuk ke Sub proyek yang sudah ada: kalau buddy lupa atau salah nama, buddy menerima daftar yang paling cocok (dari kata-kata di tugas dan tempat yang kamu sebut, "Application Integration" menemukan "Applications & Integrations") lalu memilih yang tepat, atau bertanya padamu. Sub proyek baru hanya dibuat setelah kamu setuju.',
                 "Kartu tugas baru menampilkan ketiga tingkat: Bagian, Proyek, dan Sub proyek (mis. Penguin \u203A Applications & Integrations \u203A OroCommerce), dan semuanya bisa diubah. Sub proyek yang diketik di kartu dan belum ada akan dibuat di Bagian dan Proyek yang kamu pilih.",
                 "Meminta pengingat dua kali untuk waktu yang sama hanya menyimpan satu pengingat."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40058,7 +40088,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 '"Invalid signature in thinking block \u2026 Try again" in the middle of a reply. It happened when the clock ticked over to the next minute while your buddy was still working on a reply (1.30.1 started telling it the time). The time is now fixed for the whole reply, and if the AI still refuses older thinking, your buddy drops it and carries on by itself.'
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40066,7 +40097,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Diperbaiki",
               items: [
                 '"Invalid signature in thinking block \u2026 Try again" di tengah balasan. Ini terjadi saat jam berganti ke menit berikutnya ketika buddy masih menyusun balasan (sejak 1.30.1 buddy diberi tahu jam sekarang). Sekarang jamnya tetap selama satu balasan, dan kalau AI tetap menolak pemikiran lama, buddy membuangnya dan melanjutkan sendiri.'
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40078,14 +40110,16 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Added",
               items: [
                 `Real reminders: "remind me at 4", "remind me an hour before", "ingetin 30 menit lagi". Your buddy sets a reminder and nudges you at that moment (a bubble and a Windows notification), without touching the task's due date or time. Reminders on a task show as \u23F0 15:00 on its row; click it to cancel. A reminder missed while the computer was off comes as soon as it's back.`
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Fixed",
               items: [
                 `The buddy changed a task's deadline to today just to make a reminder go off, and said it couldn't remind you "an hour before". It now uses a reminder instead and leaves your dates alone.`,
                 "When you write in English, the buddy answers in English, even if you often write in Bahasa or your notes are in Bahasa."
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40093,14 +40127,16 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Baru",
               items: [
                 'Pengingat sungguhan: "ingetin jam 4", "ingetin sejam sebelumnya", "remind me in 30 minutes". Buddy memasang pengingat dan menyapamu tepat waktunya (balon bicara dan notifikasi Windows), tanpa mengubah tenggat atau jam tugas. Pengingat pada tugas tampil sebagai \u23F0 15:00 di barisnya; klik untuk membatalkan. Pengingat yang terlewat saat komputer mati muncul begitu komputer menyala lagi.'
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Diperbaiki",
               items: [
                 'Buddy mengubah tenggat tugas ke hari ini hanya supaya pengingatnya muncul, dan bilang tidak bisa mengingatkan "sejam sebelumnya". Sekarang buddy memakai pengingat dan tidak mengubah tanggalmu.',
                 "Saat kamu menulis dalam bahasa Inggris, buddy menjawab dalam bahasa Inggris, walaupun kamu sering menulis dalam Bahasa Indonesia atau catatanmu berbahasa Indonesia."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40120,7 +40156,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "**Patterns**: once a week your buddy points out tasks that keep slipping and tasks that come back every month, and suggests what to do about them.",
                 "**Think something through with me**: a new shortcut. Your buddy asks sharp questions, lays out options with trade-offs, gives its recommendation, and saves the decision with the reasons on the project page when you've decided.",
                 "**What's new** in Settings \u2192 About: the notes of every update, and a one-time notice after the app updates."
-              ]
+              ],
+              kind: "feature"
             }
           ],
           id: [
@@ -40136,7 +40173,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "**Pola**: seminggu sekali buddy menunjukkan tugas yang terus mundur dan tugas yang muncul tiap bulan, lalu menyarankan apa yang bisa dilakukan.",
                 "**Bantu aku memikirkan sesuatu**: pintasan baru. Buddy bertanya hal yang penting, menjabarkan pilihan beserta untung-ruginya, memberi rekomendasi, lalu menyimpan keputusan dan alasannya di halaman proyek setelah kamu memutuskan.",
                 "**Apa yang baru** di Pengaturan \u2192 Tentang: catatan pembaruan tiap versi, dan pemberitahuan sekali setelah aplikasi diperbarui."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40148,7 +40186,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 "When the buddy updates a task, the Save card now shows everything it will change before you approve: new checklist steps, steps it will tick, untick or remove, and the note it adds. Before, only fields like status and dates were shown, and checklist changes were saved without being visible."
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40156,7 +40195,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Diperbaiki",
               items: [
                 "Saat buddy memperbarui tugas, kartu Simpan sekarang menampilkan semua yang akan diubah sebelum kamu setujui: langkah checklist baru, langkah yang dicentang, dibatalkan centangnya atau dihapus, dan catatan yang ditambahkan. Sebelumnya hanya status dan tanggal yang tampil, dan perubahan checklist tersimpan tanpa terlihat."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40171,13 +40211,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Everything the buddy says (also the morning brief, due tasks, reminders, bills and budgets) is written by your AI model from Settings \u2192 AI, in your language and tone. Task, project and wallet names are always copied exactly. If the model can't be reached, reminders still come as plain notifications.",
                 "The buddy asks you things back in the chat (a follow-up question when it's natural).",
                 "Settings \u2192 Routine \u2192 How chatty: Quiet never starts a chat, Normal up to 3 times a day, Chatty up to 8. Each kind of chat (back at the computer, quiet for a while, small talk, cheers) and asking back can be switched off. Quiet hours are respected."
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Changed",
               items: [
                 `The old 15:30 "How's it going?" check-in is replaced by the above.`
-              ]
+              ],
+              kind: "improved"
             }
           ],
           id: [
@@ -40188,13 +40230,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Semua yang dikatakan buddy (juga brief pagi, tugas jatuh tempo, pengingat, tagihan, dan anggaran) ditulis oleh model AI di Pengaturan \u2192 AI, dengan bahasa dan gayamu. Nama tugas, proyek, dan dompet selalu disalin persis. Kalau model tidak bisa dihubungi, pengingat tetap datang sebagai notifikasi biasa.",
                 "Buddy balik bertanya di chat (pertanyaan lanjutan kalau memang wajar).",
                 "Pengaturan \u2192 Rutinitas \u2192 Seberapa cerewet: Pendiam tidak pernah mulai ngobrol, Normal maksimal 3 kali sehari, Cerewet maksimal 8. Tiap jenis obrolan (kembali ke komputer, lama sepi, basa-basi, menyemangati) dan balik bertanya bisa dimatikan. Jam tenang tetap dihormati."
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Diubah",
               items: [
                 'Sapaan "Gimana kabarnya?" jam 15.30 diganti dengan fitur di atas.'
-              ]
+              ],
+              kind: "improved"
             }
           ]
         },
@@ -40206,7 +40250,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 '"Match me" chat style really follows you now: the buddy answers in the language of your latest message (no switching to English after it has looked things up) and with the same tone, so a casual "agak mager" gets a casual reply, not a report.'
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40214,7 +40259,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Diperbaiki",
               items: [
                 'Gaya chat "Ikuti aku" sekarang benar-benar mengikutimu: buddy menjawab dengan bahasa pesan terakhirmu (tidak pindah ke bahasa Inggris setelah mencari sesuatu) dan dengan gaya yang sama, jadi "agak mager" dibalas santai, bukan seperti laporan.'
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40229,13 +40275,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Task notes are visible and editable in the task editor, with \u{1F4DD} on tasks that have notes.",
                 `The buddy adds what you say about a specific task to that task's notes (dated) instead of today's page, ticks checklist items ("HR sudah"), and asks before closing a task whose steps are all done.`,
                 'Timeline: drag the right edge of the "Sub project / task" column to widen it (double-click to fit the longest name). The width is remembered.'
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Fixed",
               items: [
                 "Dragging a Sub project that only exists on its tasks onto a Project folder (or asking the buddy to move it there) now really moves it: its page is made in that folder."
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40246,13 +40294,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Catatan tugas terlihat dan bisa diubah di editor tugas, dengan \u{1F4DD} di tugas yang punya catatan.",
                 'Buddy menambahkan yang kamu ceritakan tentang tugas tertentu ke catatan tugas itu (dengan tanggal), bukan ke halaman hari ini, mencentang item checklist ("HR sudah"), dan bertanya dulu sebelum menutup tugas yang langkahnya sudah selesai semua.',
                 'Linimasa: tarik tepi kanan kolom "Sub proyek / tugas" untuk melebarkannya (klik dua kali untuk menyesuaikan nama terpanjang). Lebarnya diingat.'
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Diperbaiki",
               items: [
                 "Menarik Sub proyek yang hanya ada di tugasnya ke folder Proyek (atau meminta buddy memindahkannya) sekarang benar-benar memindahkannya: halamannya dibuat di folder itu."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40264,7 +40314,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Added",
               items: [
                 "The buddy can add a task that's already done or in progress (handy when you paste a whole plan with finished items). Finished ones count as done on their due day, not today. The task card shows the status so you can change it before saving."
-              ]
+              ],
+              kind: "feature"
             }
           ],
           id: [
@@ -40272,7 +40323,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Baru",
               items: [
                 "Buddy bisa menambahkan tugas yang sudah selesai atau sedang dikerjakan (berguna saat kamu menempel rencana lengkap yang sebagian sudah beres). Yang sudah selesai dihitung selesai pada hari tenggatnya, bukan hari ini. Kartu tugas menampilkan statusnya supaya bisa kamu ubah sebelum disimpan."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40284,7 +40336,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 "Tasks tree (and Table): while dragging a task, project or folder, moving the mouse near the top or bottom edge scrolls the list, faster the closer you get. Before, you couldn't drop on anything that was off screen, because the mouse wheel doesn't work during a drag on Windows."
-              ]
+              ],
+              kind: "fix"
             }
           ],
           id: [
@@ -40292,7 +40345,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Diperbaiki",
               items: [
                 "Pohon Tugas (dan Tabel): saat menarik tugas, proyek, atau folder, menggerakkan mouse ke dekat tepi atas atau bawah akan menggulir daftar, makin cepat makin dekat. Sebelumnya kamu tidak bisa menaruh di bagian yang tidak terlihat, karena roda mouse tidak berfungsi saat menarik di Windows."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40305,13 +40359,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               items: [
                 'Tasks tree: a new Section, Project, Sub project or task made from the right-click menu now shows up straight away, opened and highlighted. Empty Project folders show too, and a new Sub project is no longer hidden behind "+ N with no open tasks".',
                 "Timeline follows the same hierarchy: Section \u203A Project \u203A Sub project \u203A tasks, with tasks that have no Sub project under General marked \u26A0. The header and project filter use your level names."
-              ]
+              ],
+              kind: "fix"
             },
             {
               title: "Removed",
               items: [
                 `The "+ New" button in Tasks (it couldn't tell where to add). Right-click a row, or empty space, instead.`
-              ]
+              ],
+              kind: "removed"
             }
           ],
           id: [
@@ -40320,13 +40376,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               items: [
                 'Pohon Tugas: Bagian, Proyek, Sub proyek, atau tugas baru dari menu klik kanan langsung muncul, terbuka dan disorot. Folder Proyek yang kosong juga tampil, dan Sub proyek baru tidak lagi tersembunyi di balik "+ N tanpa tugas terbuka".',
                 "Linimasa mengikuti susunan yang sama: Bagian \u203A Proyek \u203A Sub proyek \u203A tugas, dengan tugas tanpa Sub proyek di bawah Umum dan ditandai \u26A0. Judul dan filter proyek memakai nama tingkatmu."
-              ]
+              ],
+              kind: "fix"
             },
             {
               title: "Dihapus",
               items: [
                 'Tombol "+ Baru" di Tugas (tidak bisa tahu harus menambah di mana). Klik kanan baris atau ruang kosong sebagai gantinya.'
-              ]
+              ],
+              kind: "removed"
             }
           ]
         },
@@ -40340,7 +40398,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Name the folder levels: Settings \u2192 App \u2192 Tasks. Defaults are Section \u203A Project \u203A Sub project; the Tasks tree (a small tag on each row), right-click menus, cards, the Table and the buddy all use your names.",
                 `Every task belongs in a Sub project. Tasks without one wait under General with a "\u26A0 no Sub project" tag and a banner with "Ask the buddy to file them"; Sub projects that aren't inside a Project get a small \u26A0.`,
                 "The buddy knows your level names and files new tasks into a Sub project (or suggests one) instead of leaving them loose."
-              ]
+              ],
+              kind: "feature"
             }
           ],
           id: [
@@ -40350,7 +40409,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "Beri nama tingkat folder: Pengaturan \u2192 Aplikasi \u2192 Tugas. Bawaannya Bagian \u203A Proyek \u203A Sub proyek; pohon Tugas (label kecil di tiap baris), menu klik kanan, kartu, Tabel, dan buddy semuanya memakai namamu.",
                 'Setiap tugas berada di Sub proyek. Tugas tanpa Sub proyek menunggu di bawah Umum dengan label "\u26A0 tanpa Sub proyek" dan banner "Minta buddy merapikannya"; Sub proyek yang tidak berada di dalam Proyek mendapat \u26A0 kecil.',
                 "Buddy tahu nama tingkatmu dan memasukkan tugas baru ke Sub proyek (atau menyarankannya), tidak dibiarkan lepas."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40364,14 +40424,16 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "A Claude key now uses Haiku, the cheapest Claude. Older versions started on the newest model Anthropic listed (Fable, Opus), which costs many times more; existing setups move to Haiku once.",
                 '"Chat with this" in Settings \u2192 AI switches straight away. The check that the model can save notes now runs afterwards instead of making you wait (it was slow for Gemini and OpenRouter, so clicks piled up into several toasts).',
                 `When a free fallback model fails too ("Provider returned error"), the buddy tries the next one instead of stopping, and each key's own best model (Gemini Flash, Groq) is tried before random free ones.`
-              ]
+              ],
+              kind: "fix"
             },
             {
               title: "Added",
               items: [
                 "Tasks tree: right-click \u2192 Delete for tasks, projects, sections and folders. A project or folder with tasks asks whether to delete them too or keep them. Undo brings everything back.",
                 "Right-click a task: Edit, Mark done, Delete."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40383,13 +40445,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Added",
               items: [
                 'Your buddy can now **create folders** ("add folder Monitoring"), **move a project** with all its tasks into another folder or section, or rename it, and **remove a project** (it asks whether to delete its open tasks or keep them; Undo brings it back). Each one shows a card to confirm first.'
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Fixed",
               items: [
                 `With some AI models (Gemini), the buddy's reply after saving was just "Here's how I'd file that:" instead of saying what it did. It now confirms what was done in one line.`
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40402,7 +40466,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               items: [
                 "**Tasks \u2192 Tree is editable in place**: \u270E (or double-click) renames a folder, section or project, and its tasks follow. Drag a project onto another folder or section to move it, or a section onto another folder. \u{1F4C4} opens a project's page.",
                 '**Right-click to add** in the Tree: on a folder, a new project, task or section there, or a new folder; on a project, a new task in it; on a section, a new project. "+ New" next to Open / Done / All does the same on touch screens.'
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40416,13 +40481,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 `**Your buddy presents**: ask "show me only the Chatwoot project", "list my tasks in the table", "show my food spending this month" or "open the vendor page", and it shows it: in full screen on the left next to the chat, in the small window by switching to it. A dark bar says what it's showing, with "Show everything" to go back.`,
                 "**See a plan before it's saved**: when your buddy suggests new dates for tasks (a timeline for a project, catching up on late tasks), in full screen the Timeline on the left shows its plan first as striped bars, with where each task was. Drag a striped bar to adjust it; Save all or Discard there or on the card in the chat.",
                 "**All** next to Open and Done in Tasks, to see open and finished tasks together."
-              ]
+              ],
+              kind: "feature"
             },
             {
               title: "Fixed",
               items: [
                 `A few labels under the buddy's replies showed raw names ("save_template", "use_template").`
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40434,13 +40501,15 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Changed",
               items: [
                 "**On phones, Enter makes a new line** and the \u279C button sends, like WhatsApp. With a real keyboard (computer), Enter still sends and Shift+Enter makes a new line."
-              ]
+              ],
+              kind: "improved"
             },
             {
               title: "Fixed",
               items: [
                 "In an empty chat, the suggestions area could sit over the typing box and the Send button, so they couldn't be tapped."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40452,7 +40521,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 "The Windows taskbar button of full-screen Scribble is now tied to the Scribble app icon directly, for PCs that still showed a blank page."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40464,7 +40534,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 "Full-screen Scribble showed a blank page icon on the Windows taskbar instead of the Scribble icon."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         },
@@ -40479,7 +40550,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 "**Rotate between keys**: one switch. When a key is busy or its free use runs out, your buddy moves to another key you've added, starting with the most capable free model, and goes back when it's available again.",
                 "**The mic and meeting notes on Windows work with a free key**: speech becomes text through Groq (Whisper large-v3, the best at Bahasa Indonesia), then Gemini, then OpenRouter, whichever you have. Bahasa mixed with English stays as it was said, and names your buddy knows (people, projects) help it spell them right.",
                 "The buddy's voice uses the OpenRouter key from Settings \u2192 AI, so you don't have to add it twice."
-              ]
+              ],
+              kind: "improved"
             }
           ]
         },
@@ -40491,7 +40563,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Added",
               items: [
                 `**Drop the buddy on your meeting** (Windows app): drag the buddy onto a Google Meet, Zoom or Teams window (browser or app) and it stays there with \u{1F3A7}, listening to the call: everyone's voices from your computer's sound, plus your mic. Drag it off the window when the meeting ends and it writes a meeting page with a summary, decisions and action items, and offers your action items as tasks. A "Listening to Google Meet \xB7 12 min" bar in the chat has Stop too. Uses your OpenRouter key (Settings \u2192 Buddy \u2192 Voice) to turn speech into text; turn it off in Settings \u2192 App \u2192 General.`
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40505,7 +40578,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
                 `**Your buddy remembers you.** When you tell it something lasting (who you work with, how you like your reports, what you're working on), it keeps a short line and shows "\u{1F9E0} Remembered: \u2026" with Undo. Every new chat starts knowing it, so "bikinin laporan mingguan" already knows it's for Pak James, WhatsApp style. Say "lupakan soal itu" / "forget that" to remove something.`,
                 '**It looks back at past chats**: "waktu itu kita ngobrolin harga vendor berapa?" finds the earlier chat and links to it (tap to open).',
                 "**Settings \u2192 Buddy \u2192 Memory**: everything it knows, by section (About you, How you like things, People, Ongoing work), with the day it learned each line. Delete any line, add your own, or forget everything. Two switches: remember things from chats, and look back at past chats. It's the page Memory.md in your notebook, so it syncs and you can edit it there too. Passwords, PINs, card and ID numbers are never kept."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40518,7 +40592,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               items: [
                 "**Wallet badges**: well-known wallets and banks (GoPay, DANA, OVO, ShopeePay, LinkAja, BCA, Mandiri, BRI, BNI, BSI, BTN, CIMB, Jago, Jenius, SeaBank and more) get a badge in their familiar colour with their initials, picked from the wallet's name. Other wallets keep their coloured dot.",
                 "**Your own wallet picture**: Money \u2192 Wallets \u2192 Edit \u2192 Set picture. Use any image you like (for example the logo saved from your bank's site); it's kept small with your data and syncs to your devices."
-              ]
+              ],
+              kind: "feature"
             }
           ]
         },
@@ -40530,20 +40605,8 @@ Your buddy keeps this from your chats. Change or delete any line; it uses what's
               title: "Fixed",
               items: [
                 "**No more silent replies**: after reading a lot (like the weekly report going through your daily pages), some AI models sent back an empty answer and the chat just stopped. Your buddy now asks the model once more for the answer, and if it still comes back empty it tells you so and what to try."
-              ]
-            }
-          ]
-        },
-        {
-          v: "1.22.2",
-          date: "2026-11-12",
-          en: [
-            {
-              title: "Fixed",
-              items: [
-                "**My week card**: the list of finished tasks no longer runs into the footer, the buddy isn't squeezed, and the stats sit in a tidy 2\xD72 grid. The buddy's face now matches your week: cheering for a great week, smiling for a good one, sleepy for a quiet one, sweating when spending ran over budget, with a line to match.",
-                "**Chat suggestions**: every suggestion has an emoji now, they sit side by side instead of one per line, and they scroll inside the chat instead of covering the typing box when the window is small."
-              ]
+              ],
+              kind: "fix"
             }
           ]
         }

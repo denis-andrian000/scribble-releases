@@ -3442,27 +3442,41 @@ if (S.onRemindersChanged) S.onRemindersChanged(loadReminders);
 setTimeout(() => loadReminders().catch(() => {}), 800);
 
 // ---------------- what's new ----------------
+const NEWS_KIND = { feature: ['✨', 'Feature'], improved: ['⬆️', 'Improved'], fix: ['🐞', 'Bug fix'], removed: ['🗑️', 'Removed'] };
+let newsFilter = 'all';
 async function loadNews() {
   if (!S.appNews || !$('#news-list')) return;
   const n = await S.appNews();
+  // the filter: All, Features (new and improved), Bug fixes
+  const show = (k) => newsFilter === 'all' || (newsFilter === 'feature' ? k === 'feature' || k === 'improved' : k === newsFilter);
   $('#news-sum').textContent = I18n.t('Version {0}', n.version);
   const box = $('#news-list'); box.innerHTML = '';
-  n.list.forEach((e, i) => {
-    const v = el('details', 'news-v'); v.open = i === 0;
+  let shown = 0;
+  n.list.forEach((e) => {
+    const secs = e.sections.filter((sec) => show(sec.kind || 'improved') && sec.items.length);
+    if (!secs.length) return;
+    const v = el('details', 'news-v'); v.open = shown++ === 0;
     const sm = el('summary');
     const b = el('b'); b.textContent = e.v;
     const d = el('small'); d.textContent = new Date(e.date + 'T12:00:00').toLocaleDateString(I18n.locale(), { day: 'numeric', month: 'long', year: 'numeric' });
     sm.append(b, d);
     if (e.v === n.version) { const c = el('span', 'news-cur'); c.textContent = I18n.t('this version'); sm.append(c); }
     v.append(sm);
-    for (const sec of e.sections) {
-      const h = el('div', 'news-h'); h.textContent = sec.title; v.append(h);
-      const ul = el('ul');
-      for (const it of sec.items) { const li = el('li', 'md'); li.innerHTML = renderMarkdown(it); ul.append(li); }
-      v.append(ul);
+    const ul = el('ul', 'news-items');
+    for (const sec of secs) {
+      const [icon, label] = NEWS_KIND[sec.kind] || NEWS_KIND.improved;
+      for (const it of sec.items) {
+        const li = el('li');
+        const tag = el('span', `news-tag k-${sec.kind || 'improved'}`); tag.textContent = `${icon} ${I18n.t(label)}`;
+        const tx = el('div', 'md'); tx.innerHTML = renderMarkdown(it);
+        li.append(tag, tx); ul.append(li);
+      }
     }
+    v.append(ul);
     box.append(v);
   });
+  if (!shown) { const e = el('small'); e.textContent = I18n.t('Nothing here yet.'); box.append(e); }
+  $$('#news-filter button').forEach((b) => b.classList.toggle('on', b.dataset.k === newsFilter));
 }
 // once after an update: "Updated to 1.30.0 · What's new"
 async function newsBanner() {
@@ -3481,6 +3495,7 @@ async function newsBanner() {
   msgsEl.parentElement.insertBefore(bar, msgsEl);
 }
 setTimeout(() => { newsBanner().catch(() => {}); }, 1500);
+$$('#news-filter button').forEach((b) => b.addEventListener('click', () => { newsFilter = b.dataset.k; loadNews(); }));
 
 // ---------------- expert help ----------------
 const OP_HINT = { off: 'Only does what you ask. No tips or opinions.', useful: 'A tip, a better way or a risk when you start a task or ask: at most one per reply, only when it really helps.', often: 'Also asks questions and talks things through with you.' };
